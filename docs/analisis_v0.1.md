@@ -307,3 +307,39 @@ Resultado del barrido (60 saques por Δt): de −40 a +80 ms entran todos; a +10
 - Tests: **95/95**. Bots medios a 0.75: 6.4–7.2 golpes por punto y unos 790 ms entre golpes.
 
 **Riesgo nuevo para V0.3:** el desfase de latencia regala tiempo de reacción a quien lo infle. Está limitado a +100 ms y el anti-cheat está fuera de alcance ✅, pero el servidor debería conocer el desfase declarado de cada jugador y aplicar el mismo límite.
+
+---
+
+## 10. Cierre de V0.1 (2026-10-01)
+
+El autor da la fase por cerrada tras el playtest 2 («Me parece excelente»).
+
+**Criterio de aceptación de V0.1 (§21) según los playtests del autor:**
+
+| Criterio | Estado |
+|---|---|
+| ¿Se siente bien controlar con el ratón? | Sí, tras subir la velocidad de la raqueta (6 m/s, 60 m/s²) y añadir la calibración de latencia |
+| Distingue PERFECT de GOOD sin mirar números | Sí (playtest 1) |
+| Entiende por qué la bola fue a la red | La red al golpear pronto le parece «lo justo» (playtest 2); el aviso del punto explica la causa |
+| Rally de 6+ golpes controlable contra el bot | No lo confirmó de forma explícita. Bots medios: 6.4–7.2 golpes por punto; el autor da la fase por buena |
+
+**Decisiones del autor tomadas durante V0.1:**
+- P3: el gesto lateral solo apunta si la raqueta estaba colocada.
+- El equilibrio del riesgo al cruzar me lo delegó; se eligió que el riesgo esté en el ángulo (§9).
+- P7: calibración de latencia, en el lobby de salas (en V0.1, en la pantalla de inicio).
+- §24-8: `gameSpeed` = 0.75.
+
+**Pendiente de aprobación del autor** (ya implementado, toca decisiones ✅):
+- P5: ningún error de timing da más velocidad que PERFECT; EARLY sale más bajo y más corto.
+- P6: modelo «objetivos + solver + física» para resolver los golpes.
+
+El resto de propuestas de §6 son 🟡 y quedan adoptadas en el prototipo. El documento de diseño no se ha modificado.
+
+**Entrada a V0.2 (§21: golpe completo):**
+- Gesto → tipo de golpe (normal, topspin, slice, smash), partiendo de la puntería aprobada. El slice será el cruce con efecto lateral.
+- Spin con Magnus y bote con spin, y spin visible. El solver pasa a 3 incógnitas (§5.1-1) y debe resolver **con** Magnus (§5.1-2).
+- Bloqueo con Space.
+- «¿Por qué fallé?» completo: ya existe la base en el aviso de fin de punto.
+- Umbral del smash relativo a la red (P17).
+
+**Estado final:** 95 tests en verde, typecheck y build limpios, etiqueta `v0.1.0`.
