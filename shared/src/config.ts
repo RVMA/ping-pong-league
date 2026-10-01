@@ -12,7 +12,7 @@
  *  - Velocidades de la bola en m/s de tiempo de SIMULACIÓN (afectadas por gameSpeed).
  *  - Velocidades de la raqueta en m/s de tiempo REAL (no las ralentiza gameSpeed).
  *
- * Referencias al documento de diseño v2 entre corchetes: [§7.3].
+ * Referencias al documento de diseño v3 (ping_pong_pvp_gameplay_design_v3.md) entre corchetes: [§7.3].
  */
 
 /** Punto de una curva de tiro indexada por el error de timing (ms). */

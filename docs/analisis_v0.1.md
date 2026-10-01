@@ -1,6 +1,6 @@
 # Análisis retroactivo de V0.1 y propuesta de cambios
 
-> Documento de diseño analizado: `ping_pong_pvp_gameplay_design (1).md` (v2, 2026-09-30).
+> Documento de diseño analizado: v2 (2026-09-30), ahora archivada en `docs/archive/ping_pong_pvp_gameplay_design_v2.md`. Las decisiones de este análisis están integradas en la v3 (`ping_pong_pvp_gameplay_design_v3.md`).
 > Implementación: commits `0daa2e7` … `HEAD` de este repositorio.
 > Este documento **no modifica** el diseño: solo describe lo implementado y propone cambios.
 > Marcas del diseño: ✅ decidido por el autor · 🟡 propuesta base · ❓ abierto.

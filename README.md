@@ -4,7 +4,7 @@ Juego de ping pong para navegador contra un bot. Esta fase (V0.1 del §21 del do
 sirve para probar el **tacto del golpe con el ratón**: raqueta con inercia, golpe por click con
 medición de timing (ms) y posición (% del radio) y feedback estilo *Paper Mario TTYD*.
 
-- Diseño vigente: [`ping_pong_pvp_gameplay_design (1).md`](ping_pong_pvp_gameplay_design%20(1).md)
+- Diseño vigente (v3): [`ping_pong_pvp_gameplay_design_v3.md`](ping_pong_pvp_gameplay_design_v3.md). Versiones anteriores en [`docs/archive/`](docs/archive/)
 - Análisis de la implementación y propuestas: [`docs/analisis_v0.1.md`](docs/analisis_v0.1.md)
 
 ## Arrancar
