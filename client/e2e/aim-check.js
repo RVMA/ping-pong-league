@@ -2,7 +2,7 @@
 // con eventos de ratón reales (salvo el gesto rápido, ver abajo). Comprueba la regla del autor (2026-10-01): el gesto lateral solo apunta
 // si la raqueta estaba colocada antes del gesto; persiguiendo, la bola sale recta.
 async (page) => {
-  await page.goto(page.url().split('?')[0] + '?autostart=1&bot=medium&seed=11&debug=1');
+  await page.goto(page.url().split('?')[0] + '?autostart=1&bot=medium&seed=11&debug=1&offset=0');
   await page.waitForTimeout(400);
   const results = [];
   const planFn = () => {

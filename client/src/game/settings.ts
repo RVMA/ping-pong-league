@@ -7,6 +7,7 @@
  *  - debug: 1 muestra el panel de precisión desde el inicio
  *  - autostart: 1 empieza sin menú (para pruebas automáticas)
  *  - seed: semilla del bot
+ *  - offset: desfase de latencia en ms (sustituye al calibrado; para pruebas)
  */
 import type { BotDifficulty, ConfigOverrides } from '@ppp/shared';
 
@@ -16,6 +17,8 @@ export interface Settings {
   debug: boolean;
   autostart: boolean;
   seed: number;
+  /** Desfase de latencia forzado por URL; si no hay, se usa el calibrado guardado. */
+  latencyOffset: number | null;
 }
 
 export function readSettings(search = window.location.search): Settings {
@@ -37,6 +40,7 @@ export function readSettings(search = window.location.search): Settings {
   const paccel = num('paccel');
   if (paccel !== undefined) paddle.maxAccel = Math.max(5, Math.min(300, paccel));
   if (Object.keys(paddle).length) overrides.paddle = paddle;
+  const offset = num('offset');
   const bot = q.get('bot');
   const difficulty: BotDifficulty = bot === 'easy' || bot === 'hard' || bot === 'medium' ? bot : 'medium';
   return {
@@ -45,5 +49,6 @@ export function readSettings(search = window.location.search): Settings {
     debug: q.get('debug') === '1',
     autostart: q.get('autostart') === '1',
     seed: num('seed') ?? Math.floor(Math.random() * 1e9),
+    latencyOffset: offset ?? null,
   };
 }

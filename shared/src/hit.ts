@@ -89,6 +89,8 @@ export interface ClosestApproachInput {
   reachMaxY: number;
   /** Solo se consideran muestras en el campo de este jugador. */
   ownSideOnly: boolean;
+  /** Solo tramos en los que la bola baja (saque: la bola pasa por la altura ideal al subir y al bajar). */
+  descendingOnly?: boolean;
 }
 
 /**
@@ -104,6 +106,7 @@ export function measureClosestApproach(inp: ClosestApproachInput): HitMeasuremen
     const a = samples[i];
     const b = samples[i + 1];
     if (inp.ownSideOnly && (a.pos.z * sgn < 0 || b.pos.z * sgn < 0)) continue;
+    if (inp.descendingOnly && b.pos.y > a.pos.y) continue;
     const dx = b.pos.x - a.pos.x;
     const dy = (b.pos.y - a.pos.y) * weightY;
     const dz = b.pos.z - a.pos.z;

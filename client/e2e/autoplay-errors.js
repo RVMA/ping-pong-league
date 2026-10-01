@@ -19,6 +19,9 @@ async (page) => {
   let lastScore = '0-0';
   const log = [];
 
+  // Sin desfase de latencia guardado: los Δt medidos deben ser los provocados.
+  await page.goto(page.url().split('?')[0] + '?offset=0');
+  await page.waitForTimeout(300);
   if (await page.$('button[data-difficulty="medium"]')) await page.click('button[data-difficulty="medium"]');
   await page.waitForTimeout(250);
 

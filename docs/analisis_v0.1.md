@@ -205,7 +205,7 @@ Sin cambios: ventanas de timing ±25/60/120 ms, posición 20/50/100 %, whiff 300
 | P4 | §4.2 | Añadir «**instante del contacto**»: la calidad se evalúa en el click; el contacto ocurre en `max(t_click, t_ideal)` y la raqueta queda fija entre ambos | Golpe visualmente coherente y evento de red bien definido | Medio (netcode) | Alta | 🟡 libre |
 | P5 | §4.3 | Añadir: «**ningún error de timing produce más velocidad que un PERFECT**; EARLY sale más bajo **y más corto**» | Con el mismo bote, menos margen da una trayectoria más plana y más rápida: hacer click pronto quedaba premiado (medido antes de corregirlo: −90 ms a 6.5 m/s frente a PERFECT a 5.4 m/s; ahora −90 ms a 5.3 m/s y PERFECT a 5.6 m/s). Corregido y cubierto por un test | Medio | Alta | **Requiere aprobación del autor** (amplía la fila EARLY ✅) |
 | P6 | §7 (nuevo), §6.1 | Documentar el modelo «**objetivos + solver + física**»: la calidad y el gesto eligen margen sobre la red y bote; el solver calcula la velocidad con la misma física; la colisión con la red es real | Hace que la red sea predecible y explicable sin azar; base para el spin en V0.2 | Medio | Media | **Requiere aprobación del autor** (interpreta «la red es física real» ✅ de §6) |
-| P7 | §19, §4.2 | **Calibración de latencia**: un offset en ms por jugador (prueba de clicks a ritmo) que se suma a `t_click` antes de medir | La latencia de pantalla (30–60 ms) es mayor que la ventana PERFECT y sesga a LATE | Medio | Alta | **Requiere aprobación del autor** (toca la medición ✅ de §4.2) |
+| P7 | §19, §4.2 | **Calibración de latencia**: un offset en ms por jugador (prueba de clicks a ritmo) que se suma a `t_click` antes de medir | La latencia de pantalla (30–60 ms) es mayor que la ventana PERFECT y sesga a LATE | Medio | Alta | **Aprobada por el autor (2026-10-01)**: la calibración va en la selección de sala; en V0.1, en la pantalla de inicio (ver §9) |
 | P8 | §3.1 | Fijar unidades: `swing` en **alturas de pantalla por segundo** y `fire` en **ms del reloj de partida** (sincronizado con el servidor en V0.3) | Sin unidades, cada traductor y el servidor interpretarían distinto | Bajo | Media | 🟡 libre (es detalle de §3.1) |
 | P9 | §9.1 | Contacto ideal del saque a ~30 cm sobre la mesa; **saque no golpeado = punto del receptor**; en V0.1 dirección automática (primer bote en tu campo) | Con contacto bajo, el click tardío era imposible; caso no definido | Bajo | Media | 🟡 libre |
 | P10 | §7.3 | `gameSpeed` escala **solo la bola**; la raqueta y las ventanas en ms van en tiempo real | Ajustar `gameSpeed` no debe cambiar la respuesta del ratón | Bajo | Media | 🟡 libre |
@@ -226,7 +226,7 @@ Sin cambios: ventanas de timing ±25/60/120 ms, posición 20/50/100 %, whiff 300
 | 1 | ¿Profundidad elegible? | **Sí a la propuesta actual: sin control explícito.** En V0.1 la profundidad ya sale del timing (PERFECT a ~88 % de la media mesa, tarde más corta, pronto corta y baja) y funciona como consecuencia legible. En V0.2 añadir potencia y spin, sin un mando propio | Curva de `config.shot.timingCurve` y tests de §4.3 |
 | 3 | ¿POWER y DEFENDER? | Sin cambio en la elección, pero los pasivos de ±5 ms no se notarían (P16) | Jitter medido de unos ±10 ms incluso con entrada sintética |
 | 7 | ¿Modo por defecto? | **Estándar (al mejor de 3)**, según la propuesta | Un game de bots medios dura 3.5–4 min (220–233 s); con humanos, más errores lo acortan. Mejor de 3 ≈ 8–12 min, mejor de 5 ≈ 15–20 min. Rápido (1 game) ≈ 3–4 min, bueno para el matchmaking público |
-| 8 | ¿Valor final de `gameSpeed`? | **0.7 como punto de partida del playtest**. Decidir entre 0.65 y 0.75 tras el playtest. Probar con `?speed=` | Tabla de §5.3: cada 0.05 son unos 60 ms más o menos de tiempo de reacción entre golpes |
+| 8 | ¿Valor final de `gameSpeed`? | **Respondida por el autor en el playtest 2: 0.75** («lo disfruté más»). Era 0.7 como punto de partida | Tabla de §5.3: cada 0.05 son unos 60 ms más o menos de tiempo de reacción entre golpes |
 
 Las preguntas 2 (timeout del warm-up), 4 (coste del saque especial), 5 (nombre del saque de SPEED) y 6 (solapamiento CONTROL/DEFENDER) **no se aclaran** con V0.1 y siguen abiertas.
 
@@ -258,6 +258,52 @@ Las preguntas 2 (timeout del warm-up), 4 (coste del saque especial), 5 (nombre d
 
 Tests de regresión en `shot.test.ts` y `sim.test.ts`. Tras la corrección: rallies de 11, 20 y 5 golpes sin faltas de saque.
 
-**Nueva cuestión abierta (decisión del autor):** el gesto de cruzar todavía desplaza la raqueta. En las pruebas, la posición quedó en torno al 50 % del radio, así que **cruzar la bola suele costar el PERFECT**, y el desvío por borde va hacia el lado contrario del gesto, lo que resta parte del ángulo. Hay dos opciones:
+**Cuestión resuelta en el playtest 2 (ver §9):** el gesto de cruzar todavía desplaza la raqueta. En las pruebas, la posición quedó en torno al 50 % del radio, así que **cruzar la bola suele costar el PERFECT**, y el desvío por borde va hacia el lado contrario del gesto, lo que resta parte del ángulo. Hay dos opciones:
 - **(a)** Dejarlo así, como riesgo/recompensa: cruzar es un golpe agresivo, coherente con el pilar de §1.
 - **(b)** Si estabas colocado, medir la posición con la raqueta de antes del gesto, para que cruzar no penalice la posición. Riesgo: una corrección rápida de última hora contaría como gesto y no como recolocación.
+
+---
+
+## 9. Playtest 2 del autor (2026-10-01) y cambios
+
+| Pregunta | Respuesta del autor | Cambio aplicado |
+|---|---|---|
+| Calibración de latencia (P7) | «No vendría mal. Se puede hacer en el lobby de selección de salas» | **P7 aprobada.** En V0.1 la pantalla de inicio hace de lobby: sección «Latencia» con «Calibrar latencia». 12 bolas llegan al centro de tu raqueta por la misma escena 3D y con el mismo retraso de dibujo que la partida; el desfase es la mediana de (click − llegada), limitada a [−50, +100] ms. Se guarda en el navegador y el traductor de ratón lo resta de cada click. En V0.4 pasará al lobby de salas |
+| Red al golpear pronto | «Lo justo» | Sin cambios |
+| Cruzar: ¿(a) o (b)? | «La que elijas tú que pienses que está balanceada, riesgosa y divertida» | Elegida una **(c) = (b) + riesgo de ángulo** (ver abajo) |
+| Ritmo | Jugó a 0.75 y lo disfrutó más | `gameSpeed` por defecto **0.75** (responde §24-8) |
+
+**Por qué (c).** (a) castigaba un efecto secundario del gesto que el jugador no controla: cruzar casi nunca era PERFECT y el desvío por borde deshacía parte del ángulo. (b) sola haría que cruzar no tuviera riesgo. En (c):
+- Si estabas colocado y el gesto es seco, la posición se mide con la raqueta de antes del gesto (`Simulation.clickPaddlePos`).
+- El riesgo pasa al ángulo, como en el slice de §4.5 («ángulo excesivo, poco margen sobre la red»), con `angleRisk` en `shot.ts`:
+  - **Pronto + cruzado:** te pasas de ángulo (hasta +60 % del cruce): un cruce a tope con GOOD a −60 ms sale por la banda.
+  - **Tarde + cruzado:** no llegas a cruzar (hasta −70 % del cruce): la bola queda centrada y fácil.
+  - Dentro de la ventana PERFECT no cambia nada. Un cruce a tope deja además 2 cm menos de margen sobre la red.
+- El aviso del punto lo explica: «Fuera. Cruzaste golpeando pronto: te pasaste de ángulo.»
+
+Es la misma lógica que la altura (pronto = arriesgado, tarde = pasivo) y premia la precisión que el autor prefiere.
+
+**Fallo encontrado y corregido: saque tardío.** Al barrer saques por Δt, los de +80 ms o más acababan casi siempre en red o en falta, cuando §4.3 ✅ dice que tarde es «más alta, bola fácil». Había dos causas:
+- El contacto tardío es bajo porque la bola sigue cayendo.
+- La estimación inicial del solver no golpeaba hacia abajo con fuerza suficiente.
+
+Correcciones:
+- El lanzamiento pasa de 3.0 a 2.4 m/s, para que la bola pase por la altura ideal más despacio.
+- Segunda estimación del solver para contactos bajos.
+- Márgenes del saque tardío más realistas (0.12 y 0.16 m, que siguen siendo más altos que PERFECT).
+- La bola solo cuenta al bajar: también pasaba por la altura ideal al subir.
+
+Resultado del barrido (60 saques por Δt): de −40 a +80 ms entran todos; a +100 ms, 40 de 60; a +120 ms, el borde del whiff, es arriesgado. Test de regresión en `shot.test.ts`.
+
+**Verificación en navegador:**
+- **Calibración** (`client/e2e/calibration-check.js`), un jugador simulado que siempre hace click 40 ms tarde:
+  - Desfase medido: **+43 ms** (los 40 más ~3 ms de Playwright), guardado y mostrado en la pantalla de inicio.
+  - Jugando después con el mismo retraso: **Δt medio +3 ms y 13 de 13 PERFECT**. Sin calibrar, todos habrían sido GOOD.
+  - Capturas `07` a `10`.
+- **Puntería** (`aim-check.js`):
+  - Colocado + gesto seco: **PERFECT con posición 0 %** y cruce de 27–33 cm.
+  - Persiguiendo: recta.
+- **Regresión** (`autoplay-rally.js`): rallies de 8, 14 y 6 golpes, sin faltas de saque.
+- Tests: **95/95**. Bots medios a 0.75: 6.4–7.2 golpes por punto y unos 790 ms entre golpes.
+
+**Riesgo nuevo para V0.3:** el desfase de latencia regala tiempo de reacción a quien lo infle. Está limitado a +100 ms y el anti-cheat está fuera de alcance ✅, pero el servidor debería conocer el desfase declarado de cada jugador y aplicar el mismo límite.

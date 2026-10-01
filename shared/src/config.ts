@@ -41,8 +41,8 @@ export const DEFAULT_CONFIG = {
   sim: {
     /** Paso fijo de la simulación [§7.4]. */
     tickHz: 120,
-    /** Escala de tiempo global de la bola [§7.3] 🟡 0.6–0.75. ❓ §24-8: valor final pendiente de playtest. */
-    gameSpeed: 0.7,
+    /** Escala de tiempo global de la bola [§7.3] 🟡 0.6–0.75. §24-8: el autor eligió 0.75 en el playtest 2 (2026-10-01). */
+    gameSpeed: 0.75,
   },
 
   /** Medidas de reglamento [§7.2]. Origen: centro de la mesa a nivel del suelo; y arriba; la red en z = 0. */
@@ -157,6 +157,16 @@ export const DEFAULT_CONFIG = {
     aimSettleToMs: 150,
     aimSettledSpeed: 0.6,
     aimChasingSpeed: 1.6,
+    /**
+     * El riesgo de cruzar está en el ÁNGULO, no en la posición (playtest 2): si estabas colocado, el gesto no
+     * te mueve la raqueta para medir la posición. A cambio, con la parte del objetivo que viene del gesto:
+     *  - pronto → te pasas de ángulo: × (1 + aimEarlyWiden · e), e = 0..1 entre la ventana PERFECT y la de WEAK;
+     *  - tarde  → no llegas a cruzar:  × (1 − aimLateNarrow · l);
+     *  - un cruce a tope deja aimClearancePenalty m menos de margen sobre la red (§4.5 slice: «poco margen»).
+     */
+    aimEarlyWiden: 0.6,
+    aimLateNarrow: 0.7,
+    aimClearancePenalty: 0.02,
     /** Margen interior respecto a la banda lateral para la puntería "limpia". */
     aimEdgeMargin: 0.1,
     /**
@@ -172,7 +182,8 @@ export const DEFAULT_CONFIG = {
     /** La bola se lanza sola al cabo de ~1 s o con el primer click. */
     autoTossMs: 1000,
     holdHeight: 0.15,
-    tossSpeed: 3.0,
+    /** Playtest 2: a 3.0 m/s la bola caía tan rápido que un saque tardío se golpeaba a ras de mesa. */
+    tossSpeed: 2.4,
     /** Altura ideal de contacto (sweet spot) durante la caída, relativa a la mesa. */
     idealContactHeight: 0.3,
     /** Profundidad del primer bote (en tu campo) como fracción de la distancia hasta la red. */
@@ -183,8 +194,8 @@ export const DEFAULT_CONFIG = {
       { dt: -25, clearance: 0.06, depth: 0.75 },
       { dt: 0, clearance: 0.06, depth: 0.78 },
       { dt: 25, clearance: 0.08, depth: 0.75 },
-      { dt: 60, clearance: 0.16, depth: 0.7 },
-      { dt: 120, clearance: 0.3, depth: 0.65 },
+      { dt: 60, clearance: 0.12, depth: 0.7 },
+      { dt: 120, clearance: 0.16, depth: 0.62 },
     ] as ShotCurvePoint[],
   },
 
@@ -249,6 +260,22 @@ export const DEFAULT_CONFIG = {
     streakNotesHz: [523.25, 659.25, 783.99, 1046.5],
     /** Escala del mensaje del rival respecto al propio. */
     opponentScale: 0.7,
+  },
+
+  /**
+   * Calibración de latencia (P7, aprobada por el autor en el playtest 2). Desfase en ms que el traductor de
+   * entrada resta al instante de cada click: compensa el retardo de pantalla y de entrada de cada jugador.
+   * Se limita para que un desfase inflado no regale tiempo de reacción en PvP.
+   */
+  input: {
+    latencyOffsetMs: 0,
+    latencyOffsetMin: -50,
+    latencyOffsetMax: 100,
+    calibrationTrials: 12,
+    /** Clicks a más de esto de la llegada de la bola no cuentan (despistes). */
+    calibrationRejectMs: 250,
+    /** Velocidad de la bola de calibración (m/s reales) ≈ la de llegada en partida con gameSpeed 0.75. */
+    calibrationBallSpeed: 3.4,
   },
 
   /** Momentum [§11] — NO se usa en V0.1; los valores viven aquí para que el config sea único. */

@@ -24,6 +24,7 @@ import { type PaddleFrame, type RenderFrame, World } from '../render/world.ts';
 import { type FeedbackKind, Hud } from '../ui/hud.ts';
 import { PrecisionStats } from '../ui/precision-stats.ts';
 import { type LastHumanHit, pointText } from '../ui/texts.ts';
+import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration.ts';
 import type { Settings } from './settings.ts';
 
 const CHARACTERS: [CharacterId, CharacterId] = ['power', 'defender'];
@@ -71,6 +72,9 @@ export class Game {
   private lastHumanAim: number | null = null;
   private readonly precision = new PrecisionStats(20);
   private humanWhiffedThisRally = false;
+  private calibration: Calibration | null = null;
+  /** Desfase de latencia calibrado (ms) o null si este jugador no ha calibrado. */
+  private latencyOffset: number | null = null;
   private fps = 0;
   /** Registro de eventos recientes (para depurar y para las pruebas automáticas). */
   readonly log: EventLogEntry[] = [];
@@ -97,12 +101,85 @@ export class Game {
     resize();
     window.addEventListener('keydown', (e) => this.onKey(e));
     // El audio solo puede arrancar tras un gesto del usuario (también con ?autostart=1).
-    canvas.addEventListener('pointerdown', () => void this.audio.unlock());
+    canvas.addEventListener('pointerdown', (e) => {
+      void this.audio.unlock();
+      if (this.calibration && e.button === 0) this.onCalibrationClick(e.timeStamp);
+    });
     window.addEventListener('blur', () => this.running && !this.paused && this.pause());
 
+    const stored = settings.latencyOffset ?? loadLatencyOffset();
+    const { latencyOffsetMin, latencyOffsetMax } = this.cfg.input;
+    this.latencyOffset = stored === null ? null : Math.max(latencyOffsetMin, Math.min(latencyOffsetMax, stored));
+    this.input.latencyOffsetMs = this.latencyOffset ?? 0;
+
     if (settings.autostart) this.start(this.difficulty);
-    else this.hud.showStart(this.difficulty, this.labels(), (d) => this.start(d));
+    else this.showMenu();
     requestAnimationFrame(this.frame);
+  }
+
+  /** Pantalla de inicio: elegir rival y calibrar la latencia (hará de lobby hasta que haya salas). */
+  private showMenu(): void {
+    this.running = false;
+    this.hud.setHint('');
+    this.hud.showStart(this.difficulty, this.labels(), (d) => this.start(d), {
+      offsetMs: this.latencyOffset,
+      onCalibrate: () => this.startCalibration(),
+    });
+  }
+
+  // ——— Calibración de latencia (P7) ———
+
+  startCalibration(): void {
+    void this.audio.unlock();
+    this.running = false;
+    this.hud.hideOverlay();
+    this.hud.setHint('');
+    const top = this.cfg.world.tableHeight;
+    this.calibration = new Calibration(this.cfg, { x: 0, y: top + 0.25, z: 1.6 }, performance.now(), Math.floor(Math.random() * 1e9));
+    this.updateCalibrationBanner();
+  }
+
+  private updateCalibrationBanner(): void {
+    const c = this.calibration;
+    if (!c) return;
+    this.hud.setBanner('Haz click justo cuando la bola llegue al centro de tu raqueta', `Bola ${Math.max(1, c.index)} de ${c.total}. Esc para salir.`);
+  }
+
+  private onCalibrationClick(t: number): void {
+    const c = this.calibration;
+    if (!c) return;
+    const delta = c.click(t);
+    if (delta === null) return;
+    this.audio.play('hit_good', { volume: 0.7 });
+    this.fx[HUMAN].flash = 0.8;
+    const p = this.world.project(c.sweet.x + 0.24, c.sweet.y + 0.16, c.sweet.z);
+    const ms = Math.round(delta);
+    this.hud.feedback(`${ms > 0 ? '+' : ''}${ms} ms`, 'label', p.x, p.y, 1, 700);
+  }
+
+  private finishCalibration(): void {
+    const c = this.calibration;
+    if (!c) return;
+    this.calibration = null;
+    this.hud.setBanner(null);
+    const r = c.result();
+    this.hud.showCalibrationResult(
+      r,
+      () => {
+        this.latencyOffset = r.offsetMs;
+        this.input.latencyOffsetMs = r.offsetMs;
+        saveLatencyOffset(r.offsetMs);
+        this.showMenu();
+      },
+      () => this.startCalibration(),
+      () => this.showMenu(),
+    );
+  }
+
+  private cancelCalibration(): void {
+    this.calibration = null;
+    this.hud.setBanner(null);
+    this.showMenu();
   }
 
   private labels(): Record<BotDifficulty, string> {
@@ -138,7 +215,9 @@ export class Game {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && this.running) {
+    if (e.key === 'Escape' && this.calibration) {
+      this.cancelCalibration();
+    } else if (e.key === 'Escape' && this.running) {
       if (this.paused) this.resume();
       else this.pause();
     } else if (e.key === 'd' || e.key === 'D') {
@@ -153,6 +232,13 @@ export class Game {
     const dtFrame = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 1 / 60;
     this.lastFrame = now;
     this.fps = this.fps * 0.95 + (1 / Math.max(dtFrame, 1e-3)) * 0.05;
+    if (this.calibration) {
+      this.calibration.update(now);
+      this.updateCalibrationBanner();
+      this.renderCalibration(now, dtFrame);
+      if (this.calibration.done) this.finishCalibration();
+      return;
+    }
     let alpha = 1;
     if (this.running && !this.paused) {
       const tick = this.sim.tickMs;
@@ -296,7 +382,7 @@ export class Game {
 
     if (e.serve || this.sim.state.rally.hits <= 2) this.hud.setHint('');
     if (own) {
-      this.lastHumanHit = { evaluation: e.evaluation, contactHeight: e.pos.y - this.cfg.world.tableHeight };
+      this.lastHumanHit = { evaluation: e.evaluation, contactHeight: e.pos.y - this.cfg.world.tableHeight, aim: e.targets.aim };
       this.bounceMarker = null;
     }
     this.refreshPrediction();
@@ -348,6 +434,28 @@ export class Game {
   }
 
   // ——— Render ———
+
+  private renderCalibration(now: number, dt: number): void {
+    const c = this.calibration;
+    if (!c) return;
+    // Mismo retraso de dibujo que la partida: el render interpolado va un tick por detrás del tiempo real.
+    const ball = c.ballAt(now - this.sim.tickMs);
+    const fx = this.fx[HUMAN];
+    fx.flash *= Math.exp(-dt / 0.12);
+    fx.height = c.sweet.y;
+    const bot = this.sim.state.paddles[BOT].pos;
+    const still = { x: 0, y: 0, z: 0 };
+    this.world.render({
+      ball: ball ? { ...ball, visible: true } : { x: 0, y: -1, z: 0, visible: false },
+      paddles: [
+        { x: c.sweet.x, y: c.sweet.y, z: c.sweet.z, swing: null, reach: still, flash: fx.flash },
+        { x: bot.x, y: this.fx[BOT].height, z: bot.z, swing: null, reach: still, flash: 0 },
+      ],
+      target: null,
+      bounceMarker: null,
+      shake: { x: 0, y: 0 },
+    });
+  }
 
   /** Altura automática de la raqueta (visual): la de la bola cuando cruce su profundidad. */
   private targetHeight(side: Side, padZ: number): number {
@@ -432,6 +540,7 @@ export class Game {
       ['Timing', e ? `${fmt(e.dtMs)} ms (${e.timingTier})` : '—'],
       ['Posición', e ? `${Math.round(e.posFrac * 100)} % (${e.positionTier})` : '—'],
       ['Puntería', aimText],
+      ['Calibración', this.latencyOffset === null ? 'sin calibrar' : `${this.latencyOffset > 0 ? '+' : ''}${this.latencyOffset} ms`],
       ...this.precision.rows(),
       ['gameSpeed', String(this.cfg.sim.gameSpeed)],
       ['FPS', this.fps.toFixed(0)],

@@ -32,7 +32,8 @@ Otros comandos:
 |---|---|
 | Mover la raqueta | Ratón (la raqueta persigue al cursor con inercia) |
 | Golpear | Click izquierdo cuando la bola llega a la raqueta |
-| Cruzar la bola | Con la raqueta ya colocada, mover el ratón hacia un lado al hacer click (si llegas persiguiendo la bola, sale recta) |
+| Cruzar la bola | Con la raqueta ya colocada, un golpe seco de ratón hacia un lado al hacer click (si llegas persiguiendo la bola, sale recta). Pronto te pasas de ángulo; tarde no llegas a cruzar |
+| Calibrar la latencia | Botón «Calibrar latencia» en la pantalla de inicio: 12 bolas, click cuando lleguen al centro de la raqueta. Se guarda en este navegador |
 | Sacar | Click para lanzar la bola (o esperar 1 s) y click cuando baje |
 | Datos de precisión (último golpe y medias de los últimos 20) | `D` |
 | Pausa | `Esc` |
@@ -43,13 +44,14 @@ Otros comandos:
 
 | Parámetro | Efecto |
 |---|---|
-| `speed` | `gameSpeed` (escala de tiempo de la bola). Por defecto 0.7 |
+| `speed` | `gameSpeed` (escala de tiempo de la bola). Por defecto 0.75 |
 | `radius` | Radio de juego de la raqueta en metros. Por defecto 0.14 |
 | `pspeed`, `paccel` | Velocidad (m/s) y aceleración (m/s²) máximas de la raqueta. Por defecto 6 y 60 |
 | `bot` | `easy`, `medium` o `hard` |
 | `debug=1` | Muestra el panel de precisión desde el inicio |
 | `autostart=1` | Empieza sin menú |
 | `seed` | Semilla del bot (partidas reproducibles) |
+| `offset` | Desfase de latencia en ms, en lugar del calibrado (por ejemplo `offset=0` para pruebas) |
 
 Todos los valores ajustables están en un único archivo: [`shared/src/config.ts`](shared/src/config.ts).
 

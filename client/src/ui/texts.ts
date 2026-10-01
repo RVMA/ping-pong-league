@@ -8,6 +8,8 @@ export interface LastHumanHit {
   evaluation: HitEvaluation;
   /** Altura del contacto sobre la mesa (m). */
   contactHeight: number;
+  /** Parte del objetivo lateral que vino del gesto (m); grande = bola cruzada. */
+  aim: number;
 }
 
 export function pointText(winner: Side, reason: PointReason, last: LastHumanHit | null, lowContactRef: number, whiffed: boolean): string {
@@ -16,7 +18,7 @@ export function pointText(winner: Side, reason: PointReason, last: LastHumanHit 
     case 'NET':
       return mine ? 'Punto. El bot la dejó en la red.' : `Red. ${whyNet(last, lowContactRef)}`.trim();
     case 'OUT':
-      return mine ? 'Punto. La bola del bot salió fuera.' : `Fuera. ${last?.evaluation.causes.includes('EDGE') ? 'Golpe con el borde: se desvió.' : ''}`.trim();
+      return mine ? 'Punto. La bola del bot salió fuera.' : `Fuera. ${whyOut(last)}`.trim();
     case 'OWN_SIDE':
       return mine ? 'Punto. El bot botó en su propio campo.' : 'La bola botó en tu campo.';
     case 'DOUBLE_BOUNCE':
@@ -30,6 +32,13 @@ export function pointText(winner: Side, reason: PointReason, last: LastHumanHit 
     case 'TOSS_MISSED':
       return mine ? 'Punto. El bot no golpeó su saque.' : 'No golpeaste el saque.';
   }
+}
+
+function whyOut(last: LastHumanHit | null): string {
+  if (!last) return '';
+  if (last.evaluation.causes.includes('EARLY') && Math.abs(last.aim) > 0.1) return 'Cruzaste golpeando pronto: te pasaste de ángulo.';
+  if (last.evaluation.causes.includes('EDGE')) return 'Golpe con el borde: se desvió.';
+  return '';
 }
 
 function whyNet(last: LastHumanHit | null, lowContactRef: number): string {

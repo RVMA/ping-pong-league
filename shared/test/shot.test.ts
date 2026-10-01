@@ -97,7 +97,8 @@ describe('efecto de la calidad en la trayectoria [§4.3]', () => {
       return Math.hypot(v.x, v.z);
     };
     const perfect = speed(0);
-    for (let d = -100; d <= 120; d += 5) if (Math.abs(d) > cfg.hit.perfectMs) expect(speed(d)).toBeLessThanOrEqual(perfect + 1e-6);
+    // Desde ~−85 ms el tiro va a la red (ver net.test.ts): su velocidad ya no importa.
+    for (let d = -80; d <= 120; d += 5) if (Math.abs(d) > cfg.hit.perfectMs) expect(speed(d)).toBeLessThanOrEqual(perfect + 1e-6);
   });
 
   it('un EARLY extremo apunta por debajo de la cinta (red)', () => {
@@ -141,6 +142,58 @@ describe('saque desde un lateral (regresión del playtest 1)', () => {
         const tables = tableContacts(start, sol.vel).filter((k) => k.kind === 'table');
         expect(tables.map((k) => k.kind === 'table' && k.side)).toEqual([0, 1]);
       }
+    }
+  });
+});
+
+describe('riesgo de ángulo al cruzar (playtest 2)', () => {
+  const evalAt = (dtMs: number) =>
+    classifyHit({ dtMs, posFrac: 0.05, lateral: 0.007, tIdeal: 0, ballAtIdeal: { x: 0, y: 0, z: 0 }, reachOverflow: 0 }, cfg.hit);
+  const contact = { x: 0, y: env.tableTop + 0.2, z: 1.6 };
+  const half = cfg.world.tableWidth / 2;
+  const plan = (dtMs: number, vx: number) => planShot(evalAt(dtMs), contact, { swing: { vx, vy: 0 } }, 0, cfg, false);
+
+  it('cruzar a tope con PERFECT entra; pronto (GOOD a −60 ms) se abre demasiado y sale por la banda', () => {
+    expect(Math.abs(plan(0, 4).landing.x)).toBeLessThan(half);
+    expect(Math.abs(plan(-60, 4).landing.x)).toBeGreaterThan(half);
+  });
+
+  it('medio cruce con el mismo error todavía entra', () => {
+    expect(Math.abs(plan(-60, 1.2).landing.x)).toBeLessThan(half);
+  });
+
+  it('tarde no llegas a cruzar: el ángulo se reduce', () => {
+    expect(Math.abs(plan(90, 4).aim)).toBeLessThan(Math.abs(plan(0, 4).aim) * 0.6);
+  });
+
+  it('dentro de la ventana PERFECT el ángulo no cambia', () => {
+    expect(plan(-20, 4).aim).toBeCloseTo(plan(0, 4).aim, 12);
+  });
+
+  it('cruzar a tope deja menos margen sobre la red', () => {
+    expect(plan(0, 4).clearance).toBeCloseTo(plan(0, 0).clearance - cfg.shot.aimClearancePenalty, 9);
+  });
+});
+
+describe('saque tardío (regresión del playtest 2)', () => {
+  // Altura real del contacto cuando el click llega tarde: la bola sigue cayendo desde la altura ideal.
+  const apex = cfg.serve.holdHeight + cfg.serve.tossSpeed ** 2 / (2 * env.g);
+  const vIdeal = Math.sqrt(2 * env.g * (apex - cfg.serve.idealContactHeight));
+  const heightAt = (dtMs: number) => {
+    const t = (dtMs * cfg.sim.gameSpeed) / 1000;
+    return cfg.serve.idealContactHeight - (vIdeal * t + 0.5 * env.g * t * t);
+  };
+
+  it('tarde (+80 ms) el saque entra y pasa la red más alto que un PERFECT', () => {
+    for (const cx of [-0.5, 0, 0.5]) {
+      const start = { x: cx, y: env.tableTop + heightAt(80), z: 1.6 };
+      const ev = classifyHit({ dtMs: 80, posFrac: 0.05, lateral: 0.007, tIdeal: 0, ballAtIdeal: start, reachOverflow: 0 }, cfg.hit);
+      const late = planShot(ev, start, { swing: { vx: 0, vy: 0 } }, 0, cfg, true);
+      const sol = solveShot(start, late, env, dt, cfg);
+      expect(sol.converged).toBe(true);
+      const tables = tableContacts(start, sol.vel).filter((k) => k.kind === 'table');
+      expect(tables.map((k) => k.kind === 'table' && k.side)).toEqual([0, 1]);
+      expect(late.clearance).toBeGreaterThan(interpolateCurve(cfg.serve.timingCurve, 0).clearance);
     }
   });
 });

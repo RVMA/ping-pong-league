@@ -439,3 +439,50 @@ body {
     }
   }
 }
+
+/* ——— Latencia y calibración ——— */
+.latency {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.latency-text {
+  margin: 0;
+  max-width: 340px;
+  font-size: 17px;
+  line-height: 1.3;
+  color: #cdd4dd;
+}
+
+.banner {
+  position: absolute;
+  top: 104px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 4px;
+  background: rgba(34, 37, 46, 0.86);
+  text-align: center;
+  pointer-events: none;
+}
+
+.banner-title {
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.banner-detail {
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.panel > .latency-text {
+  margin-top: 8px;
+}
+
+.panel > .latency-text + .diff,
+.panel > .lead + .diff {
+  margin-top: 18px;
+}

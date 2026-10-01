@@ -25,6 +25,13 @@ import {
 import { planShot, type ShotTargets, solveShot } from './shot.ts';
 import { type InputIntent, type Side, sideSign, type Vec3 } from './types.ts';
 
+interface PaddleSample {
+  t: number;
+  v: number;
+  x: number;
+  z: number;
+}
+
 export type SimPhase = 'serveHold' | 'serveToss' | 'rally' | 'pointOver' | 'gameOver';
 
 export interface PendingHit {
@@ -116,7 +123,7 @@ export class Simulation {
   private history: PathSample[] = [];
   private readonly historyLen: number;
   /** Velocidad de cada raqueta por tick (para saber si estaba colocada antes del gesto). */
-  private paddleSpeedHist: [{ t: number; v: number }[], { t: number; v: number }[]] = [[], []];
+  private paddleSpeedHist: [PaddleSample[], PaddleSample[]] = [[], []];
 
   constructor(cfg: GameConfig, opts: { firstServer?: Side } = {}) {
     this.cfg = cfg;
@@ -169,7 +176,7 @@ export class Simulation {
       this.movePaddle(side, intents[side], dtReal);
       const v = s.paddles[side].vel;
       const hist = this.paddleSpeedHist[side];
-      hist.push({ t, v: Math.sqrt(v.x * v.x + v.z * v.z) });
+      hist.push({ t, v: Math.sqrt(v.x * v.x + v.z * v.z), x: s.paddles[side].pos.x, z: s.paddles[side].pos.z });
       if (hist.length > 48) hist.shift();
     }
 
@@ -320,6 +327,7 @@ export class Simulation {
       reachMinY: this.env.tableTop + this.cfg.paddle.minReachHeight,
       reachMaxY: this.env.tableTop + this.cfg.paddle.maxReachHeight,
       ownSideOnly: !serve,
+      descendingOnly: serve,
     });
     return m ? classifyHit(m, this.cfg.hit) : null;
   }
@@ -337,7 +345,9 @@ export class Simulation {
     if (s.phase !== 'serveToss' && s.phase !== 'rally') return;
 
     const swingAtNothing = s.phase === 'rally' && s.rally.lastHitter === side;
-    const evaluation = swingAtNothing ? null : this.evaluateClick(side, fire);
+    const aimFactor = this.aimFactor(side, fire);
+    const hitPos = this.clickPaddlePos(side, fire, intent.swing.vx, aimFactor);
+    const evaluation = swingAtNothing ? null : this.evaluateClick(side, fire, hitPos);
     if (!evaluation || evaluation.tier === 'WHIFF') {
       pad.lockUntil = fire + this.cfg.hit.whiffLockoutMs;
       s.stats[side].whiffs += 1;
@@ -346,13 +356,12 @@ export class Simulation {
       return;
     }
     const contactMs = Math.max(fire, evaluation.tIdeal);
-    const aimFactor = this.aimFactor(side, fire);
     pad.pending = {
       contactMs,
       evaluation,
       swing: { vx: intent.swing.vx * aimFactor, vy: intent.swing.vy },
       serve: s.phase === 'serveToss',
-      lockPos: { x: pad.pos.x, z: pad.pos.z },
+      lockPos: hitPos,
       aimFactor,
     };
     pad.lockUntil = contactMs + this.cfg.hit.swingMs;
@@ -371,6 +380,22 @@ export class Simulation {
     }
     const f = (sc.aimChasingSpeed - vmax) / (sc.aimChasingSpeed - sc.aimSettledSpeed);
     return f <= 0 ? 0 : f >= 1 ? 1 : f;
+  }
+
+  /**
+   * Posición de la raqueta con la que se mide el golpe. Si estabas colocado y el gesto es un golpe seco
+   * (por encima de la zona muerta), el gesto es swing, no recolocación: se usa la raqueta de antes del
+   * gesto (click − aimSettleToMs), mezclada según lo colocado que estuvieras. Así cruzar no cuesta posición;
+   * su riesgo está en el ángulo (shot.ts, angleRisk).
+   */
+  clickPaddlePos(side: Side, fire: number, swingVx: number, aimFactor: number): { x: number; z: number } {
+    const pad = this.state.paddles[side].pos;
+    if (aimFactor <= 0 || Math.abs(swingVx) <= this.cfg.shot.aimSwingDeadZone) return { x: pad.x, z: pad.z };
+    const tRef = fire - this.cfg.shot.aimSettleToMs;
+    let ref: { x: number; z: number } | null = null;
+    for (const h of this.paddleSpeedHist[side]) if (h.t <= tRef) ref = { x: h.x, z: h.z };
+    if (!ref) return { x: pad.x, z: pad.z };
+    return { x: pad.x + (ref.x - pad.x) * aimFactor, z: pad.z + (ref.z - pad.z) * aimFactor };
   }
 
   private applyHit(side: Side, events: SimEvent[]): void {

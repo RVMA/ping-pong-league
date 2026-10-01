@@ -148,7 +148,82 @@ export class Hud {
     return group;
   }
 
-  showStart(current: BotDifficulty, labels: Record<BotDifficulty, string>, onPick: (d: BotDifficulty) => void): void {
+  private button(text: string, primary: boolean, onClick: () => void, id?: string): HTMLButtonElement {
+    const b = el('button', primary ? 'btn primary' : 'btn', text);
+    if (id) b.dataset.action = id;
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return b;
+  }
+
+  /** Bloque de latencia de la pantalla de inicio (hará de lobby hasta que haya salas en V0.4). */
+  private latencySection(offsetMs: number | null, onCalibrate: () => void): HTMLElement {
+    const wrap = el('div', 'latency');
+    const text =
+      offsetMs === null
+        ? 'Sin calibrar. Si tus golpes suelen salir tarde, calibra: son 12 bolas, menos de un minuto.'
+        : `Tu desfase de latencia: ${offsetMs > 0 ? '+' : ''}${offsetMs} ms. Se descuenta de cada click.`;
+    wrap.append(el('p', 'latency-text', text), this.button(offsetMs === null ? 'Calibrar latencia' : 'Volver a calibrar', false, onCalibrate, 'calibrate'));
+    return wrap;
+  }
+
+  /** Aviso fijo arriba durante la calibración (no bloquea los clicks sobre la escena). */
+  setBanner(title: string | null, detail = ''): void {
+    let banner = this.root.querySelector<HTMLElement>('.banner');
+    if (title === null) {
+      banner?.remove();
+      return;
+    }
+    if (!banner) {
+      banner = el('div', 'banner');
+      this.root.append(banner);
+    }
+    banner.replaceChildren(el('div', 'banner-title', title), el('div', 'banner-detail', detail));
+  }
+
+  showCalibrationResult(
+    r: { offsetMs: number; medianMs: number; samples: number[]; misses: number; clamped: boolean; enough: boolean },
+    onSave: () => void,
+    onRetry: () => void,
+    onCancel: () => void,
+  ): void {
+    const panel = el('div', 'panel');
+    if (!r.enough) {
+      panel.append(el('h1', 'result', 'Faltan clicks'));
+      panel.append(el('p', 'lead', `Solo ${r.samples.length} clicks válidos. Haz click en cada bola, justo cuando llegue al centro de tu raqueta.`));
+      const row = el('div', 'diff');
+      row.append(this.button('Repetir', true, onRetry, 'retry'), this.button('Cancelar', false, onCancel, 'cancel'));
+      panel.append(row);
+    } else {
+      const sign = r.offsetMs > 0 ? '+' : '';
+      panel.append(el('h1', 'result', `Desfase: ${sign}${r.offsetMs} ms`));
+      const explain =
+        r.offsetMs > 5
+          ? `De media haces click ${r.offsetMs} ms después de que la bola llegue. Esa diferencia se descontará de tus golpes.`
+          : r.offsetMs < -5
+            ? `De media haces click ${-r.offsetMs} ms antes de que la bola llegue. Esa diferencia se compensará en tus golpes.`
+            : 'Tus clicks llegan prácticamente a tiempo: casi no hace falta corregir nada.';
+      panel.append(el('p', 'lead', explain));
+      const spread = r.samples.length ? Math.round(Math.max(...r.samples) - Math.min(...r.samples)) : 0;
+      const details = [`${r.samples.length} clicks válidos, ${r.misses} sin respuesta, dispersión ${spread} ms.`];
+      if (r.clamped) details.push(`La mediana fue ${sign}${r.medianMs} ms; se limita al rango permitido.`);
+      panel.append(el('p', 'latency-text', details.join(' ')));
+      const row = el('div', 'diff');
+      row.append(this.button('Guardar', true, onSave, 'save'), this.button('Repetir', false, onRetry, 'retry'), this.button('Cancelar', false, onCancel, 'cancel'));
+      panel.append(row);
+    }
+    this.overlay.replaceChildren(panel);
+    this.overlay.className = 'overlay show';
+  }
+
+  showStart(
+    current: BotDifficulty,
+    labels: Record<BotDifficulty, string>,
+    onPick: (d: BotDifficulty) => void,
+    latency?: { offsetMs: number | null; onCalibrate: () => void },
+  ): void {
     const panel = el('div', 'panel');
     const logoUrl = assetUrl(UI_ASSETS.logo);
     if (logoUrl) {
@@ -162,6 +237,10 @@ export class Hud {
     panel.append(el('p', 'lead', 'Un game a 11 contra el bot. Prototipo V0.1 para probar el tacto del golpe.'));
     panel.append(el('h2', '', 'Elige rival'));
     panel.append(this.difficultyButtons(current, labels, onPick));
+    if (latency) {
+      panel.append(el('h2', '', 'Latencia'));
+      panel.append(this.latencySection(latency.offsetMs, latency.onCalibrate));
+    }
     const how = el('ul', 'how');
     for (const line of [
       'Mueve el ratón: la raqueta te sigue con algo de inercia.',

@@ -164,3 +164,37 @@ describe('saque simplificado: posición lateral', () => {
     expect(Math.abs(sim.state.paddles[0].pos.x)).toBeLessThanOrEqual(sim.cfg.paddle.serveMaxLateral + 1e-6);
   });
 });
+
+describe('cruzar no cuesta posición si estabas colocado (playtest 2)', () => {
+  const settleThenFlick = () => {
+    const sim = new Simulation(makeConfig());
+    sim.state.phase = 'rally';
+    for (let i = 0; i < 64; i++) sim.step([neutralIntent(1.6), neutralIntent()]);
+    // Golpe seco: el objetivo salta 15 cm en los últimos ~33 ms.
+    for (let i = 0; i < 4; i++) {
+      const intent = neutralIntent(1.6);
+      intent.target.x = 0.15;
+      sim.step([intent, neutralIntent()]);
+    }
+    return sim;
+  };
+
+  it('con un golpe seco, la posición se mide con la raqueta de antes del gesto', () => {
+    const sim = settleThenFlick();
+    const moved = sim.state.paddles[0].pos.x;
+    expect(moved).toBeGreaterThan(0.01);
+    const pos = sim.clickPaddlePos(0, sim.now, 3, sim.aimFactor(0, sim.now));
+    expect(Math.abs(pos.x)).toBeLessThan(1e-6);
+  });
+
+  it('un movimiento lento (por debajo de la zona muerta) sí recoloca', () => {
+    const sim = settleThenFlick();
+    const pos = sim.clickPaddlePos(0, sim.now, 0.3, sim.aimFactor(0, sim.now));
+    expect(pos.x).toBeCloseTo(sim.state.paddles[0].pos.x, 9);
+  });
+
+  it('persiguiendo la bola se usa la posición real', () => {
+    const sim = settleThenFlick();
+    expect(sim.clickPaddlePos(0, sim.now, 3, 0).x).toBeCloseTo(sim.state.paddles[0].pos.x, 9);
+  });
+});

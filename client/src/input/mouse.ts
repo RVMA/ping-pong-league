@@ -37,6 +37,11 @@ export class MouseTranslator {
   private readonly clock: InputClock;
   private readonly side: Side;
   enabled = true;
+  /**
+   * Desfase de latencia del jugador (ms, calibración P7): se resta al instante de cada click para
+   * compensar el retardo de pantalla y de entrada. Positivo = sus clicks llegan tarde respecto a lo que ve.
+   */
+  latencyOffsetMs = 0;
 
   constructor(el: HTMLElement, camera: THREE.Camera, planeY: number, clock: InputClock, side: Side = 0) {
     this.el = el;
@@ -72,7 +77,7 @@ export class MouseTranslator {
     if (e.button !== 0 || !this.enabled) return;
     this.samples.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
     this.updateTarget(e.clientX, e.clientY);
-    this.fires.push(e.timeStamp - this.clock.epoch);
+    this.fires.push(e.timeStamp - this.clock.epoch - this.latencyOffsetMs);
   };
 
   private updateTarget(clientX: number, clientY: number): void {
