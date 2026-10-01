@@ -21,7 +21,6 @@ let hitsThisRally = 0;
 let maxTicks = 120 * 60 * 30;
 const flights: number[] = [];
 let lastHitT = 0;
-let unconverged = 0;
 const tiers: Record<string, number> = {};
 while (sim.state.phase !== 'gameOver' && maxTicks-- > 0) {
   const ev: SimEvent[] = sim.step([bots[0].think(sim), bots[1].think(sim)]);
@@ -50,5 +49,5 @@ console.log(`resultado: ${sim.state.score.join('-')}  fase=${sim.state.phase}  t
 console.log(`golpes/punto (incl. saque): media ${avg(rallyLengths).toFixed(2)}, máx ${Math.max(...rallyLengths)}`);
 console.log(`ms entre golpes (media): ${avg(flights).toFixed(0)}`);
 console.log('motivos de punto:', reasons, 'lets:', lets);
-console.log('calidades:', tiers, 'no convergidos:', unconverged);
+console.log('calidades:', tiers);
 console.log('stats:', JSON.stringify(sim.state.stats));
