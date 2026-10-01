@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { ARENA_ASSETS, assetUrl, CHARACTERS, type CharacterId } from '../assets/manifest.ts';
 
 const COLORS = {
-  table: 0x1d3f72,
+  table: 0x24508c,
   line: 0xf3f6fa,
   floor: 0x6e2b27,
   surround: 0x18233d,
@@ -315,7 +315,7 @@ export class World {
     this.shadow.visible = f.ball.visible;
     this.shadow.position.set(f.ball.x, groundY + 0.0015, f.ball.z);
     this.shadow.scale.setScalar(r * (1.6 + height * 1.4));
-    this.shadowMat.opacity = Math.max(0.32, 0.85 - height * 0.8);
+    this.shadowMat.opacity = Math.max(0.45, 0.95 - height * 0.7);
 
     this.paddles[0].update(f.paddles[0]);
     this.paddles[1].update(f.paddles[1]);

@@ -93,6 +93,8 @@ export class Game {
     window.addEventListener('resize', resize);
     resize();
     window.addEventListener('keydown', (e) => this.onKey(e));
+    // El audio solo puede arrancar tras un gesto del usuario (también con ?autostart=1).
+    canvas.addEventListener('pointerdown', () => void this.audio.unlock());
     window.addEventListener('blur', () => this.running && !this.paused && this.pause());
 
     if (settings.autostart) this.start(this.difficulty);
