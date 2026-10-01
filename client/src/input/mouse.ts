@@ -111,7 +111,7 @@ export class MouseTranslator {
       if (!first) first = s;
       last = s;
     }
-    if (!first || !last || last.t - first.t < 16) return { vx: 0, vy: 0 };
+    if (!first || !last || last.t - first.t < 8) return { vx: 0, vy: 0 };
     const h = Math.max(1, this.el.clientHeight);
     const dt = (last.t - first.t) / 1000;
     return { vx: (last.x - first.x) / h / dt, vy: -(last.y - first.y) / h / dt };

@@ -201,7 +201,7 @@ Sin cambios: ventanas de timing ±25/60/120 ms, posición 20/50/100 %, whiff 300
 |---|---|---|---|---|---|---|
 | P1 | §4.1 | Sustituir «zona de golpe ≈ 1.6 × radio» por: **el click cuenta si |Δt| ≤ 120 ms y la posición es < 100 % del radio**. El concepto ✅ (click cerca de la bola) no cambia | Una zona en distancia es incompatible con las bandas EARLY y LATE y con medir en ms (ver 3.1) | Bajo (ya implementado) | Alta | 🟡 libre |
 | P2 | §4.1, §7.2 | Separar el **radio de juego de la raqueta** (14 cm) de la medida de reglamento (7.5 cm) | Con 7.5 cm, PERFECT exige 1.5 cm de precisión lateral | Bajo | Alta | 🟡 libre |
-| P3 | §3.3, §4.5 (nuevo apartado «Dirección») | Definir la puntería: **dirección = componente lateral del gesto**, con zona muerta. En V0.2, el *slice* es el mismo gesto con velocidad por encima de un umbral (más ángulo y efecto lateral). El topspin es la componente vertical. Alternativa: dirección según la posición de la raqueta respecto a la bola | El documento no dice cómo se apunta y el gesto lateral está asignado al slice | Alto (define el control de V0.2) | Alta | **Requiere aprobación del autor** (tabla de controles ✅ de §3.3) |
+| P3 | §3.3, §4.5 (nuevo apartado «Dirección») | Definir la puntería: **dirección = componente lateral del gesto**, con zona muerta. En V0.2, el *slice* es el mismo gesto con velocidad por encima de un umbral (más ángulo y efecto lateral). El topspin es la componente vertical. Alternativa: dirección según la posición de la raqueta respecto a la bola | El documento no dice cómo se apunta y el gesto lateral está asignado al slice | Alto (define el control de V0.2) | Alta | **Aprobada por el autor (2026-10-01)** en la variante «el gesto solo apunta si estás colocado» (ver §8) |
 | P4 | §4.2 | Añadir «**instante del contacto**»: la calidad se evalúa en el click; el contacto ocurre en `max(t_click, t_ideal)` y la raqueta queda fija entre ambos | Golpe visualmente coherente y evento de red bien definido | Medio (netcode) | Alta | 🟡 libre |
 | P5 | §4.3 | Añadir: «**ningún error de timing produce más velocidad que un PERFECT**; EARLY sale más bajo **y más corto**» | Con el mismo bote, menos margen da una trayectoria más plana y más rápida: hacer click pronto quedaba premiado (medido antes de corregirlo: −90 ms a 6.5 m/s frente a PERFECT a 5.4 m/s; ahora −90 ms a 5.3 m/s y PERFECT a 5.6 m/s). Corregido y cubierto por un test | Medio | Alta | **Requiere aprobación del autor** (amplía la fila EARLY ✅) |
 | P6 | §7 (nuevo), §6.1 | Documentar el modelo «**objetivos + solver + física**»: la calidad y el gesto eligen margen sobre la red y bote; el solver calcula la velocidad con la misma física; la colisión con la red es real | Hace que la red sea predecible y explicable sin azar; base para el spin en V0.2 | Medio | Media | **Requiere aprobación del autor** (interpreta «la red es física real» ✅ de §6) |
@@ -229,3 +229,35 @@ Sin cambios: ventanas de timing ±25/60/120 ms, posición 20/50/100 %, whiff 300
 | 8 | ¿Valor final de `gameSpeed`? | **0.7 como punto de partida del playtest**. Decidir entre 0.65 y 0.75 tras el playtest. Probar con `?speed=` | Tabla de §5.3: cada 0.05 son unos 60 ms más o menos de tiempo de reacción entre golpes |
 
 Las preguntas 2 (timeout del warm-up), 4 (coste del saque especial), 5 (nombre del saque de SPEED) y 6 (solapamiento CONTROL/DEFENDER) **no se aclaran** con V0.1 y siguen abiertas.
+
+---
+
+## 8. Playtest 1 del autor (2026-10-01) y cambios
+
+| Pregunta | Respuesta del autor | Cambio aplicado |
+|---|---|---|
+| Inercia de la raqueta | «Sigue al ratón con un poco de lentitud» | Raqueta más rápida: 4.2 → **6 m/s** y 30 → **60 m/s²**. Para cruzar 1.2 m sigue tardando ~0.3 s (antes 0.43 s). Ajustable con `?pspeed=` y `?paccel=` |
+| PERFECT frente a GOOD sin números | Se distinguen bien | — |
+| Sesgo de latencia | Leyó «+284 ms, 79 %, PERFECT 14 % de 43». Era **un solo click**, un whiff fuera de ventana, no una media | El panel `D` muestra ahora medias de los últimos 20 golpes: Δt medio sin los clicks a más de 200 ms, pronto/tarde, causa de no PERFECT y posición media. **Pendiente:** repetir la medición para decidir P7 |
+| ¿Timing o posición? | «Creo que de la posición, pero me gusta que sea así, más preciso» | Se mantiene el radio de 14 cm y la ventana de posición. El panel ya lo mide (fila «Sin PERFECT por») |
+| Red al golpear pronto | «Salió bien, hubo muy pocos hits a la red, no sé si esto es bueno» | Por el pilar ✅ (la red es una de las principales consecuencias de golpear mal), el margen sobre la red cruza cero hacia **−85 ms**: de −60 a −80 ms pasa baja; desde ~−85 ms, cinta o red. Bots medios: la red decide el **40–50 %** de los puntos (antes ~20 %) y los rallies siguen en 6–8.5 golpes de media. Tests nuevos: −100 ms → red; −60/0/+60/+110 → válidos; cogida baja → la red llega antes |
+| Ritmo (gameSpeed) | No quedó clara la prueba; 0.7 «no se me hizo tan mal» | Se mantiene 0.7 |
+| Cruzar la bola | «Apunto sin querer al perseguir la bola» | **Decisión del autor (P3):** el gesto lateral solo apunta si la raqueta estaba colocada. Se mira su velocidad máxima entre 270 y 150 ms antes del click: ≤ 0.6 m/s apunta del todo, ≥ 1.6 m/s sale recta, y en medio es proporcional (`shared/src/sim.ts`, `aimFactor`). Además, ganancia 0.22 → 0.5 m por altura de pantalla/s y zona muerta 0.35 → 0.5: un gesto seco apunta y un movimiento lento solo recoloca |
+| Saque | Se entiende | — |
+| Bot | Las dificultades se distinguen | — |
+
+**Verificación de la puntería** (`client/e2e/aim-check.js`, navegador real):
+- Persiguiendo la bola hasta el click: factor 0 en 3 de 3 golpes; la bola sale recta (bote ≈ 0.45 × x de contacto).
+- Colocado y con un gesto seco a la derecha: factor 1 en 3 de 3; el bote se desplaza 19–26 cm a la derecha.
+- El gesto rápido (25 ms) se despacha dentro de la página: Playwright no puede enviar movimientos a menos de ~10 ms de intervalo.
+- Tests unitarios: `sim.test.ts` («puntería solo si estás colocado») y `net.test.ts` («golpear pronto se paga»). Total: 86/86 en verde.
+
+**Fallo encontrado en la regresión E2E y corregido.** Si quien saca está fuera del ancho de la mesa (en la prueba, a x = −0.97 porque el cursor quedó ahí), el saque apunta en línea recta y su primer bote cae fuera de su campo: 4 de 5 saques PERFECT fueron falta. Corrección:
+- En el saque simplificado, la raqueta de quien saca no pasa de ±0.70 m (`paddle.serveMaxLateral`).
+- El objetivo del saque se ajusta para que el primer bote caiga dentro (`keepServeBounceOnTable`).
+
+Tests de regresión en `shot.test.ts` y `sim.test.ts`. Tras la corrección: rallies de 11, 20 y 5 golpes sin faltas de saque.
+
+**Nueva cuestión abierta (decisión del autor):** el gesto de cruzar todavía desplaza la raqueta. En las pruebas, la posición quedó en torno al 50 % del radio, así que **cruzar la bola suele costar el PERFECT**, y el desvío por borde va hacia el lado contrario del gesto, lo que resta parte del ángulo. Hay dos opciones:
+- **(a)** Dejarlo así, como riesgo/recompensa: cruzar es un golpe agresivo, coherente con el pilar de §1.
+- **(b)** Si estabas colocado, medir la posición con la raqueta de antes del gesto, para que cruzar no penalice la posición. Riesgo: una corrección rápida de última hora contaría como gesto y no como recolocación.

@@ -168,7 +168,7 @@ export class Hud {
       'Haz click justo cuando la bola llega al centro de la raqueta. A tiempo y centrado es ¡Perfecto!',
       'Pronto: la bola sale baja y puede ir a la red. Tarde: sale alta y lenta.',
       'Para sacar, click (o espera un segundo) y otro click cuando la bola baje.',
-      'Mueve el ratón hacia un lado al golpear para cruzar la bola.',
+      'Para cruzar la bola, colócate y mueve el ratón hacia un lado al golpear. Si llegas corriendo, sale recta.',
       'D muestra los datos de precisión. Esc pausa.',
     ])
       how.append(el('li', '', line));

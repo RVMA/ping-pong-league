@@ -22,6 +22,7 @@ import type { CharacterId } from '../assets/manifest.ts';
 import { MouseTranslator } from '../input/mouse.ts';
 import { type PaddleFrame, type RenderFrame, World } from '../render/world.ts';
 import { type FeedbackKind, Hud } from '../ui/hud.ts';
+import { PrecisionStats } from '../ui/precision-stats.ts';
 import { type LastHumanHit, pointText } from '../ui/texts.ts';
 import type { Settings } from './settings.ts';
 
@@ -67,6 +68,8 @@ export class Game {
   private lastFrame = 0;
   private lastHumanHit: LastHumanHit | null = null;
   private lastHumanEval: HitEvaluation | null = null;
+  private lastHumanAim: number | null = null;
+  private readonly precision = new PrecisionStats(20);
   private humanWhiffedThisRally = false;
   private fps = 0;
   /** Registro de eventos recientes (para depurar y para las pruebas automáticas). */
@@ -201,7 +204,11 @@ export class Game {
       case 'swing': {
         const fx = this.fx[e.player];
         fx.swingStart = Math.max(now, e.contactMs - this.cfg.hit.swingMs / 2);
-        if (e.player === HUMAN) this.lastHumanEval = e.evaluation;
+        if (e.player === HUMAN) {
+          this.lastHumanEval = e.evaluation;
+          this.lastHumanAim = e.aimFactor;
+          this.precision.add({ evaluation: e.evaluation, aimFactor: e.aimFactor });
+        }
         break;
       }
       case 'whiff':
@@ -210,6 +217,8 @@ export class Game {
         this.message(e.player, fb.whiffText, 'label');
         if (e.player === HUMAN) {
           this.lastHumanEval = e.evaluation;
+          this.lastHumanAim = null;
+          if (e.evaluation) this.precision.add({ evaluation: e.evaluation, aimFactor: null });
           this.humanWhiffedThisRally = true;
         }
         break;
@@ -415,13 +424,15 @@ export class Game {
 
   private updateDebug(): void {
     const e = this.lastHumanEval;
-    const st = this.sim.state.stats[HUMAN];
+    const aim = this.lastHumanAim;
     const fmt = (n: number) => (n > 0 ? `+${n.toFixed(0)}` : n.toFixed(0));
+    const aimText = aim === null ? '—' : aim >= 0.99 ? 'activa (colocado)' : aim <= 0.01 ? 'recta (persiguiendo)' : `${Math.round(aim * 100)} %`;
     this.hud.setDebug([
-      ['Último golpe', e ? e.tier : '—'],
+      ['Último golpe', e ? (e.tier === 'WHIFF' ? 'fallo (fuera de ventana)' : e.tier) : '—'],
       ['Timing', e ? `${fmt(e.dtMs)} ms (${e.timingTier})` : '—'],
       ['Posición', e ? `${Math.round(e.posFrac * 100)} % (${e.positionTier})` : '—'],
-      ['PERFECT', st.hits ? `${Math.round((100 * st.perfect) / st.hits)} % de ${st.hits}` : '—'],
+      ['Puntería', aimText],
+      ...this.precision.rows(),
       ['gameSpeed', String(this.cfg.sim.gameSpeed)],
       ['FPS', this.fps.toFixed(0)],
     ]);

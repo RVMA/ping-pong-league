@@ -81,14 +81,17 @@ export const DEFAULT_CONFIG = {
      */
     radius: 0.14,
     /** Persecución del objetivo con inercia [§3.2]. m/s y m/s² de tiempo real. */
-    maxSpeed: 4.2,
-    maxAccel: 30,
+    /** Playtest 1 (2026-10-01): 4.2 m/s y 30 m/s² se sentían lentos. */
+    maxSpeed: 6.0,
+    maxAccel: 60,
     /** Límites del plano de movimiento (coordenadas del jugador: x lateral, z profundidad desde la red). */
     maxLateral: 1.3,
     minDepth: 0.75,
     maxDepth: 2.7,
     /** Durante el saque, quien saca debe estar detrás de la línea de fondo. */
     serveMinDepth: 1.45,
+    /** Saque simplificado: quien saca no se sale del ancho de la mesa (si no, el primer bote caería fuera). */
+    serveMaxLateral: 0.7,
     /** Alcance vertical automático, relativo a la superficie de la mesa (m) [§3.2]. */
     minReachHeight: 0.0,
     maxReachHeight: 0.85,
@@ -120,10 +123,13 @@ export const DEFAULT_CONFIG = {
      * EARLY: trayectoria más baja y corta → riesgo de red. LATE: más alta y lenta → bola fácil.
      * La profundidad de EARLY baja deprisa para que pronto NO sea más rápido que PERFECT
      * (con el mismo bote, menos margen = trayectoria más plana = más velocidad).
+     * Playtest 1: casi nunca había red al golpear pronto. Ahora el margen cruza cero hacia −85 ms:
+     * de −60 a −80 ms la bola pasa baja y desde ~−85 ms va a la cinta o a la red.
      */
     timingCurve: [
-      { dt: -120, clearance: -0.03, depth: 0.36 },
-      { dt: -60, clearance: 0.07, depth: 0.58 },
+      { dt: -120, clearance: -0.07, depth: 0.3 },
+      { dt: -90, clearance: -0.01, depth: 0.42 },
+      { dt: -60, clearance: 0.05, depth: 0.58 },
       { dt: -25, clearance: 0.115, depth: 0.82 },
       { dt: 0, clearance: 0.11, depth: 0.88 },
       { dt: 25, clearance: 0.14, depth: 0.82 },
@@ -135,9 +141,22 @@ export const DEFAULT_CONFIG = {
     lowContactPenaltyPerM: 0.6,
     /** Puntería lateral: fracción de la x de contacto que se conserva (0 = siempre al centro). */
     aimBaseFromContact: 0.45,
-    /** Metros de desplazamiento lateral del objetivo por unidad de velocidad de gesto (alturas de pantalla/s). */
-    aimSwingGain: 0.22,
-    aimSwingDeadZone: 0.35,
+    /**
+     * Metros de desplazamiento lateral del objetivo por unidad de velocidad de gesto (alturas de pantalla/s).
+     * Con la inercia de la raqueta, un gesto seco y rápido (≈ 30 px en 25 ms) apunta mucho y apenas mueve
+     * la raqueta (≈ 2 cm); un movimiento lento recoloca sin apuntar (por debajo de la zona muerta).
+     */
+    aimSwingGain: 0.5,
+    aimSwingDeadZone: 0.5,
+    /**
+     * Puntería solo si estás colocado (decisión del autor, 2026-10-01): se mira la velocidad máxima
+     * de la raqueta en [click − aimSettleFromMs, click − aimSettleToMs], antes de la ventana del gesto.
+     * ≤ aimSettledSpeed → puntería completa; ≥ aimChasingSpeed → la bola sale recta; en medio, proporcional.
+     */
+    aimSettleFromMs: 270,
+    aimSettleToMs: 150,
+    aimSettledSpeed: 0.6,
+    aimChasingSpeed: 1.6,
     /** Margen interior respecto a la banda lateral para la puntería "limpia". */
     aimEdgeMargin: 0.1,
     /**

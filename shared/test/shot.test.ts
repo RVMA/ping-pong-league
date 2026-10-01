@@ -129,3 +129,18 @@ describe('efecto de la calidad en la trayectoria [§4.3]', () => {
     expect(t0.landing.x).toBeGreaterThan(0);
   });
 });
+
+describe('saque desde un lateral (regresión del playtest 1)', () => {
+  it('el primer bote cae en tu campo aunque saques desde el borde y cruces la bola', () => {
+    for (const cx of [-0.7, 0.7, -0.97]) {
+      for (const vx of [-4, 0, 4]) {
+        const start = { x: cx, y: env.tableTop + cfg.serve.idealContactHeight, z: 1.5 };
+        const ev = classifyHit({ dtMs: 0, posFrac: 0.02, lateral: 0.003, tIdeal: 0, ballAtIdeal: start, reachOverflow: 0 }, cfg.hit);
+        const t = planShot(ev, start, { swing: { vx, vy: 0 } }, 0, cfg, true);
+        const sol = solveShot(start, t, env, dt, cfg);
+        const tables = tableContacts(start, sol.vel).filter((k) => k.kind === 'table');
+        expect(tables.map((k) => k.kind === 'table' && k.side)).toEqual([0, 1]);
+      }
+    }
+  });
+});

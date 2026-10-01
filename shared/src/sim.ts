@@ -33,6 +33,8 @@ export interface PendingHit {
   swing: { vx: number; vy: number };
   serve: boolean;
   lockPos: { x: number; z: number };
+  /** 0 = persiguiendo (la bola sale recta), 1 = colocado (el gesto lateral apunta del todo). */
+  aimFactor: number;
 }
 
 export interface PaddleState {
@@ -76,9 +78,19 @@ export interface SimState {
 export type SimEvent =
   | { type: 'serveReady'; server: Side }
   | { type: 'toss'; server: Side }
-  | { type: 'swing'; player: Side; evaluation: HitEvaluation; contactMs: number }
+  | { type: 'swing'; player: Side; evaluation: HitEvaluation; contactMs: number; aimFactor: number }
   | { type: 'whiff'; player: Side; evaluation: HitEvaluation | null }
-  | { type: 'hit'; player: Side; evaluation: HitEvaluation; tier: QualityTier; streak: number; pos: Vec3; serve: boolean; targets: ShotTargets }
+  | {
+      type: 'hit';
+      player: Side;
+      evaluation: HitEvaluation;
+      tier: QualityTier;
+      streak: number;
+      pos: Vec3;
+      serve: boolean;
+      targets: ShotTargets;
+      aimFactor: number;
+    }
   | { type: 'bounce'; pos: Vec3; side: Side; speed: number }
   | { type: 'net'; pos: Vec3; cord: boolean }
   | { type: 'floor'; pos: Vec3 }
@@ -103,6 +115,8 @@ export class Simulation {
   /** Historial de posiciones de la bola (para clicks tardíos). */
   private history: PathSample[] = [];
   private readonly historyLen: number;
+  /** Velocidad de cada raqueta por tick (para saber si estaba colocada antes del gesto). */
+  private paddleSpeedHist: [{ t: number; v: number }[], { t: number; v: number }[]] = [[], []];
 
   constructor(cfg: GameConfig, opts: { firstServer?: Side } = {}) {
     this.cfg = cfg;
@@ -151,7 +165,13 @@ export class Simulation {
     const dtReal = 1 / this.cfg.sim.tickHz;
 
     // 1. Raquetas.
-    for (const side of [0, 1] as Side[]) this.movePaddle(side, intents[side], dtReal);
+    for (const side of [0, 1] as Side[]) {
+      this.movePaddle(side, intents[side], dtReal);
+      const v = s.paddles[side].vel;
+      const hist = this.paddleSpeedHist[side];
+      hist.push({ t, v: Math.sqrt(v.x * v.x + v.z * v.z) });
+      if (hist.length > 48) hist.shift();
+    }
 
     // 2. Clicks (antes de integrar: el historial llega hasta t − tick y la predicción cubre el resto).
     for (const side of [0, 1] as Side[]) {
@@ -227,6 +247,7 @@ export class Simulation {
     }
     this.state = fresh.state;
     this.history = [];
+    this.paddleSpeedHist = [[], []];
     this.attachBallToServer();
   }
 
@@ -244,8 +265,12 @@ export class Simulation {
     } else {
       const x = Math.max(-pc.maxLateral, Math.min(pc.maxLateral, intent.target.x));
       let z = Math.max(pc.minDepth, Math.min(pc.maxDepth, intent.target.z));
-      if ((s.phase === 'serveHold' || s.phase === 'serveToss') && side === s.server) z = Math.max(z, pc.serveMinDepth);
-      tx = x * sgn;
+      let xs = x;
+      if ((s.phase === 'serveHold' || s.phase === 'serveToss') && side === s.server) {
+        z = Math.max(z, pc.serveMinDepth);
+        xs = Math.max(-pc.serveMaxLateral, Math.min(pc.serveMaxLateral, x));
+      }
+      tx = xs * sgn;
       tz = z * sgn;
     }
     stepPaddle(pad, tx, tz, dtReal, pc);
@@ -321,15 +346,31 @@ export class Simulation {
       return;
     }
     const contactMs = Math.max(fire, evaluation.tIdeal);
+    const aimFactor = this.aimFactor(side, fire);
     pad.pending = {
       contactMs,
       evaluation,
-      swing: { vx: intent.swing.vx, vy: intent.swing.vy },
+      swing: { vx: intent.swing.vx * aimFactor, vy: intent.swing.vy },
       serve: s.phase === 'serveToss',
       lockPos: { x: pad.pos.x, z: pad.pos.z },
+      aimFactor,
     };
     pad.lockUntil = contactMs + this.cfg.hit.swingMs;
-    events.push({ type: 'swing', player: side, evaluation, contactMs });
+    events.push({ type: 'swing', player: side, evaluation, contactMs, aimFactor });
+  }
+
+  /**
+   * Puntería solo si estás colocado: velocidad máxima de la raqueta antes de la ventana del gesto.
+   * Persiguiendo la bola → 0 (sale recta); quieta → 1 (el gesto lateral apunta).
+   */
+  aimFactor(side: Side, fire: number): number {
+    const sc = this.cfg.shot;
+    let vmax = 0;
+    for (const h of this.paddleSpeedHist[side]) {
+      if (h.t >= fire - sc.aimSettleFromMs && h.t <= fire - sc.aimSettleToMs && h.v > vmax) vmax = h.v;
+    }
+    const f = (sc.aimChasingSpeed - vmax) / (sc.aimChasingSpeed - sc.aimSettledSpeed);
+    return f <= 0 ? 0 : f >= 1 ? 1 : f;
   }
 
   private applyHit(side: Side, events: SimEvent[]): void {
@@ -368,7 +409,7 @@ export class Simulation {
       else st.weak += 1;
     }
     st.maxStreak = Math.max(st.maxStreak, s.streak[side]);
-    events.push({ type: 'hit', player: side, evaluation: pend.evaluation, tier, streak: s.streak[side], pos: contact, serve, targets });
+    events.push({ type: 'hit', player: side, evaluation: pend.evaluation, tier, streak: s.streak[side], pos: contact, serve, targets, aimFactor: pend.aimFactor });
   }
 
   private emitContact(c: BallContact, events: SimEvent[]): void {

@@ -32,9 +32,9 @@ Otros comandos:
 |---|---|
 | Mover la raqueta | Ratón (la raqueta persigue al cursor con inercia) |
 | Golpear | Click izquierdo cuando la bola llega a la raqueta |
-| Cruzar la bola | Mover el ratón hacia un lado al hacer click |
+| Cruzar la bola | Con la raqueta ya colocada, mover el ratón hacia un lado al hacer click (si llegas persiguiendo la bola, sale recta) |
 | Sacar | Click para lanzar la bola (o esperar 1 s) y click cuando baje |
-| Datos de precisión (Δt en ms, posición en %) | `D` |
+| Datos de precisión (último golpe y medias de los últimos 20) | `D` |
 | Pausa | `Esc` |
 
 ## Parámetros de playtest (URL)
@@ -45,6 +45,7 @@ Otros comandos:
 |---|---|
 | `speed` | `gameSpeed` (escala de tiempo de la bola). Por defecto 0.7 |
 | `radius` | Radio de juego de la raqueta en metros. Por defecto 0.14 |
+| `pspeed`, `paccel` | Velocidad (m/s) y aceleración (m/s²) máximas de la raqueta. Por defecto 6 y 60 |
 | `bot` | `easy`, `medium` o `hard` |
 | `debug=1` | Muestra el panel de precisión desde el inicio |
 | `autostart=1` | Empieza sin menú |

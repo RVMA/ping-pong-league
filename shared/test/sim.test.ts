@@ -114,3 +114,53 @@ describe('saque simplificado [§9.1]', () => {
     expect(sim.state.paddles[0].pos.z).toBeGreaterThanOrEqual(sim.cfg.paddle.serveMinDepth - 1e-6);
   });
 });
+
+describe('puntería solo si estás colocado (decisión del autor, 2026-10-01)', () => {
+  const run = (targets: (i: number) => number, ticks: number) => {
+    const sim = new Simulation(makeConfig());
+    sim.state.phase = 'rally';
+    for (let i = 0; i < ticks; i++) {
+      const intent = neutralIntent(1.6);
+      intent.target.x = targets(i);
+      sim.step([intent, neutralIntent()]);
+    }
+    return sim;
+  };
+
+  it('raqueta quieta antes del gesto → puntería completa', () => {
+    const sim = run(() => 0.2, 80);
+    expect(sim.aimFactor(0, sim.now)).toBe(1);
+  });
+
+  it('persiguiendo la bola hasta el click → la bola sale recta', () => {
+    // El objetivo salta de lado a lado: la raqueta va a toda velocidad.
+    const sim = run((i) => (Math.floor(i / 20) % 2 === 0 ? -1.2 : 1.2), 80);
+    expect(sim.aimFactor(0, sim.now)).toBe(0);
+  });
+
+  it('un gesto rápido solo en los últimos 150 ms no cuenta como perseguir', () => {
+    // Quieta 60 ticks (500 ms) y luego un movimiento brusco en los últimos ~100 ms.
+    const sim = run((i) => (i < 68 ? 0 : 0.8), 80);
+    expect(sim.aimFactor(0, sim.now)).toBe(1);
+  });
+
+  it('los golpes registran el factor de puntería', () => {
+    const { events } = playGame('medium', 'medium', 4, 120);
+    const hits = events.filter((e): e is Extract<SimEvent, { type: 'hit' }> => e.type === 'hit');
+    expect(hits.length).toBeGreaterThan(10);
+    for (const h of hits) {
+      expect(h.aimFactor).toBeGreaterThanOrEqual(0);
+      expect(h.aimFactor).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('saque simplificado: posición lateral', () => {
+  it('quien saca no puede salirse del ancho de la mesa', () => {
+    const sim = new Simulation(makeConfig());
+    const intent = neutralIntent(1.6);
+    intent.target.x = -1.3;
+    for (let i = 0; i < 100; i++) sim.step([intent, neutralIntent()]);
+    expect(Math.abs(sim.state.paddles[0].pos.x)).toBeLessThanOrEqual(sim.cfg.paddle.serveMaxLateral + 1e-6);
+  });
+});

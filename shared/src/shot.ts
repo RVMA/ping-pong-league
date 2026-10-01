@@ -74,11 +74,29 @@ export function planShot(
   const half = cfg.world.tableLength / 2;
   const contactLateral = contact.x * sgn;
   const lateral = aimLateral(contactLateral, intent.swing.vx, cfg) + edgeDeviation(evalr, cfg.shot);
+  const landing = { x: lateral * sgn, z: -sgn * depth * half };
+  if (serve) keepServeBounceOnTable(contact, landing, cfg);
   return {
-    landing: { x: lateral * sgn, z: -sgn * depth * half },
+    landing,
     clearance,
     serve,
   };
+}
+
+/**
+ * Saque: sin efecto lateral la trayectoria horizontal es recta, así que el primer bote (en tu campo) cae
+ * sobre la línea contacto → bote rival. Si quedaría fuera del ancho de la mesa, se corrige el objetivo
+ * para que ese primer bote quede dentro. Muta `landing` (coordenadas del mundo).
+ */
+export function keepServeBounceOnTable(contact: Vec3, landing: { x: number; z: number }, cfg: GameConfig): void {
+  const limit = cfg.world.tableWidth / 2 - cfg.shot.aimEdgeMargin;
+  const zB1 = contact.z * (1 - cfg.serve.firstBounceFraction);
+  const u = (contact.z - zB1) / (contact.z - landing.z);
+  const xB1 = contact.x + u * (landing.x - contact.x);
+  if (Math.abs(xB1) > limit) {
+    const x = contact.x + ((xB1 > 0 ? limit : -limit) - contact.x) / u;
+    landing.x = Math.max(-limit, Math.min(limit, x));
+  }
 }
 
 /** Resultado de simular una trayectoria candidata. */
