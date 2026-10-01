@@ -1,0 +1,17 @@
+{
+  "name": "ping-pong-pvp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "test": "npm run test -w shared",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w client",
+    "sim": "node shared/scripts/headless-match.ts"
+  }
+}
