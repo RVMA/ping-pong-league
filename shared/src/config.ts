@@ -118,12 +118,14 @@ export const DEFAULT_CONFIG = {
     /**
      * Curva Δt → (margen sobre la red, profundidad). Interpolación lineal.
      * EARLY: trayectoria más baja y corta → riesgo de red. LATE: más alta y lenta → bola fácil.
+     * La profundidad de EARLY baja deprisa para que pronto NO sea más rápido que PERFECT
+     * (con el mismo bote, menos margen = trayectoria más plana = más velocidad).
      */
     timingCurve: [
-      { dt: -120, clearance: -0.03, depth: 0.6 },
-      { dt: -60, clearance: 0.07, depth: 0.72 },
-      { dt: -25, clearance: 0.12, depth: 0.82 },
-      { dt: 0, clearance: 0.12, depth: 0.86 },
+      { dt: -120, clearance: -0.03, depth: 0.36 },
+      { dt: -60, clearance: 0.07, depth: 0.58 },
+      { dt: -25, clearance: 0.115, depth: 0.82 },
+      { dt: 0, clearance: 0.11, depth: 0.88 },
       { dt: 25, clearance: 0.14, depth: 0.82 },
       { dt: 60, clearance: 0.3, depth: 0.74 },
       { dt: 120, clearance: 0.55, depth: 0.68 },

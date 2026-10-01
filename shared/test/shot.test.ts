@@ -90,6 +90,16 @@ describe('efecto de la calidad en la trayectoria [§4.3]', () => {
     expect(speed(110)).toBeLessThan(speed(0) * 0.85);
   });
 
+  it('PERFECT es el golpe más rápido: ni pronto ni tarde dan más velocidad', () => {
+    const speed = (dtMs: number) => {
+      const t = planShot(evalAt(dtMs), contact, swing, 0, cfg, false);
+      const v = solveShot(contact, t, env, dt, cfg).vel;
+      return Math.hypot(v.x, v.z);
+    };
+    const perfect = speed(0);
+    for (let d = -100; d <= 120; d += 5) if (Math.abs(d) > cfg.hit.perfectMs) expect(speed(d)).toBeLessThanOrEqual(perfect + 1e-6);
+  });
+
   it('un EARLY extremo apunta por debajo de la cinta (red)', () => {
     expect(interpolateCurve(cfg.shot.timingCurve, -120).clearance).toBeLessThan(0);
   });
