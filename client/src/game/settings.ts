@@ -9,6 +9,8 @@
  *  - seed: semilla del bot
  *  - offset: desfase de latencia en ms (sustituye al calibrado; para pruebas)
  *  - why: 0 / 1 desactiva o activa "¿por qué fallé?" (sustituye a lo guardado)
+ *  - reduce: 1 reduce el temblor de cámara y los destellos (sin ráfagas de chispas) [§19]; por defecto sigue la
+ *    preferencia «reducir movimiento» del sistema (reduce=0 la ignora)
  */
 import type { BotDifficulty, ConfigOverrides } from '@ppp/shared';
 
@@ -25,6 +27,24 @@ export interface Settings {
 }
 
 const EXPLAIN_KEY = 'ppp.explainErrors';
+const KEYBAR_KEY = 'ppp.keyBar';
+
+/** Barra de teclas de golpe visible (V0.2b): visible por defecto; Tab la cambia y se guarda en este navegador. */
+export function loadKeyBar(): boolean {
+  try {
+    return localStorage.getItem(KEYBAR_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveKeyBar(on: boolean): void {
+  try {
+    localStorage.setItem(KEYBAR_KEY, on ? '1' : '0');
+  } catch {
+    // Sin almacenamiento: solo dura esta sesión.
+  }
+}
 
 /** Preferencia guardada de "¿por qué fallé?" (por navegador), o null si no hay. */
 export function loadExplain(): boolean | null {
@@ -63,6 +83,9 @@ export function readSettings(search = window.location.search): Settings {
   const paccel = num('paccel');
   if (paccel !== undefined) paddle.maxAccel = Math.max(5, Math.min(300, paccel));
   if (Object.keys(paddle).length) overrides.paddle = paddle;
+  const reduceParam = q.get('reduce');
+  const systemReduce = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (reduceParam === '1' || (reduceParam !== '0' && systemReduce)) overrides.presentation = { reduceShakeAndFlash: true };
   const offset = num('offset');
   const bot = q.get('bot');
   const difficulty: BotDifficulty = bot === 'easy' || bot === 'hard' || bot === 'medium' ? bot : 'medium';

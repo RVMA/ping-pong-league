@@ -7,6 +7,11 @@
   --muted: #9aa3ae;
   --win: #7fd18b;
   --lose: #ff8a7a;
+  /* Colores de los golpes (los del trail): siempre acompañados de su letra y su nombre. */
+  --shot-topspin: #ff7a1a;
+  --shot-slice: #ff4fd8;
+  --shot-smash: #ffffff;
+  --shot-block: #6ad8ff;
   --font-ui: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
   --font-fb: 'Fredoka', 'Trebuchet MS', system-ui, sans-serif;
 }
@@ -173,6 +178,7 @@ body {
 .fb {
   position: absolute;
   transform: translate(-50%, -50%) scale(var(--s, 1));
+  text-align: center;
   font-family: var(--font-fb);
   font-weight: 700;
   white-space: nowrap;
@@ -183,11 +189,10 @@ body {
 .fb-sub {
   display: block;
   font-family: var(--font-ui);
-  font-size: max(11px, 0.55em);
+  font-size: max(12px, 0.6em);
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.85;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
   text-align: center;
 }
 
@@ -275,8 +280,79 @@ body {
 .hint {
   position: absolute;
   left: 16px;
-  bottom: 12px;
+  bottom: 52px;
   font-size: 16px;
+  color: var(--muted);
+}
+
+/* ——— Barra de teclas de golpe (V0.2b): esquina inferior izquierda, fuera de la mesa ——— */
+.keybar {
+  position: absolute;
+  left: 16px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.keybar[hidden] {
+  display: none;
+}
+
+.kb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 4px;
+  background: rgba(34, 37, 46, 0.72);
+  color: #cdd4dd;
+  border: 1px solid transparent;
+  transition:
+    background 80ms,
+    color 80ms;
+}
+
+.kb kbd {
+  min-width: 22px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(243, 246, 250, 0.14);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  text-align: center;
+  color: var(--line);
+}
+
+.kb.on {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.kb.on kbd {
+  background: rgba(34, 37, 46, 0.85);
+}
+
+.kb-topspin.on {
+  background: var(--shot-topspin);
+}
+
+.kb-slice.on {
+  background: var(--shot-slice);
+}
+
+.kb-smash.on {
+  background: var(--shot-smash);
+}
+
+.kb-block.on {
+  background: var(--shot-block);
+}
+
+.kb-tab {
+  margin-left: 4px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -446,11 +522,18 @@ body {
   .hint {
     display: none;
   }
+  .kb-tab,
+  .kb span {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .flip.flipping .flip-num {
     animation: none;
+  }
+  .kb {
+    transition: none;
   }
   .fb {
     animation-name: fade;

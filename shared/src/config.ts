@@ -496,6 +496,24 @@ export const DEFAULT_CONFIG = {
      * del golpe propio dan la misma información sin color (§19).
      */
     trailColors: { top: '#ff7a1a', back: '#6ad8ff', side: '#ff4fd8', none: '#ffffff' },
+    /**
+     * Chispas del golpe (V0.2b), con los colores del trail: naranja topspin, magenta slice, blanco smash, cian bloqueo
+     * (el golpe normal, dorado). Solo presentación; el color siempre va acompañado de texto (barra de teclas,
+     * mensaje junto a la raqueta) [§19].
+     *  - Tecla mantenida (solo el jugador local; el rival nunca las ve, §13): `orbit` chispas suaves giran alrededor
+     *    del borde de la raqueta a `orbitRps` vueltas por segundo.
+     *  - Al golpear: ráfaga que sale de la raqueta y se abre hacia fuera durante `burstMs`; más chispas cuanto mejor
+     *    el golpe (`burst`), las del débil en gris, el fallo sin chispas. La ve también el rival (es tras el golpe,
+     *    como sus mensajes, §5.2). Con reduceShakeAndFlash no hay ráfaga y las chispas de la tecla no giran.
+     */
+    sparks: {
+      orbit: 6,
+      orbitRps: 1.1,
+      burst: { PERFECT: 22, GOOD: 10, WEAK: 4 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+      burstMs: 300,
+      normalColor: '#ffd23f',
+      weakColor: '#9aa3ae',
+    },
     /** "¿Por qué fallé?" al perder un punto por error propio [§2.2] (desactivable en el menú). */
     explainErrors: true,
   },

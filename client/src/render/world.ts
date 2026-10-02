@@ -1,7 +1,7 @@
 /**
  * Escena 3D: pabellón, mesa, red, bola con sombra vertical, spin visible (logo y costura que giran con el spin
- * real y trail de color por tipo de efecto), raquetas, marcador del cursor y marcador de bote.
- * Solo presentación: no decide nada del juego.
+ * real y trail de color por tipo de efecto), raquetas, chispas del golpe (V0.2b), marcador del cursor y marcador
+ * de bote. Solo presentación: no decide nada del juego.
  */
 import type { GameConfig, Side } from '@ppp/shared';
 import { sideSign } from '@ppp/shared';
@@ -46,6 +46,11 @@ export interface RenderFrame {
   target: { x: number; z: number } | null;
   bounceMarker: { x: number; z: number; alpha: number } | null;
   shake: { x: number; y: number };
+  /**
+   * Chispas de la tecla de golpe mantenida (V0.2b): color del golpe o null. Solo para la raqueta del jugador local:
+   * las teclas del rival no se dibujan nunca (§13).
+   */
+  heldSparks?: { color: string } | null;
 }
 
 class PaddleView {
@@ -231,6 +236,150 @@ class Trail {
   }
 }
 
+interface Spark {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  age: number;
+  life: number;
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * Chispas del golpe (V0.2b): una órbita suave alrededor del borde de la raqueta del jugador mientras mantiene una
+ * tecla de golpe, y ráfagas que salen de la raqueta al golpear y se abren hacia fuera (en el plano de la cara, algo
+ * hacia atrás: no tapan la bola que sale ni la que vuelve).
+ */
+class Sparks {
+  readonly burstPoints: THREE.Points;
+  readonly orbitPoints: THREE.Points;
+  private readonly sparks: Spark[] = [];
+  private readonly bPos: Float32Array;
+  private readonly bCol: Float32Array;
+  private readonly oPos: Float32Array;
+  private readonly oCol: Float32Array;
+  private readonly maxBurst = 96;
+  private readonly orbitN: number;
+  private orbitPhase = 0;
+  private readonly tmp = new THREE.Color();
+
+  constructor(orbitN: number) {
+    this.orbitN = orbitN;
+    const map = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)');
+    // Mezcla normal (no aditiva): sobre la mesa azul el magenta y el naranja aditivos salían azulados o blanquecinos.
+    const mat = (size: number) =>
+      new THREE.PointsMaterial({ size, map, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true });
+    this.bPos = new Float32Array(this.maxBurst * 3);
+    this.bCol = new Float32Array(this.maxBurst * 4);
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.BufferAttribute(this.bPos, 3));
+    bg.setAttribute('color', new THREE.BufferAttribute(this.bCol, 4));
+    this.burstPoints = new THREE.Points(bg, mat(0.07));
+    this.burstPoints.frustumCulled = false;
+    this.oPos = new Float32Array(orbitN * 3);
+    this.oCol = new Float32Array(orbitN * 4);
+    const og = new THREE.BufferGeometry();
+    og.setAttribute('position', new THREE.BufferAttribute(this.oPos, 3));
+    og.setAttribute('color', new THREE.BufferAttribute(this.oCol, 4));
+    this.orbitPoints = new THREE.Points(og, mat(0.075));
+    this.orbitPoints.frustumCulled = false;
+    this.orbitPoints.visible = false;
+  }
+
+  /** Ráfaga desde el borde de una raqueta. `back`: signo z hacia el fondo de su campo (lejos de la red). */
+  burst(center: THREE.Vector3, radius: number, back: number, color: string, count: number, lifeS: number): void {
+    const c = this.tmp.set(color);
+    for (let i = 0; i < count; i++) {
+      if (this.sparks.length >= this.maxBurst) this.sparks.shift();
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.6;
+      const speed = 0.9 + Math.random() * 0.9;
+      const r0 = radius * (0.75 + Math.random() * 0.2);
+      this.sparks.push({
+        x: center.x + Math.cos(a) * r0,
+        y: center.y + Math.sin(a) * r0,
+        z: center.z,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        vz: back * (0.25 + Math.random() * 0.3),
+        age: 0,
+        life: lifeS * (0.75 + Math.random() * 0.5),
+        r: c.r,
+        g: c.g,
+        b: c.b,
+      });
+    }
+  }
+
+  get alive(): number {
+    return this.sparks.length;
+  }
+
+  update(dt: number, held: { center: THREE.Vector3; radius: number; color: string; spin: boolean; rps: number } | null): void {
+    // Ráfagas: se abren hacia fuera, frenan y se desvanecen.
+    for (let i = this.sparks.length - 1; i >= 0; i--) {
+      const p = this.sparks[i];
+      p.age += dt;
+      if (p.age >= p.life) {
+        this.sparks.splice(i, 1);
+        continue;
+      }
+      const drag = Math.exp(-dt * 3);
+      p.vx *= drag;
+      p.vy = p.vy * drag - 1.5 * dt;
+      p.vz *= drag;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+    }
+    for (let i = 0; i < this.maxBurst; i++) {
+      const p = this.sparks[i];
+      const o = i * 3;
+      const oc = i * 4;
+      if (!p) {
+        this.bCol[oc + 3] = 0;
+        continue;
+      }
+      this.bPos[o] = p.x;
+      this.bPos[o + 1] = p.y;
+      this.bPos[o + 2] = p.z;
+      const f = 1 - p.age / p.life;
+      this.bCol[oc] = p.r;
+      this.bCol[oc + 1] = p.g;
+      this.bCol[oc + 2] = p.b;
+      this.bCol[oc + 3] = f * f;
+    }
+    this.burstPoints.geometry.attributes.position.needsUpdate = true;
+    this.burstPoints.geometry.attributes.color.needsUpdate = true;
+    this.burstPoints.visible = this.sparks.length > 0;
+
+    // Órbita de la tecla mantenida: pocas chispas suaves alrededor del borde de la raqueta.
+    this.orbitPoints.visible = held !== null;
+    if (!held) return;
+    if (held.spin) this.orbitPhase += dt * held.rps * Math.PI * 2;
+    const c = this.tmp.set(held.color);
+    const r = held.radius + 0.018;
+    for (let i = 0; i < this.orbitN; i++) {
+      const a = this.orbitPhase + (i / this.orbitN) * Math.PI * 2;
+      const o = i * 3;
+      this.oPos[o] = held.center.x + Math.cos(a) * r;
+      this.oPos[o + 1] = held.center.y + Math.sin(a) * r;
+      this.oPos[o + 2] = held.center.z;
+      const oc = i * 4;
+      this.oCol[oc] = c.r;
+      this.oCol[oc + 1] = c.g;
+      this.oCol[oc + 2] = c.b;
+      this.oCol[oc + 3] = held.spin ? 0.75 + 0.25 * Math.sin(this.orbitPhase * 1.7 + i * 2.1) : 0.9;
+    }
+    this.orbitPoints.geometry.attributes.position.needsUpdate = true;
+    this.orbitPoints.geometry.attributes.color.needsUpdate = true;
+  }
+}
+
 function netTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 512;
@@ -273,6 +422,8 @@ export class World {
   private readonly bounceMat: THREE.MeshBasicMaterial;
   private readonly basePos: THREE.Vector3;
   private readonly lookAt: THREE.Vector3;
+  private readonly sparks: Sparks;
+  private readonly sparkCenter = new THREE.Vector3();
 
   constructor(canvas: HTMLCanvasElement, cfg: GameConfig, characters: [CharacterId, CharacterId]) {
     this.cfg = cfg;
@@ -334,6 +485,8 @@ export class World {
       new PaddleView(1, characters[1], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, false, loader),
     ];
     this.scene.add(this.paddles[0].group, this.paddles[1].group);
+    this.sparks = new Sparks(pres.sparks.orbit);
+    this.scene.add(this.sparks.burstPoints, this.sparks.orbitPoints);
 
     this.target = new THREE.Mesh(
       new THREE.RingGeometry(0.03, 0.042, 32),
@@ -420,6 +573,26 @@ export class World {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Ráfaga de chispas del golpe desde la raqueta de `side` (V0.2b): `count` según la calidad, del color del golpe.
+   * Se abre en el plano de la cara y algo hacia el fondo de su campo.
+   */
+  burst(side: Side, color: string, count: number): void {
+    if (count <= 0) return;
+    const g = this.paddles[side].group.position;
+    this.sparks.burst(g, this.cfg.paddle.radius, sideSign(side), color, count, this.cfg.presentation.sparks.burstMs / 1000);
+  }
+
+  /** Chispas vivas (para pruebas automáticas). */
+  get sparkCount(): number {
+    return this.sparks.alive;
+  }
+
+  /** ¿Se dibujan las chispas de la tecla mantenida? (para pruebas automáticas). */
+  get heldSparksVisible(): boolean {
+    return this.sparks.orbitPoints.visible;
+  }
+
   /** Proyecta un punto del mundo a píxeles CSS del canvas. */
   project(x: number, y: number, z: number): { x: number; y: number } {
     const v = new THREE.Vector3(x, y, z).project(this.camera);
@@ -456,6 +629,10 @@ export class World {
 
     this.paddles[0].update(f.paddles[0]);
     this.paddles[1].update(f.paddles[1]);
+
+    const sp = this.cfg.presentation;
+    const held = f.heldSparks ? { center: this.sparkCenter.copy(this.paddles[0].group.position), radius: this.cfg.paddle.radius, color: f.heldSparks.color, spin: !sp.reduceShakeAndFlash, rps: sp.sparks.orbitRps } : null;
+    this.sparks.update(f.dt ?? 1 / 60, held);
 
     this.target.visible = f.target !== null;
     if (f.target) this.target.position.set(f.target.x, H + 0.003, f.target.z);

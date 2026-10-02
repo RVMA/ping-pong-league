@@ -3,7 +3,7 @@
  * [§2.2]: la causa la diagnostica @ppp/shared (why.ts) a partir del desglose del golpe; aquí solo se redacta,
  * con números cuando ayudan a entenderla (ms de timing, cm sobre la cinta).
  */
-import type { PointReason, ShotType, Side, WhyResult } from '@ppp/shared';
+import type { PointReason, PowerLevel, ShotType, Side, StrokeNote, WhyResult } from '@ppp/shared';
 
 const ms = (v: number | undefined) => (v === undefined ? '' : ` (${v > 0 ? '+' : '−'}${Math.round(Math.abs(v))} ms)`);
 const cm = (m: number | undefined) => (m === undefined ? '?' : `${Math.max(0, Math.round(m * 100))}`);
@@ -48,7 +48,7 @@ export function whyText(w: WhyResult, smashMinAboveTape: number): string {
     case 'EDGE_WIDE':
       return 'Golpe con el borde: se desvió.';
     case 'POWER_LATE':
-      return `Golpe fuerte y tarde${ms(w.dtMs)}: se te fue largo.`;
+      return w.shot === 'TOPSPIN' ? `Topspin tarde${ms(w.dtMs)}: se te fue largo.` : `Golpe fuerte y tarde${ms(w.dtMs)}: se te fue largo.`;
     case 'POWER_LONG':
       return 'Demasiada potencia: se fue largo.';
     case 'BLOCK_TOPSPIN':
@@ -117,6 +117,31 @@ export function pointText(p: PointTextInput): string {
     case 'TOSS_MISSED':
       return mine ? 'Punto. El bot no golpeó su saque.' : 'No golpeaste el saque.';
   }
+}
+
+const LEVEL_TEXT: Record<PowerLevel, string> = { FULL: 'completo', REDUCED: 'reducido', WEAK: 'flojo' };
+const NOTE_TEXT: Record<StrokeNote, string> = { CHASING: 'persiguiendo', SMASH_LOW: 'bola baja para el smash' };
+const SHOT_UPPER: Record<ShotType, string> = { NORMAL: 'NORMAL', TOPSPIN: 'TOPSPIN', SLICE: 'SLICE', SMASH: 'SMASH', BLOCK: 'BLOQUEO' };
+
+export function powerLevelText(level: PowerLevel): string {
+  return LEVEL_TEXT[level];
+}
+
+/**
+ * Segunda línea del mensaje del golpe propio (V0.2b): qué salió y con qué fuerza, y por qué salió distinto de lo
+ * pedido. «TOPSPIN completo», «SLICE reducido · persiguiendo», «SMASH completo · bola baja para el smash»,
+ * «NORMAL · pulsaste W después del click». Sin nada que contar (golpe normal), undefined.
+ */
+export function strokeText(type: ShotType, d: { level: PowerLevel | null; notes: StrokeNote[] }, keyNote?: string | null): string | undefined {
+  if (type === 'BLOCK') return SHOT_UPPER.BLOCK;
+  if (type === 'NORMAL') return keyNote ? `NORMAL · ${keyNote}` : undefined;
+  const head = d.level ? `${SHOT_UPPER[type]} ${LEVEL_TEXT[d.level]}` : SHOT_UPPER[type];
+  return [head, ...d.notes.map((n) => NOTE_TEXT[n])].join(' · ');
+}
+
+/** Aviso de la tecla de golpe que no estaba pulsada en el instante del click. */
+export function keyMissText(k: { key: string; after: boolean }): string {
+  return k.after ? `pulsaste ${k.key} después del click` : `soltaste ${k.key} antes del click`;
 }
 
 /** Nombre corto del tipo de golpe para la etiqueta junto a la raqueta y el panel D. */

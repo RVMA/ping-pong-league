@@ -6,13 +6,17 @@
 import {
   Bot,
   type BotDifficulty,
+  describeStroke,
   diagnose,
   type GameConfig,
   type HitEvaluation,
   makeConfig,
   type PathSample,
   predictPath,
+  powerLevel,
   relativeSpin,
+  type ShotKeys,
+  shotFromKeys,
   type ShotTargets,
   type ShotType,
   type Side,
@@ -24,13 +28,13 @@ import {
 } from '@ppp/shared';
 import { AudioManager } from '../audio/audio.ts';
 import type { CharacterId } from '../assets/manifest.ts';
-import { MouseTranslator } from '../input/mouse.ts';
+import { type FireRecord, KEY_NOTE_MS, MouseTranslator, SHOT_KEY_LABEL } from '../input/mouse.ts';
 import { type PaddleFrame, type RenderFrame, World } from '../render/world.ts';
 import { type FeedbackKind, Hud } from '../ui/hud.ts';
 import { PrecisionStats } from '../ui/precision-stats.ts';
-import { pointText, SHOT_LABEL } from '../ui/texts.ts';
+import { keyMissText, pointText, powerLevelText, SHOT_LABEL, strokeText } from '../ui/texts.ts';
 import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration.ts';
-import { loadExplain, saveExplain, type Settings } from './settings.ts';
+import { loadExplain, loadKeyBar, saveExplain, saveKeyBar, type Settings } from './settings.ts';
 
 const CHARACTERS: [CharacterId, CharacterId] = ['power', 'defender'];
 const HUMAN: Side = 0;
@@ -52,8 +56,16 @@ interface LastHumanHit {
 interface LastSwing {
   shot: ShotType;
   power: number;
+  keys: ShotKeys;
   raw: { vx: number; vy: number };
   aimFactor: number;
+}
+
+/** Mensaje del último golpe propio, para completarlo si la tecla llega justo después del click (V0.2b). */
+interface OwnHitMessage {
+  node: HTMLElement;
+  click: FireRecord | null;
+  type: ShotType;
 }
 
 interface PaddleFx {
@@ -103,6 +115,13 @@ export class Game {
   /** Desfase de latencia calibrado (ms) o null si este jugador no ha calibrado. */
   private latencyOffset: number | null = null;
   private fps = 0;
+  /** Barra de teclas de golpe visible (Tab; se guarda en este navegador). */
+  private keyBarOn = loadKeyBar();
+  /** Click del humano que produjo el último evento 'swing' (teclas en su instante). */
+  private humanClick: FireRecord | null = null;
+  private ownHit: OwnHitMessage | null = null;
+  /** Segunda línea del último mensaje de golpe propio (para pruebas automáticas). */
+  private lastStrokeText: string | null = null;
   /** Registro de eventos recientes (para depurar y para las pruebas automáticas). */
   readonly log: EventLogEntry[] = [];
 
@@ -140,6 +159,7 @@ export class Game {
     const { latencyOffsetMin, latencyOffsetMax } = this.cfg.input;
     this.latencyOffset = stored === null ? null : Math.max(latencyOffsetMin, Math.min(latencyOffsetMax, stored));
     this.input.latencyOffsetMs = this.latencyOffset ?? 0;
+    this.input.onShotKeyDown = (key, perf) => this.onShotKeyDown(key, perf);
 
     if (settings.autostart) this.start(this.difficulty);
     else this.showMenu();
@@ -149,6 +169,7 @@ export class Game {
   /** Pantalla de inicio: elegir rival y calibrar la latencia (hará de lobby hasta que haya salas). */
   private showMenu(): void {
     this.running = false;
+    this.hud.showKeyBar(false);
     this.hud.setHint('');
     this.input.captureKeys = false;
     this.hud.showStart(
@@ -172,6 +193,7 @@ export class Game {
     void this.audio.unlock();
     this.running = false;
     this.hud.hideOverlay();
+    this.hud.showKeyBar(false);
     this.hud.setHint('');
     const top = this.cfg.world.tableHeight;
     this.calibration = new Calibration(this.cfg, { x: 0, y: top + 0.25, z: 1.6 }, performance.now(), Math.floor(Math.random() * 1e9));
@@ -238,6 +260,7 @@ export class Game {
     this.running = true;
     this.paused = false;
     this.input.captureKeys = true;
+    this.hud.showKeyBar(this.keyBarOn);
     this.clock.epoch = performance.now() - this.sim.now;
     this.onServeReady(this.sim.state.server);
   }
@@ -245,12 +268,14 @@ export class Game {
   private pause(): void {
     this.paused = true;
     this.input.captureKeys = false;
+    this.hud.showKeyBar(false);
     this.hud.showPause(() => this.resume());
   }
 
   private resume(): void {
     this.paused = false;
     this.input.captureKeys = true;
+    this.hud.showKeyBar(this.keyBarOn);
     this.hud.hideOverlay();
     this.input.clearFires();
     this.clock.epoch = performance.now() - this.sim.now;
@@ -264,6 +289,28 @@ export class Game {
       else this.pause();
     } else if (e.key === 'd' || e.key === 'D') {
       this.hud.setDebug(this.hud.debugVisible ? null : []);
+    } else if (e.key === 'Tab' && this.running && !this.paused) {
+      // Durante la partida, Tab muestra u oculta la barra de teclas y no mueve el foco de la página.
+      e.preventDefault();
+      this.keyBarOn = !this.keyBarOn;
+      saveKeyBar(this.keyBarOn);
+      this.hud.showKeyBar(this.keyBarOn);
+    }
+  }
+
+  /**
+   * Tecla de golpe pulsada justo DESPUÉS de un click sin tecla (V0.2b): si el mensaje de ese golpe aún se ve, se
+   * completa con el motivo («pulsaste W después del click»). Si el golpe aún no ha llegado, lo dirá al llegar.
+   */
+  private onShotKeyDown(key: string, perf: number): void {
+    const h = this.ownHit;
+    if (!h || !h.click || h.type !== 'NORMAL' || Object.keys(h.click.keys).length) return;
+    const ms = perf - h.click.perf;
+    if (ms < 0 || ms > KEY_NOTE_MS) return;
+    const sub = strokeText('NORMAL', { level: null, notes: [] }, keyMissText({ key, after: true }));
+    if (sub) {
+      this.hud.setFeedbackSub(h.node, sub);
+      this.lastStrokeText = sub;
     }
   }
 
@@ -335,7 +382,8 @@ export class Game {
         if (e.player === HUMAN) {
           this.lastHumanEval = e.evaluation;
           this.lastHumanAim = e.aimFactor;
-          this.lastSwing = { shot: e.shot, power: e.power, raw: e.rawSwing, aimFactor: e.aimFactor };
+          this.lastSwing = { shot: e.shot, power: e.power, keys: e.keys, raw: e.rawSwing, aimFactor: e.aimFactor };
+          this.humanClick = this.input.lastFire;
           this.precision.add({ evaluation: e.evaluation, aimFactor: e.aimFactor });
         }
         break;
@@ -410,31 +458,47 @@ export class Game {
     const reduce = this.cfg.presentation.reduceShakeAndFlash;
 
     // Tipo de golpe: sonido propio (también el del rival: se oye qué viene) y etiqueta solo en los golpes propios
-    // (el del rival hay que leerlo en la bola: criterio de V0.2).
+    // (el del rival hay que leerlo en la bola: criterio de V0.2). V0.2b: la etiqueta dice qué salió y con qué fuerza
+    // y, si salió distinto de lo pedido, por qué.
     const type = e.serve ? 'NORMAL' : e.targets.type;
     if (type !== 'NORMAL') this.audio.play(`hit_${type.toLowerCase()}` as 'hit_topspin', { volume: volume * 0.8, pan });
-    const sub = own && type !== 'NORMAL' ? SHOT_LABEL[type] : undefined;
+    let sub: string | undefined;
+    if (own && !e.serve) {
+      const click = this.humanClick;
+      const miss = type === 'NORMAL' && click ? (click.pressedAfter ? { key: click.pressedAfter.key, after: true } : click.releasedBefore ? { key: click.releasedBefore.key, after: false } : null) : null;
+      sub = strokeText(type, describeStroke(e.targets, e.aimFactor, this.cfg), miss ? keyMissText(miss) : null);
+      this.lastStrokeText = sub ?? null;
+    }
 
+    // Ráfaga de chispas del golpe (V0.2b): más cuanto mejor; la del débil, gris. La ve también el rival.
+    const sp = this.cfg.presentation.sparks;
+    if (!reduce) {
+      const tier = e.tier === 'PERFECT' ? 'PERFECT' : e.tier === 'GOOD' ? 'GOOD' : 'WEAK';
+      this.world.burst(e.player, tier === 'WEAK' ? sp.weakColor : this.shotColor(type), sp.burst[tier]);
+    }
+
+    let node: HTMLElement;
     if (e.tier === 'PERFECT') {
       const level = Math.min(e.streak, 4);
       this.audio.play('hit_perfect', { volume, pan });
       this.audio.play(`streak_${level}` as 'streak_1', { volume: own ? 0.9 : 0.5, pan });
-      this.message(e.player, fb.streakTexts[level - 1], `perfect-${level}` as FeedbackKind, sub);
+      node = this.message(e.player, fb.streakTexts[level - 1], `perfect-${level}` as FeedbackKind, sub);
       if (!reduce) {
         fx.flash = 1;
         if (own) this.shake = { amp: this.cfg.presentation.shakeOnPerfect * (0.7 + 0.1 * level), until: performance.now() + this.cfg.presentation.shakeMs };
       }
     } else if (e.tier === 'GOOD') {
       this.audio.play('hit_good', { volume, pan });
-      this.message(e.player, fb.goodText, 'good', sub);
+      node = this.message(e.player, fb.goodText, 'good', sub);
     } else {
       this.audio.play('hit_normal', { volume, pan });
       const labels: string[] = [];
       if (e.evaluation.causes.includes('EARLY')) labels.push(fb.earlyText);
       if (e.evaluation.causes.includes('LATE')) labels.push(fb.lateText);
       if (e.evaluation.causes.includes('EDGE')) labels.push(fb.edgeText);
-      this.message(e.player, labels.join(' + ') || fb.goodText, 'label', sub);
+      node = this.message(e.player, labels.join(' + ') || fb.goodText, 'label', sub);
     }
+    if (own) this.ownHit = e.serve ? null : { node, click: this.humanClick, type };
 
     if (e.serve || this.sim.state.rally.hits <= 2) this.hud.setHint('');
     if (own) {
@@ -459,6 +523,7 @@ export class Game {
   private onGameOver(winner: Side, score: [number, number]): void {
     const st = this.sim.state.stats[HUMAN];
     this.running = false;
+    this.hud.showKeyBar(false);
     this.hud.setHint('');
     this.hud.showGameOver(
       {
@@ -477,15 +542,41 @@ export class Game {
     );
   }
 
-  private message(player: Side, text: string, kind: FeedbackKind, sub?: string): void {
+  private message(player: Side, text: string, kind: FeedbackKind, sub?: string): HTMLElement {
     const pad = this.sim.state.paddles[player].pos;
     const own = player === HUMAN;
     // Junto a la raqueta, a su lado exterior: nunca en el centro de la pantalla [§5.2].
     const p = this.world.project(pad.x + (own ? 0.24 : -0.2) * sideSign(player), this.fx[player].height + 0.16, pad.z);
     const scale = own ? 1 : this.cfg.feedback.opponentScale;
     const dur = kind.startsWith('perfect-4') ? this.cfg.feedback.messageMs * 1.4 : this.cfg.feedback.messageMs;
-    // Con la etiqueta del tipo de golpe el mensaje dura algo más para poder leerla.
-    this.hud.feedback(text, kind, p.x, p.y, scale, sub ? dur * 1.5 : dur, sub);
+    // Con la etiqueta del golpe el mensaje dura algo más para poder leerla (más si explica algo); un golpe normal
+    // propio dura lo mismo, por si una tecla pulsada justo después del click lo completa.
+    const factor = sub && sub.includes(' · ') ? 2 : sub || (own && kind !== 'label') ? 1.5 : 1;
+    return this.hud.feedback(text, kind, p.x, p.y, scale, dur * factor, sub);
+  }
+
+  /** Color de las chispas de un golpe: el del trail de su efecto; el golpe normal, dorado. */
+  private shotColor(type: ShotType): string {
+    const p = this.cfg.presentation;
+    switch (type) {
+      case 'TOPSPIN':
+        return p.trailColors.top;
+      case 'SLICE':
+        return p.trailColors.side;
+      case 'SMASH':
+        return p.trailColors.none;
+      case 'BLOCK':
+        return p.trailColors.back;
+      default:
+        return p.sparks.normalColor;
+    }
+  }
+
+  /** Golpe que saldría ahora con las teclas mantenidas (Space = bloqueo), o null si ninguna. */
+  private heldShot(): ShotType | null {
+    if (this.input.blocking) return 'BLOCK';
+    const t = shotFromKeys(this.input.heldKeys());
+    return t === 'NORMAL' ? null : t;
   }
 
   private pan(player: Side): number {
@@ -578,6 +669,10 @@ export class Game {
     }
 
     const inPlay = s.phase === 'rally' || s.phase === 'serveToss' || s.phase === 'pointOver';
+    // Tecla de golpe mantenida (V0.2b): se ilumina en la barra y unas chispas giran alrededor de TU raqueta. Solo el
+    // jugador local la ve: en multijugador el rival no debe recibir esta señal antes del golpe (§13).
+    const held = this.running && !this.paused ? this.heldShot() : null;
+    this.hud.setKeyBarActive(held);
     const frame: RenderFrame = {
       ball: {
         x: lerp(this.prev.ball.x, this.curr.ball.x),
@@ -592,6 +687,7 @@ export class Game {
       target,
       bounceMarker: this.bounceMarker,
       shake,
+      heldSparks: held ? { color: this.shotColor(held) } : null,
     };
     this.world.render(frame);
     if (this.hud.debugVisible) this.updateDebug();
@@ -620,16 +716,20 @@ export class Game {
     const aimText =
       aim === null ? '—' : sw?.shot === 'BLOCK' ? 'recta (bloqueo)' : aim >= 0.99 ? 'activa (colocado)' : aim <= 0.01 ? 'recta (persiguiendo)' : `${Math.round(aim * 100)} %`;
     const shot = this.lastHumanShot;
-    const shotText = sw ? `${SHOT_LABEL[sw.shot]}${sw.power > 0 ? ` · potencia ${Math.round(sw.power * 100)} %` : ''}` : '—';
+    const shotText = sw
+      ? `${SHOT_LABEL[sw.shot]}${sw.power > 0 ? ` · potencia ${Math.round(sw.power * 100)} % (${powerLevelText(powerLevel(sw.power, this.cfg))})` : ''}`
+      : '—';
     const spinText = shot ? `top ${Math.round(shot.spinRel.top)} · lateral ${Math.round(shot.spinRel.side)} rad/s` : '—';
-    const gestureText = sw ? `vx ${sw.raw.vx.toFixed(1)} · vy ${sw.raw.vy.toFixed(1)} alt/s` : '—';
+    const keysText = sw ? (Object.keys(sw.keys) as (keyof ShotKeys)[]).filter((k) => sw.keys[k]).map((k) => SHOT_KEY_LABEL[k]).join(' + ') || 'ninguna' : '—';
+    const gestureText = sw ? `vx ${sw.raw.vx.toFixed(1)} alt/s` : '—';
     this.hud.setDebug([
       ['Último golpe', e ? (e.tier === 'WHIFF' ? 'fallo (fuera de ventana)' : e.tier) : '—'],
       ['Timing', e ? `${fmt(e.dtMs)} ms (${e.timingTier})` : '—'],
       ['Posición', e ? `${Math.round(e.posFrac * 100)} % (${e.positionTier})` : '—'],
       ['Puntería', aimText],
       ['Tipo', shotText],
-      ['Gesto', gestureText],
+      ['Teclas en el click', keysText],
+      ['Gesto lateral (cruce)', gestureText],
       ['Spin de salida', spinText],
       ['Bloqueo (Espacio)', this.input.blocking ? 'mantenido' : '—'],
       ['Bot: último golpe', this.lastBotShot ? SHOT_LABEL[this.lastBotShot] : '—'],
@@ -655,6 +755,9 @@ export class Game {
       spin: { ...s.ball.spin },
       lastSwing: this.lastSwing,
       lastBotShot: this.lastBotShot,
+      lastStrokeText: this.lastStrokeText,
+      keyBar: { visible: this.hud.keyBarVisible, active: this.hud.keyBarActive, saved: this.keyBarOn },
+      sparks: { held: this.world.heldSparksVisible, alive: this.world.sparkCount },
       explain: this.explain,
       paddles: s.paddles.map((p) => ({ ...p.pos })),
       rally: { ...s.rally, bounces: [...s.rally.bounces] },

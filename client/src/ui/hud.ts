@@ -1,8 +1,9 @@
 /**
  * HUD en DOM: marcador de tarjetas abatibles, mensajes de golpe junto a la raqueta [§5.2],
- * aviso de fin de punto, pantallas de inicio / pausa / fin y panel de datos de precisión.
+ * aviso de fin de punto, barra de teclas de golpe (V0.2b), pantallas de inicio / pausa / fin y panel de datos
+ * de precisión.
  */
-import type { BotDifficulty } from '@ppp/shared';
+import type { BotDifficulty, ShotType } from '@ppp/shared';
 import { assetUrl, CHARACTERS, type CharacterId, UI_ASSETS } from '../assets/manifest.ts';
 
 export type FeedbackKind = 'good' | 'perfect-1' | 'perfect-2' | 'perfect-3' | 'perfect-4' | 'label';
@@ -52,6 +53,9 @@ export class Hud {
   private readonly overlay = el('div', 'overlay');
   private readonly hint = el('div', 'hint');
   private readonly botLabel = el('span', 'bot-diff');
+  private readonly keybar = el('div', 'keybar');
+  private readonly keyChips = new Map<ShotType, HTMLElement>();
+  private keyActive: ShotType | null = null;
   private toastTimer = 0;
 
   constructor(root: HTMLElement, characters: [CharacterId, CharacterId]) {
@@ -80,7 +84,43 @@ export class Hud {
     board.append(a.wrap, cards, b.wrap);
     this.hint.textContent = 'Mueve el ratón para colocar la raqueta. Click cuando la bola llegue.';
     this.debug.hidden = true;
-    root.append(board, this.toast, this.hint, this.debug, this.overlay);
+    // Barra de teclas de golpe (V0.2b): esquina inferior izquierda, nunca sobre la mesa [§5.2]. Cada tecla lleva
+    // su letra y su nombre; el color de la tecla mantenida es un extra, no la única señal [§19].
+    for (const [key, name, type] of [
+      ['W', 'Topspin', 'TOPSPIN'],
+      ['S', 'Slice', 'SLICE'],
+      ['E', 'Smash', 'SMASH'],
+      ['Espacio', 'Bloqueo', 'BLOCK'],
+    ] as [string, string, ShotType][]) {
+      const chip = el('div', `kb kb-${type.toLowerCase()}`);
+      chip.append(el('kbd', '', key), el('span', '', name));
+      this.keyChips.set(type, chip);
+      this.keybar.append(chip);
+    }
+    this.keybar.append(el('span', 'kb-tab', 'Tab: ocultar'));
+    this.keybar.hidden = true;
+    root.append(board, this.toast, this.hint, this.keybar, this.debug, this.overlay);
+  }
+
+  /** Muestra u oculta la barra de teclas (solo durante la partida). */
+  showKeyBar(visible: boolean): void {
+    this.keybar.hidden = !visible;
+  }
+
+  get keyBarVisible(): boolean {
+    return !this.keybar.hidden;
+  }
+
+  /** Ilumina la tecla de golpe mantenida (null = ninguna). */
+  setKeyBarActive(type: ShotType | null): void {
+    if (type === this.keyActive) return;
+    if (this.keyActive) this.keyChips.get(this.keyActive)?.classList.remove('on');
+    if (type) this.keyChips.get(type)?.classList.add('on');
+    this.keyActive = type;
+  }
+
+  get keyBarActive(): ShotType | null {
+    return this.keyActive;
   }
 
   setScore(score: [number, number], server: 0 | 1): void {
@@ -102,7 +142,7 @@ export class Hud {
    * Mensaje de golpe pequeño junto a la raqueta: sube y se desvanece [§5.2]. `sub`: segunda línea más pequeña
    * (el tipo de golpe propio: Topspin, Slice, Smash, Bloqueo).
    */
-  feedback(text: string, kind: FeedbackKind, x: number, y: number, scale = 1, durationMs = 400, sub?: string): void {
+  feedback(text: string, kind: FeedbackKind, x: number, y: number, scale = 1, durationMs = 400, sub?: string): HTMLElement {
     const node = el('div', `fb fb-${kind}`, text);
     if (sub) node.append(el('span', 'fb-sub', sub));
     node.style.left = `${x}px`;
@@ -111,6 +151,18 @@ export class Hud {
     node.style.setProperty('--d', `${durationMs}ms`);
     this.root.append(node);
     node.addEventListener('animationend', () => node.remove());
+    return node;
+  }
+
+  /** Cambia la segunda línea de un mensaje que aún se ve (p. ej. «pulsaste W después del click»). */
+  setFeedbackSub(node: HTMLElement, sub: string): void {
+    if (!node.isConnected) return;
+    let span = node.querySelector<HTMLElement>('.fb-sub');
+    if (!span) {
+      span = el('span', 'fb-sub');
+      node.append(span);
+    }
+    span.textContent = sub;
   }
 
   showToast(text: string, tone: 'win' | 'lose' | 'neutral', ms = 1500): void {
@@ -256,7 +308,7 @@ export class Hud {
     } else {
       panel.append(el('h1', '', 'Ping Pong PvP'));
     }
-    panel.append(el('p', 'lead', 'Un game a 11 contra el bot. Prototipo V0.2: tipos de golpe, spin y bloqueo.'));
+    panel.append(el('p', 'lead', 'Un game a 11 contra el bot. Prototipo V0.2b: golpes con teclas, spin y bloqueo.'));
     panel.append(el('h2', '', 'Elige rival'));
     panel.append(this.difficultyButtons(current, labels, onPick));
     if (latency) {
@@ -268,10 +320,11 @@ export class Hud {
     for (const line of [
       'Mueve el ratón: la raqueta te sigue con algo de inercia. Click justo cuando la bola llega al centro: ¡Perfecto!',
       'Pronto: la bola sale baja y puede ir a la red. Tarde: sale alta y lenta.',
-      'Tipo de golpe: con la raqueta ya colocada, un gesto seco del ratón al hacer click. Si llegas corriendo, sale un golpe normal y recto.',
-      'Hacia arriba: topspin (más rápido y baja antes). Hacia un lado: cruzas; muy rápido: slice (curva). Hacia abajo con la bola alta: smash.',
+      'Tipo de golpe: mantén una tecla y haz click. W topspin (más rápido, cae antes). S slice (curva y va a la banda). E smash (solo con la bola alta). Sin tecla: golpe normal.',
+      'La fuerza sale de tu golpe: ¡Perfecto! = golpe completo; Bien = reducido; pronto, tarde o con el borde = flojo y más arriesgado. Si llegas corriendo, la mitad.',
+      'Cruzar la bola: con la raqueta ya colocada, un gesto lateral seco del ratón al hacer click.',
       'Bloqueo: mantén Espacio y haz click. Devuelve con la fuerza de la bola que llega; mientras lo mantienes, la raqueta va más lenta.',
-      'Para sacar, click (o espera un segundo) y otro click cuando la bola baje. D: datos de precisión. Esc: pausa.',
+      'Para sacar, click (o espera un segundo) y otro click cuando la bola baje. Tab: barra de teclas. D: datos de precisión. Esc: pausa.',
     ])
       how.append(el('li', '', line));
     panel.append(how);
