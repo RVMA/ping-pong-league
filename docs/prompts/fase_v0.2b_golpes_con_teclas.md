@@ -32,6 +32,7 @@ Cambian §3.3 ✅ y §4.6–§4.7: regístralas como decisión del autor.
 4. **Regla de «colocado»** (por defecto, editable): ya no decide el tipo, porque las teclas son deliberadas. Llegar persiguiendo la bola reduce la potencia a la mitad.
 5. **Cruce** (por defecto, editable): se mantiene el gesto lateral de V0.1, que el autor aprobó. **Pregúntame al empezar si también me cuesta.** La alternativa son A/D mantenidas, pero entonces el panel de precisión tendría que pasar de `D` a otra tecla.
 6. **Dirección de la curva del slice:** hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado donde golpeas.
+7. **Sin golpe dominante:** comprueba con el partido entre bots que un bot que siempre da topspin no gana con claridad a uno que mezcla golpes. Si gana, reequilibra y explícalo.
 
 ## Requisitos técnicos
 - **Arquitectura:**
