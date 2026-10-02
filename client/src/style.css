@@ -425,6 +425,15 @@ body {
   font-weight: 700;
 }
 
+.stats .wide {
+  grid-column: 1 / -1;
+}
+
+.stats .wide dd {
+  font-size: 20px;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .side .portrait {
     display: none;

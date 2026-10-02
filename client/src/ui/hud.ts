@@ -307,7 +307,7 @@ export class Hud {
       ['Golpes', String(info.hits)],
       ['Por tipo', info.shots],
     ]) {
-      const d = el('div');
+      const d = el('div', k === 'Por tipo' ? 'wide' : undefined);
       d.append(el('dt', '', k), el('dd', '', v));
       stats.append(d);
     }
