@@ -72,10 +72,11 @@ export interface WhyInput {
 export function diagnose(inp: WhyInput, cfg: GameConfig): WhyResult | null {
   const last = inp.lastHit;
   if (inp.reason === 'MISSED' || inp.reason === 'DOUBLE_BOUNCE') return diagnoseMissed(inp, cfg);
-  if (!last || (inp.reason !== 'NET' && inp.reason !== 'OUT')) return null;
+  if (!last || (inp.reason !== 'NET' && inp.reason !== 'OUT' && inp.reason !== 'OWN_SIDE')) return null;
   const t = last.targets;
   const base: WhyResult = { cause: 'UNKNOWN', shot: t.serve ? null : t.type, dtMs: last.evaluation.dtMs, contactHeight: last.contactHeight };
-  if (inp.reason === 'NET') return { ...base, cause: netCause(t, last.evaluation), aboveTape: t.aboveTape };
+  // Botar en tu campo es una bola que salió demasiado baja (como la red, pero antes de llegar a ella).
+  if (inp.reason === 'NET' || inp.reason === 'OWN_SIDE') return { ...base, cause: netCause(t, last.evaluation), aboveTape: t.aboveTape };
   return { ...base, cause: outCause(t, last.evaluation, cfg) };
 }
 

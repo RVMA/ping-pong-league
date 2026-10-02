@@ -48,8 +48,9 @@ export interface BotDifficultyConfig {
   preferredDepth: number;
   /**
    * Mezcla de golpes (V0.2) [§17.5]. Probabilidades cuando la situación lo permite: smash solo si la bola va a
-   * pasar alta (salvo `badSmash`, el error de intentarlo con la bola baja); bloqueo contra bolas rápidas o con
-   * mucho spin; si no, topspin / slice / normal. Potencia en [power[0], power[1]].
+   * pasar alta (salvo `badSmash`: probabilidad, en cada devolución sin bola alta, de intentarlo igualmente →
+   * red); bloqueo contra bolas rápidas o con mucho spin; si no, topspin / slice / normal. Potencia en
+   * [power[0], power[1]].
    */
   shots: { topspin: number; slice: number; smash: number; badSmash: number; block: number; power: [number, number] };
 }
@@ -255,13 +256,13 @@ export const DEFAULT_CONFIG = {
      * el solver lo convierte en un golpe más rápido con el mismo margen. Riesgo [§4.6]: apunta algo más bajo
      * (−clearanceDrop·p) y desde una bola baja la penalización de "posición desfavorable" se multiplica.
      */
-    topspin: { spinMin: 180, spinMax: 380, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10.5, paceCapPower: 1.5 },
+    topspin: { spinMin: 160, spinMax: 340, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10, paceCapPower: 1.2 },
     /**
      * Slice: el cruce con efecto lateral (curva hacia el lado del gesto) y algo de backspin. "Más ángulo": la
      * puntería puede llegar hasta edgeMargin de la banda (cruce normal: shot.aimEdgeMargin). Riesgo: poco
      * margen sobre la red (−clearancePenalty·p) y el riesgo de ángulo al golpear pronto (§4.5).
      */
-    slice: { sideMin: 150, sideMax: 350, backspin: 80, edgeMargin: 0.06, clearancePenalty: 0.02, paceCap: 10 },
+    slice: { sideMin: 150, sideMax: 350, backspin: 80, edgeMargin: 0.08, clearancePenalty: 0.02, paceCap: 10 },
     /**
      * Techo de ritmo de los golpes de margen (normal, topspin, slice): velocidad horizontal equivalente sin drag
      * (m/s de simulación) que el golpe no supera aunque el margen pedido lo permitiera. Desde una bola baja no
@@ -382,7 +383,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.1, good: 0.45, weak: 0.35, whiff: 0.1 },
         aimSpread: 0.4,
         preferredDepth: 1.65,
-        shots: { topspin: 0.1, slice: 0.05, smash: 0.35, badSmash: 0.04, block: 0.15, power: [0, 0.4] },
+        shots: { topspin: 0.1, slice: 0.05, smash: 0.35, badSmash: 0.03, block: 0.15, power: [0, 0.4] },
       },
       medium: {
         label: 'Normal',
@@ -390,7 +391,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.3, good: 0.5, weak: 0.15, whiff: 0.05 },
         aimSpread: 0.75,
         preferredDepth: 1.6,
-        shots: { topspin: 0.25, slice: 0.12, smash: 0.6, badSmash: 0.02, block: 0.3, power: [0.15, 0.65] },
+        shots: { topspin: 0.22, slice: 0.1, smash: 0.6, badSmash: 0.005, block: 0.3, power: [0.1, 0.55] },
       },
       hard: {
         label: 'Difícil',

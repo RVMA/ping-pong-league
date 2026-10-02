@@ -103,7 +103,7 @@ export function pointText(p: PointTextInput): string {
     case 'OUT':
       return mine ? 'Punto. La bola del bot salió fuera.' : `Fuera. ${why}`.trim();
     case 'OWN_SIDE':
-      return mine ? 'Punto. El bot botó en su propio campo.' : 'La bola botó en tu campo.';
+      return mine ? 'Punto. El bot botó en su propio campo.' : `La bola botó en tu campo. ${why}`.trim();
     case 'DOUBLE_BOUNCE':
       return mine ? 'Punto. Doble bote en el campo del bot.' : `Doble bote en tu campo. ${p.why ? why + rivalShotText(p.rivalShot) : ''}`.trim();
     case 'MISSED':
