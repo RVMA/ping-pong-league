@@ -321,7 +321,7 @@ export const DEFAULT_CONFIG = {
     minPace: 3,
     spinInvert: 0.5,
     spinLiftByTier: { PERFECT: 0, GOOD: 0.00012, WEAK: 0.00025 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
-    spinLongByTier: { PERFECT: 0, GOOD: 0.0002, WEAK: 0.0004 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+    spinLongByTier: { PERFECT: 0, GOOD: 0.0003, WEAK: 0.0007 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
     timingCurve: [
       { dt: -120, clearance: 0, depth: 0.3, pace: 1 },
       { dt: -60, clearance: 0, depth: 0.55, pace: 1 },
