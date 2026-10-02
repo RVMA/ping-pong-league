@@ -309,7 +309,8 @@ export class Game {
     if (ms < 0 || ms > KEY_NOTE_MS) return;
     const sub = strokeText('NORMAL', { level: null, notes: [] }, keyMissText({ key, after: true }));
     if (sub) {
-      this.hud.setFeedbackSub(h.node, sub);
+      // El mensaje ya se está desvaneciendo: se alarga para que dé tiempo a leer el motivo.
+      this.hud.setFeedbackSub(h.node, sub, this.cfg.feedback.messageMs * 2);
       this.lastStrokeText = sub;
     }
   }
@@ -549,9 +550,8 @@ export class Game {
     const p = this.world.project(pad.x + (own ? 0.24 : -0.2) * sideSign(player), this.fx[player].height + 0.16, pad.z);
     const scale = own ? 1 : this.cfg.feedback.opponentScale;
     const dur = kind.startsWith('perfect-4') ? this.cfg.feedback.messageMs * 1.4 : this.cfg.feedback.messageMs;
-    // Con la etiqueta del golpe el mensaje dura algo más para poder leerla (más si explica algo); un golpe normal
-    // propio dura lo mismo, por si una tecla pulsada justo después del click lo completa.
-    const factor = sub && sub.includes(' · ') ? 2 : sub || (own && kind !== 'label') ? 1.5 : 1;
+    // Con la etiqueta del golpe el mensaje dura algo más para poder leerla (más si explica algo).
+    const factor = !sub ? 1 : sub.includes(' · ') ? 2 : 1.5;
     return this.hud.feedback(text, kind, p.x, p.y, scale, dur * factor, sub);
   }
 

@@ -154,9 +154,13 @@ export class Hud {
     return node;
   }
 
-  /** Cambia la segunda línea de un mensaje que aún se ve (p. ej. «pulsaste W después del click»). */
-  setFeedbackSub(node: HTMLElement, sub: string): void {
+  /**
+   * Cambia la segunda línea de un mensaje que aún se ve (p. ej. «pulsaste W después del click») y, si se indica,
+   * alarga su duración total para que dé tiempo a leerla.
+   */
+  setFeedbackSub(node: HTMLElement, sub: string, durationMs?: number): void {
     if (!node.isConnected) return;
+    if (durationMs !== undefined) node.style.setProperty('--d', `${durationMs}ms`);
     let span = node.querySelector<HTMLElement>('.fb-sub');
     if (!span) {
       span = el('span', 'fb-sub');
