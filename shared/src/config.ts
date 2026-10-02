@@ -234,15 +234,14 @@ export const DEFAULT_CONFIG = {
    * Qué hace la potencia [§4.7 ✅]: más spin, más velocidad (techo de ritmo del topspin, ritmo del smash), el bote algo
    * más al fondo (+powerDepth) y más bajo sobre la red (−powerClearance).
    * Riesgo de los golpes de ataque (topspin, slice, smash), que NO depende de la potencia: las desviaciones de la
-   * curva de timing crecen ×(1 + attackTimingGain) (en pronto también la profundidad). Un golpe de ataque débil sale
-   * flojo y además más arriesgado que un golpe normal con el mismo error.
+   * curva de timing crecen ×(1 + timingGain) de cada tipo (en pronto también la profundidad y el ángulo). Un golpe
+   * de ataque débil sale flojo y además más arriesgado que un golpe normal con el mismo error.
    */
   shotTypes: {
     powerByTier: { PERFECT: 1, GOOD: 0.5, WEAK: 0.15 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
     chasingPower: 0.5,
     /** Etiqueta del golpe junto a la raqueta: «completo» desde full, «reducido» desde reduced, si no «flojo». */
     powerLevels: { full: 0.95, reduced: 0.3 },
-    attackTimingGain: 0.6,
     powerDepth: 0.06,
     powerClearance: 0.03,
     /**
@@ -252,15 +251,16 @@ export const DEFAULT_CONFIG = {
      * «golpe fuerte y tarde → larga»: tarde, el bote se alarga lateLong·l (l = 0..1 entre la ventana PERFECT y la
      * débil): un topspin GOOD algo tarde todavía entra; uno claramente tarde (≳ +75 ms) se va largo.
      */
-    topspin: { spinMin: 100, spinMax: 340, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10, paceCapPower: 1.2, lateLong: 0.5 },
+    topspin: { timingGain: 0.8, spinMin: 100, spinMax: 340, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10, paceCapPower: 1.2, lateLong: 0.5 },
     /**
-     * Slice: corte con efecto lateral (curva) y algo de backspin, con MÁS ÁNGULO: el objetivo se abre `angle` m hacia
-     * el lado de la curva (además del cruce), hasta edgeMargin de la banda (cruce normal: shot.aimEdgeMargin).
-     * Dirección de la curva (decisión del autor): hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado
-     * donde golpeas. Riesgos: poco margen sobre la red (−clearancePenalty·p) y el riesgo de ángulo de §4.5 sobre
-     * todo el ángulo del slice: pronto (≳ −60 ms) se pasa de ángulo y sale por la banda.
+     * Slice: corte con efecto lateral (curva) y algo de backspin, con MÁS ÁNGULO: va siempre a la banda, a `target` m
+     * del centro (14 cm dentro de la línea) hacia el lado de la curva, desde donde golpees. Dirección de la curva
+     * (decisión del autor): hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado donde golpeas. Es un
+     * golpe de corte, no de potencia: menos sensible al timing que el topspin (timingGain), pero su riesgo es el
+     * ÁNGULO: pronto, el ángulo se abre como un cruce (§4.5) y sale por la banda (≳ −55 ms; cruzado, antes); además
+     * pasa con poco margen sobre la red (−clearancePenalty·p y el del cruce a tope).
      */
-    slice: { sideMin: 100, sideMax: 350, backspin: 80, angle: 0.55, edgeMargin: 0.08, clearancePenalty: 0.02, paceCap: 10 },
+    slice: { timingGain: 0.3, sideMin: 100, sideMax: 350, backspin: 80, target: 0.62, clearancePenalty: 0.02, paceCap: 10 },
     /**
      * Techo de ritmo de los golpes de margen (normal, topspin, slice): velocidad horizontal equivalente sin drag
      * (m/s de simulación) que el golpe no supera aunque el margen pedido lo permitiera. Desde una bola baja no
@@ -282,6 +282,8 @@ export const DEFAULT_CONFIG = {
      * Pronto = más corto y empinado (red); tarde = más alto y lento. Ningún error da más velocidad que PERFECT.
      */
     smash: {
+      /** Sensibilidad al timing del golpe de ataque (pronto: más corto y empinado → red). */
+      timingGain: 0.6,
       minAboveTape: 0.15,
       lowDepthPerM: 10,
       paceMin: 10.5,

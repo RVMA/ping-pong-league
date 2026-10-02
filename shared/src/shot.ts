@@ -135,15 +135,14 @@ function crossSwing(swingVx: number, cfg: GameConfig): number {
 }
 
 /**
- * Puntería separada en dos partes: `base` (sale de dónde golpeas) y `aim` (sale del gesto y, en el slice, de su
- * ángulo extra `extra`), con la suma limitada al interior de la mesa (a `edgeMargin` de la banda; el slice llega
- * más cerca).
+ * Puntería separada en dos partes: `base` (sale de dónde golpeas) y `aim` (sale del gesto), con la suma
+ * limitada al interior de la mesa (a `edgeMargin` de la banda).
  */
-export function aimComponents(contactLateral: number, swingVx: number, cfg: GameConfig, edgeMargin = cfg.shot.aimEdgeMargin, extra = 0): { base: number; aim: number } {
+export function aimComponents(contactLateral: number, swingVx: number, cfg: GameConfig, edgeMargin = cfg.shot.aimEdgeMargin): { base: number; aim: number } {
   const s = cfg.shot;
   const maxX = cfg.world.tableWidth / 2 - edgeMargin;
   const base = Math.max(-maxX, Math.min(maxX, contactLateral * s.aimBaseFromContact));
-  const total = Math.max(-maxX, Math.min(maxX, base + crossSwing(swingVx, cfg) * s.aimSwingGain + extra));
+  const total = Math.max(-maxX, Math.min(maxX, base + crossSwing(swingVx, cfg) * s.aimSwingGain));
   return { base, aim: total - base };
 }
 
@@ -166,7 +165,7 @@ export function timingErrorFraction(dtMs: number, cfg: GameConfig): number {
 
 /**
  * Riesgo de ángulo: pronto te pasas (el gesto abre más) y tarde no llegas a cruzar (abre menos).
- * Dentro de la ventana PERFECT no cambia nada. `gain` > 1 con potencia (más sensibilidad al timing).
+ * Dentro de la ventana PERFECT no cambia nada. `gain` > 1 en los golpes de ataque (más sensibilidad al timing).
  */
 export function angleRisk(aim: number, dtMs: number, cfg: GameConfig, gain = 1): number {
   const f = timingErrorFraction(dtMs, cfg) * gain;
@@ -242,12 +241,13 @@ export function planShot(
   const p = strokePower(type, evalr.tier, stroke.aimFactor ?? 1, cfg);
   const st = cfg.shotTypes;
   // Riesgo de los golpes de ataque: no depende de la potencia (un golpe de ataque débil es flojo y más arriesgado).
-  const sens = type === 'NORMAL' ? 1 : 1 + st.attackTimingGain;
+  const gain = type === 'TOPSPIN' ? st.topspin.timingGain : type === 'SLICE' ? st.slice.timingGain : type === 'SMASH' ? st.smash.timingGain : 0;
+  const sens = 1 + gain;
 
-  // ——— Dirección: base + gesto (+ ángulo del slice) (+ riesgo de ángulo) + borde ———
-  const edgeMargin = type === 'SLICE' ? st.slice.edgeMargin : cfg.shot.aimEdgeMargin;
+  // ——— Dirección: base + gesto (el slice: a la banda del lado de su curva) (+ riesgo de ángulo) + borde ———
   const sliceDir = sliceDirection(contactLateral, stroke.swing.vx, cfg);
-  const { base, aim: cleanAim } = aimComponents(contactLateral, stroke.swing.vx, cfg, edgeMargin, type === 'SLICE' ? sliceDir * st.slice.angle : 0);
+  const { base, aim: crossAim } = aimComponents(contactLateral, stroke.swing.vx, cfg);
+  const cleanAim = type === 'SLICE' ? sliceDir * st.slice.target - base : crossAim;
   const aim = angleRisk(cleanAim, dt, cfg, sens);
   const lateralParts: ShotParts['lateral'] = { base, aim: cleanAim, angleRisk: aim - cleanAim, edge };
   const lateral = base + aim + edge;
@@ -260,7 +260,7 @@ export function planShot(
 
   const cp: ShotParts['clearance'] = {};
   const dp: ShotParts['depth'] = {};
-  const maxX = cfg.world.tableWidth / 2 - edgeMargin;
+  const maxX = cfg.world.tableWidth / 2 - cfg.shot.aimEdgeMargin;
   let landing: { x: number; z: number };
 
   const gEff = (v: number) => cfg.ball.gravity + cfg.spin.magnusK * spinRel.top * v;

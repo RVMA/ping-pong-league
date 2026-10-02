@@ -12,7 +12,8 @@ const d0 = (process.argv[2] ?? 'medium') as BotDifficulty;
 const d1 = (process.argv[3] ?? 'medium') as BotDifficulty;
 const games = Number(process.argv[4] ?? 4);
 const seed0 = Number(process.argv[5] ?? 1);
-const cfg = makeConfig();
+// PPP_CFG='{"shotTypes":{...}}' sobrescribe valores de la config para probar ajustes sin editar config.ts.
+const cfg = makeConfig(process.env.PPP_CFG ? JSON.parse(process.env.PPP_CFG) : {});
 
 interface Acc {
   n: number;
