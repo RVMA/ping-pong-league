@@ -27,7 +27,6 @@ export type ClearancePart =
   | 'slice'
   | 'angle'
   | 'smashLow'
-  | 'blockPace'
   | 'blockSpin'
   | 'paceCap'
   | 'floor';
@@ -534,15 +533,64 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
   };
 }
 
-/** Bloqueo [§8] (provisional hasta el hito del bloqueo: golpe normal sin gesto). */
+/**
+ * Bloqueo [§8]: sin gesto ni potencia propia. Objetivo de ritmo con la energía de la bola entrante (el margen
+ * sale de la geometría), bola recta, y el spin entrante: un PERFECT lo devuelve en parte invertido; si no, el
+ * topspin la levanta (larga) y el backspin la hunde (red).
+ */
 function planBlock(
   evalr: HitEvaluation,
   contact: Vec3,
   side: Side,
   cfg: GameConfig,
-  _incoming: ShotOptions['incoming'],
-  _aboveTape: number,
-  _edge: number,
+  incoming: ShotOptions['incoming'],
+  aboveTape: number,
+  edge: number,
 ): ShotTargets {
-  return planShot(evalr, contact, { swing: { vx: 0, vy: 0 } }, side, cfg, false);
+  const bc = cfg.block;
+  const sgn = sideSign(side);
+  const half = cfg.world.tableLength / 2;
+  const tier = evalr.tier === 'PERFECT' ? 'PERFECT' : evalr.tier === 'GOOD' ? 'GOOD' : 'WEAK';
+  const vin = incoming ? Math.sqrt(incoming.vel.x * incoming.vel.x + incoming.vel.z * incoming.vel.z) : 0;
+  // Spin de la bola que llega, relativo a SU dirección de vuelo (top > 0 = topspin del rival).
+  const inRel = incoming ? relativeSpin(incoming.spin, incoming.vel) : { top: 0, side: 0 };
+  const c0 = interpolatePaceCurve(bc.timingCurve, 0);
+  const c = interpolatePaceCurve(bc.timingCurve, evalr.dtMs);
+  const pace0 = Math.max(bc.minPace, vin * bc.paceByTier[tier]);
+  const pace = pace0 * c.pace;
+
+  const { base } = aimComponents(contact.x * sgn, 0, cfg);
+  const lateral = base + edge;
+  const invert = tier === 'PERFECT' ? bc.spinInvert : 0;
+  const spinRel: RelSpin = { top: -invert * inRel.top, side: -invert * inRel.side };
+  const gEff = (v: number) => cfg.ball.gravity + cfg.spin.magnusK * spinRel.top * v;
+  const at = (depth: number) => ({ x: lateral * sgn, z: -sgn * Math.max(0.1, depth) * half });
+
+  const dp: ShotParts['depth'] = { base: c0.depth, timing: c.depth - c0.depth };
+  const spinLong = bc.spinLongByTier[tier] * inRel.top;
+  if (spinLong !== 0) dp.blockSpin = spinLong;
+  const landing = at(sumParts(dp));
+  const cp: ShotParts['clearance'] = {};
+  cp.base = paceClearance(contact, at(c0.depth), pace0, gEff(pace0), cfg);
+  const noSpin = paceClearance(contact, at(c0.depth + c.depth - c0.depth), pace, gEff(pace), cfg) + c.clearance;
+  cp.timing = noSpin - cp.base;
+  const withSpin = paceClearance(contact, landing, pace, gEff(pace), cfg) + c.clearance + bc.spinLiftByTier[tier] * inRel.top;
+  if (withSpin !== noSpin) cp.blockSpin = withSpin - noSpin;
+
+  const dirX = landing.x - contact.x;
+  const dirZ = landing.z - contact.z;
+  const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
+  applyFloor(cp, contact, landing, spinRel, cfg);
+  return {
+    landing,
+    clearance: sumParts(cp),
+    serve: false,
+    aim: 0,
+    type: 'BLOCK',
+    power: 0,
+    spinRel,
+    spin: worldSpin(spinRel, dirX / dirLen, dirZ / dirLen),
+    aboveTape,
+    parts: { clearance: cp, depth: dp, lateral: { base, edge } },
+  };
 }

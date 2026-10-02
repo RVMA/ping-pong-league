@@ -311,7 +311,8 @@ export class Simulation {
       tx = xs * sgn;
       tz = z * sgn;
     }
-    stepPaddle(pad, tx, tz, dtReal, pc);
+    // Bloqueo mantenido: la raqueta va más despacio [§8].
+    stepPaddle(pad, tx, tz, dtReal, pc, intent.block ? this.cfg.block.paddleSpeedFactor : 1);
   }
 
   private attachBallToServer(): void {

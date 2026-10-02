@@ -299,6 +299,40 @@ export const DEFAULT_CONFIG = {
     maxPace: 20,
   },
 
+  /**
+   * Bloqueo [§8] 🟡: click con Space mantenido (el click da el instante, como en cualquier golpe: misma medición
+   * de timing y posición, §4.2; el evento de red de §17.2 ya lleva `block`). Sin gesto ni tipo de golpe: la
+   * bola sale recta y sin potencia propia.
+   *  - Mientras se mantiene Space, la raqueta va al paddleSpeedFactor de su velocidad máxima.
+   *  - Devuelve con la energía de la bola entrante: objetivo de RITMO = paceByTier × velocidad horizontal de
+   *    llegada (un PERFECT "reduce la velocidad recibida"); el margen sale de la geometría, como en el smash.
+   *    Contra una bola lenta devuelve una bola alta y fácil; contra un smash, una bola rápida y baja.
+   *  - Spin: un PERFECT devuelve invertido spinInvert del spin entrante (el topspin vuelve como backspin).
+   *    GOOD y débil no lo absorben: el topspin entrante levanta la bola (spinLift m de margen y spinLong de
+   *    profundidad por rad/s → larga) y el backspin la hunde (→ red).
+   *  - Curva de timing: margen extra (≥ 0), profundidad y factor de ritmo: pronto = más corta (red), tarde =
+   *    más alta y lenta.
+   * Momentum del bloqueo PERFECT (+5 %): solo como valor en momentum.perfectBlock (V0.5).
+   */
+  block: {
+    paddleSpeedFactor: 0.5,
+    paceByTier: { PERFECT: 0.85, GOOD: 0.95, WEAK: 1.0 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+    /** Ritmo mínimo de la devolución (m/s de simulación), para bolas casi paradas. */
+    minPace: 3,
+    spinInvert: 0.5,
+    spinLiftByTier: { PERFECT: 0, GOOD: 0.00012, WEAK: 0.00025 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+    spinLongByTier: { PERFECT: 0, GOOD: 0.0002, WEAK: 0.0004 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+    timingCurve: [
+      { dt: -120, clearance: 0, depth: 0.3, pace: 1 },
+      { dt: -60, clearance: 0, depth: 0.55, pace: 1 },
+      { dt: -25, clearance: 0, depth: 0.7, pace: 1 },
+      { dt: 0, clearance: 0, depth: 0.72, pace: 1 },
+      { dt: 25, clearance: 0, depth: 0.7, pace: 0.97 },
+      { dt: 60, clearance: 0.03, depth: 0.66, pace: 0.85 },
+      { dt: 120, clearance: 0.08, depth: 0.6, pace: 0.7 },
+    ] as PaceCurvePoint[],
+  },
+
   /** Saque normal simplificado [§9.1] 🟡. */
   serve: {
     /** La bola se lanza sola al cabo de ~1 s o con el primer click. */
