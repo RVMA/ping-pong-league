@@ -6,15 +6,20 @@
 import {
   Bot,
   type BotDifficulty,
+  diagnose,
   type GameConfig,
   type HitEvaluation,
   makeConfig,
   type PathSample,
   predictPath,
+  relativeSpin,
+  type ShotTargets,
+  type ShotType,
   type Side,
   Simulation,
   type SimEvent,
   sideSign,
+  spinKind,
   type BallContact,
 } from '@ppp/shared';
 import { AudioManager } from '../audio/audio.ts';
@@ -23,9 +28,9 @@ import { MouseTranslator } from '../input/mouse.ts';
 import { type PaddleFrame, type RenderFrame, World } from '../render/world.ts';
 import { type FeedbackKind, Hud } from '../ui/hud.ts';
 import { PrecisionStats } from '../ui/precision-stats.ts';
-import { type LastHumanHit, pointText } from '../ui/texts.ts';
+import { pointText, SHOT_LABEL } from '../ui/texts.ts';
 import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration.ts';
-import type { Settings } from './settings.ts';
+import { loadExplain, saveExplain, type Settings } from './settings.ts';
 
 const CHARACTERS: [CharacterId, CharacterId] = ['power', 'defender'];
 const HUMAN: Side = 0;
@@ -34,6 +39,21 @@ const BOT: Side = 1;
 interface Snapshot {
   ball: { x: number; y: number; z: number };
   paddles: [{ x: number; z: number }, { x: number; z: number }];
+}
+
+/** Último golpe del humano en el punto (para "¿por qué fallé?"). */
+interface LastHumanHit {
+  targets: ShotTargets;
+  evaluation: HitEvaluation;
+  contactHeight: number;
+}
+
+/** Último click del humano (panel D). */
+interface LastSwing {
+  shot: ShotType;
+  power: number;
+  raw: { vx: number; vy: number };
+  aimFactor: number;
 }
 
 interface PaddleFx {
@@ -70,8 +90,15 @@ export class Game {
   private lastHumanHit: LastHumanHit | null = null;
   private lastHumanEval: HitEvaluation | null = null;
   private lastHumanAim: number | null = null;
+  private lastHumanWhiff: HitEvaluation | null = null;
+  private lastSwing: LastSwing | null = null;
+  private lastHumanShot: ShotTargets | null = null;
+  /** Último golpe del bot en el punto: contexto de "no la devolviste" y panel D. */
+  private lastBotShot: ShotType | null = null;
   private readonly precision = new PrecisionStats(20);
   private humanWhiffedThisRally = false;
+  /** "¿Por qué fallé?" activado [§2.2: desactivable]. */
+  private explain: boolean;
   private calibration: Calibration | null = null;
   /** Desfase de latencia calibrado (ms) o null si este jugador no ha calibrado. */
   private latencyOffset: number | null = null;
@@ -107,6 +134,8 @@ export class Game {
     });
     window.addEventListener('blur', () => this.running && !this.paused && this.pause());
 
+    this.explain = settings.explain ?? loadExplain() ?? this.cfg.presentation.explainErrors;
+
     const stored = settings.latencyOffset ?? loadLatencyOffset();
     const { latencyOffsetMin, latencyOffsetMax } = this.cfg.input;
     this.latencyOffset = stored === null ? null : Math.max(latencyOffsetMin, Math.min(latencyOffsetMax, stored));
@@ -121,10 +150,20 @@ export class Game {
   private showMenu(): void {
     this.running = false;
     this.hud.setHint('');
-    this.hud.showStart(this.difficulty, this.labels(), (d) => this.start(d), {
-      offsetMs: this.latencyOffset,
-      onCalibrate: () => this.startCalibration(),
-    });
+    this.input.captureKeys = false;
+    this.hud.showStart(
+      this.difficulty,
+      this.labels(),
+      (d) => this.start(d),
+      { offsetMs: this.latencyOffset, onCalibrate: () => this.startCalibration() },
+      {
+        on: this.explain,
+        onToggle: (on) => {
+          this.explain = on;
+          saveExplain(on);
+        },
+      },
+    );
   }
 
   // ——— Calibración de latencia (P7) ———
@@ -198,17 +237,20 @@ export class Game {
     this.input.clearFires();
     this.running = true;
     this.paused = false;
+    this.input.captureKeys = true;
     this.clock.epoch = performance.now() - this.sim.now;
     this.onServeReady(this.sim.state.server);
   }
 
   private pause(): void {
     this.paused = true;
+    this.input.captureKeys = false;
     this.hud.showPause(() => this.resume());
   }
 
   private resume(): void {
     this.paused = false;
+    this.input.captureKeys = true;
     this.hud.hideOverlay();
     this.input.clearFires();
     this.clock.epoch = performance.now() - this.sim.now;
@@ -293,6 +335,7 @@ export class Game {
         if (e.player === HUMAN) {
           this.lastHumanEval = e.evaluation;
           this.lastHumanAim = e.aimFactor;
+          this.lastSwing = { shot: e.shot, power: e.power, raw: e.rawSwing, aimFactor: e.aimFactor };
           this.precision.add({ evaluation: e.evaluation, aimFactor: e.aimFactor });
         }
         break;
@@ -304,6 +347,7 @@ export class Game {
         if (e.player === HUMAN) {
           this.lastHumanEval = e.evaluation;
           this.lastHumanAim = null;
+          this.lastHumanWhiff = e.evaluation;
           if (e.evaluation) this.precision.add({ evaluation: e.evaluation, aimFactor: null });
           this.humanWhiffedThisRally = true;
         }
@@ -325,7 +369,11 @@ export class Game {
       case 'point': {
         const mine = e.winner === HUMAN;
         this.audio.play(mine ? 'point_win' : 'point_lose', { volume: 0.7 });
-        const text = pointText(e.winner, e.reason, this.lastHumanHit, this.cfg.shot.lowContactRefHeight, this.humanWhiffedThisRally);
+        const why =
+          !mine && this.explain
+            ? diagnose({ reason: e.reason, lastHit: this.lastHumanHit, whiff: this.lastHumanWhiff, whiffed: this.humanWhiffedThisRally }, this.cfg)
+            : null;
+        const text = pointText({ winner: e.winner, reason: e.reason, why, rivalShot: this.lastBotShot, smashMinAboveTape: this.cfg.shotTypes.smash.minAboveTape });
         this.hud.showToast(text, mine ? 'win' : 'lose', this.cfg.rules.pointDelayMs);
         this.hud.setScore(e.score, this.sim.state.server);
         this.bounceMarker = null;
@@ -343,6 +391,8 @@ export class Game {
 
   private onServeReady(server: Side): void {
     this.lastHumanHit = null;
+    this.lastHumanWhiff = null;
+    this.lastBotShot = null;
     this.humanWhiffedThisRally = false;
     this.hud.setHint(
       server === HUMAN ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : 'Saca el bot. Coloca la raqueta donde vaya a llegar la bola.',
@@ -359,31 +409,40 @@ export class Game {
     const volume = own ? 1 : 0.6;
     const reduce = this.cfg.presentation.reduceShakeAndFlash;
 
+    // Tipo de golpe: sonido propio (también el del rival: se oye qué viene) y etiqueta solo en los golpes propios
+    // (el del rival hay que leerlo en la bola: criterio de V0.2).
+    const type = e.serve ? 'NORMAL' : e.targets.type;
+    if (type !== 'NORMAL') this.audio.play(`hit_${type.toLowerCase()}` as 'hit_topspin', { volume: volume * 0.8, pan });
+    const sub = own && type !== 'NORMAL' ? SHOT_LABEL[type] : undefined;
+
     if (e.tier === 'PERFECT') {
       const level = Math.min(e.streak, 4);
       this.audio.play('hit_perfect', { volume, pan });
       this.audio.play(`streak_${level}` as 'streak_1', { volume: own ? 0.9 : 0.5, pan });
-      this.message(e.player, fb.streakTexts[level - 1], `perfect-${level}` as FeedbackKind);
+      this.message(e.player, fb.streakTexts[level - 1], `perfect-${level}` as FeedbackKind, sub);
       if (!reduce) {
         fx.flash = 1;
         if (own) this.shake = { amp: this.cfg.presentation.shakeOnPerfect * (0.7 + 0.1 * level), until: performance.now() + this.cfg.presentation.shakeMs };
       }
     } else if (e.tier === 'GOOD') {
       this.audio.play('hit_good', { volume, pan });
-      this.message(e.player, fb.goodText, 'good');
+      this.message(e.player, fb.goodText, 'good', sub);
     } else {
       this.audio.play('hit_normal', { volume, pan });
       const labels: string[] = [];
       if (e.evaluation.causes.includes('EARLY')) labels.push(fb.earlyText);
       if (e.evaluation.causes.includes('LATE')) labels.push(fb.lateText);
       if (e.evaluation.causes.includes('EDGE')) labels.push(fb.edgeText);
-      this.message(e.player, labels.join(' + ') || fb.goodText, 'label');
+      this.message(e.player, labels.join(' + ') || fb.goodText, 'label', sub);
     }
 
     if (e.serve || this.sim.state.rally.hits <= 2) this.hud.setHint('');
     if (own) {
-      this.lastHumanHit = { evaluation: e.evaluation, contactHeight: e.pos.y - this.cfg.world.tableHeight, aim: e.targets.aim };
+      this.lastHumanHit = { targets: e.targets, evaluation: e.evaluation, contactHeight: e.pos.y - this.cfg.world.tableHeight };
+      this.lastHumanShot = e.targets;
       this.bounceMarker = null;
+    } else {
+      this.lastBotShot = e.serve ? null : e.targets.type;
     }
     this.refreshPrediction();
     if (!own && this.cfg.presentation.bounceMarker) this.placeBounceMarker(e.serve);
@@ -408,7 +467,9 @@ export class Game {
         perfectPct: st.hits ? (100 * st.perfect) / st.hits : 0,
         maxStreak: st.maxStreak,
         netErrors: st.netErrors,
+        outErrors: st.outErrors,
         hits: st.hits,
+        shots: (['TOPSPIN', 'SLICE', 'SMASH', 'BLOCK'] as ShotType[]).map((t) => `${SHOT_LABEL[t]} ${st.types[t]}`).join(' · '),
       },
       this.difficulty,
       this.labels(),
@@ -416,13 +477,15 @@ export class Game {
     );
   }
 
-  private message(player: Side, text: string, kind: FeedbackKind): void {
+  private message(player: Side, text: string, kind: FeedbackKind, sub?: string): void {
     const pad = this.sim.state.paddles[player].pos;
     const own = player === HUMAN;
     // Junto a la raqueta, a su lado exterior: nunca en el centro de la pantalla [§5.2].
     const p = this.world.project(pad.x + (own ? 0.24 : -0.2) * sideSign(player), this.fx[player].height + 0.16, pad.z);
     const scale = own ? 1 : this.cfg.feedback.opponentScale;
-    this.hud.feedback(text, kind, p.x, p.y, scale, kind.startsWith('perfect-4') ? this.cfg.feedback.messageMs * 1.4 : this.cfg.feedback.messageMs);
+    const dur = kind.startsWith('perfect-4') ? this.cfg.feedback.messageMs * 1.4 : this.cfg.feedback.messageMs;
+    // Con la etiqueta del tipo de golpe el mensaje dura algo más para poder leerla.
+    this.hud.feedback(text, kind, p.x, p.y, scale, sub ? dur * 1.5 : dur, sub);
   }
 
   private pan(player: Side): number {
@@ -514,13 +577,17 @@ export class Game {
       shake = { x: Math.sin(pnow * 0.09) * a, y: Math.cos(pnow * 0.11) * a };
     }
 
+    const inPlay = s.phase === 'rally' || s.phase === 'serveToss' || s.phase === 'pointOver';
     const frame: RenderFrame = {
       ball: {
         x: lerp(this.prev.ball.x, this.curr.ball.x),
         y: lerp(this.prev.ball.y, this.curr.ball.y),
         z: lerp(this.prev.ball.z, this.curr.ball.z),
         visible: s.phase !== 'gameOver' && !(s.phase === 'pointOver' && this.sim.now - s.phaseStartMs > this.cfg.rules.pointDelayMs * 0.75),
+        spin: s.ball.spin,
+        trail: inPlay ? this.trailStyle() : null,
       },
+      dt,
       paddles: paddles as [PaddleFrame, PaddleFrame],
       target,
       bounceMarker: this.bounceMarker,
@@ -530,16 +597,42 @@ export class Game {
     if (this.hud.debugVisible) this.updateDebug();
   }
 
+  /** Trail de la bola: color por tipo de efecto (spin relativo a su vuelo) e intensidad [§2.2]. */
+  private trailStyle(): { color: string; alpha: number } | null {
+    const b = this.sim.state.ball;
+    const p = this.cfg.presentation;
+    const rel = relativeSpin(b.spin, b.vel);
+    const kind = spinKind(rel, p.trailMinSpin);
+    if (kind === 'none') {
+      // Sin efecto: solo se marca una bola muy rápida (el smash), en blanco.
+      const real = Math.hypot(b.vel.x, b.vel.z) * this.cfg.sim.gameSpeed;
+      return { color: p.trailColors.none, alpha: Math.max(0, Math.min(0.55, (real - 6.5) / 6)) };
+    }
+    const mag = Math.max(Math.abs(rel.top), Math.abs(rel.side));
+    return { color: p.trailColors[kind], alpha: Math.max(0.35, Math.min(0.9, 0.25 + mag / 450)) };
+  }
+
   private updateDebug(): void {
     const e = this.lastHumanEval;
     const aim = this.lastHumanAim;
     const fmt = (n: number) => (n > 0 ? `+${n.toFixed(0)}` : n.toFixed(0));
-    const aimText = aim === null ? '—' : aim >= 0.99 ? 'activa (colocado)' : aim <= 0.01 ? 'recta (persiguiendo)' : `${Math.round(aim * 100)} %`;
+    const sw = this.lastSwing;
+    const aimText =
+      aim === null ? '—' : sw?.shot === 'BLOCK' ? 'recta (bloqueo)' : aim >= 0.99 ? 'activa (colocado)' : aim <= 0.01 ? 'recta (persiguiendo)' : `${Math.round(aim * 100)} %`;
+    const shot = this.lastHumanShot;
+    const shotText = sw ? `${SHOT_LABEL[sw.shot]}${sw.power > 0 ? ` · potencia ${Math.round(sw.power * 100)} %` : ''}` : '—';
+    const spinText = shot ? `top ${Math.round(shot.spinRel.top)} · lateral ${Math.round(shot.spinRel.side)} rad/s` : '—';
+    const gestureText = sw ? `vx ${sw.raw.vx.toFixed(1)} · vy ${sw.raw.vy.toFixed(1)} alt/s` : '—';
     this.hud.setDebug([
       ['Último golpe', e ? (e.tier === 'WHIFF' ? 'fallo (fuera de ventana)' : e.tier) : '—'],
       ['Timing', e ? `${fmt(e.dtMs)} ms (${e.timingTier})` : '—'],
       ['Posición', e ? `${Math.round(e.posFrac * 100)} % (${e.positionTier})` : '—'],
       ['Puntería', aimText],
+      ['Tipo', shotText],
+      ['Gesto', gestureText],
+      ['Spin de salida', spinText],
+      ['Bloqueo (Espacio)', this.input.blocking ? 'mantenido' : '—'],
+      ['Bot: último golpe', this.lastBotShot ? SHOT_LABEL[this.lastBotShot] : '—'],
       ['Calibración', this.latencyOffset === null ? 'sin calibrar' : `${this.latencyOffset > 0 ? '+' : ''}${this.latencyOffset} ms`],
       ...this.precision.rows(),
       ['gameSpeed', String(this.cfg.sim.gameSpeed)],
@@ -559,6 +652,10 @@ export class Game {
       now: this.sim.now,
       ball: { ...s.ball.pos },
       vel: { ...s.ball.vel },
+      spin: { ...s.ball.spin },
+      lastSwing: this.lastSwing,
+      lastBotShot: this.lastBotShot,
+      explain: this.explain,
       paddles: s.paddles.map((p) => ({ ...p.pos })),
       rally: { ...s.rally, bounces: [...s.rally.bounces] },
       stats: s.stats.map((x) => ({ ...x })),

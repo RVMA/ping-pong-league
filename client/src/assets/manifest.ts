@@ -62,6 +62,11 @@ export const SFX_NAMES = [
   'hit_normal',
   'hit_good',
   'hit_perfect',
+  // V0.2: un sonido por tipo de golpe (se suma al de la calidad), para distinguirlos también de oído.
+  'hit_topspin',
+  'hit_slice',
+  'hit_smash',
+  'hit_block',
   'streak_1',
   'streak_2',
   'streak_3',

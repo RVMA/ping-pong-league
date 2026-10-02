@@ -477,6 +477,23 @@ export const DEFAULT_CONFIG = {
     bounceMarker: true,
     /** Altura del plano sobre el que se proyecta el cursor (relativa a la mesa). */
     cursorPlaneHeight: 0.1,
+    /**
+     * Spin visible [§2.2]: el logo y la costura giran con el spin REAL de la bola (eje y sentido) escalado por
+     * este factor. Sin escalar, 380 rad/s de simulación (~45 rev/s reales) se verían estroboscópicos a 60 fps;
+     * con 0.05 el topspin máximo gira a ~2 rev/s y el que deja un bote, despacio.
+     */
+    spinVisualScale: 0.05,
+    /** Trail por tipo de efecto [§2.2]: frames que dura y spin relativo mínimo (rad/s) para colorearlo. */
+    trailFrames: 12,
+    trailMinSpin: 60,
+    /**
+     * Colores del trail: topspin (naranja), backspin (cian), lateral (magenta) y sin efecto (blanco, solo si la
+     * bola va rápida: el smash). Elegidos para destacar sobre la mesa azul; el giro del logo (eje) y la etiqueta
+     * del golpe propio dan la misma información sin color (§19).
+     */
+    trailColors: { top: '#ff7a1a', back: '#6ad8ff', side: '#ff4fd8', none: '#ffffff' },
+    /** "¿Por qué fallé?" al perder un punto por error propio [§2.2] (desactivable en el menú). */
+    explainErrors: true,
   },
 };
 

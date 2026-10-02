@@ -1,6 +1,7 @@
 /**
- * Escena 3D: pabellón, mesa, red, bola con sombra vertical, raquetas, marcador del cursor
- * y marcador de bote. Solo presentación: no decide nada del juego.
+ * Escena 3D: pabellón, mesa, red, bola con sombra vertical, spin visible (logo y costura que giran con el spin
+ * real y trail de color por tipo de efecto), raquetas, marcador del cursor y marcador de bote.
+ * Solo presentación: no decide nada del juego.
  */
 import type { GameConfig, Side } from '@ppp/shared';
 import { sideSign } from '@ppp/shared';
@@ -29,7 +30,18 @@ export interface PaddleFrame {
 }
 
 export interface RenderFrame {
-  ball: { x: number; y: number; z: number; visible: boolean };
+  ball: {
+    x: number;
+    y: number;
+    z: number;
+    visible: boolean;
+    /** Spin del mundo (rad/s de simulación); la bola gira con él, escalado para que se lea. */
+    spin?: { x: number; y: number; z: number };
+    /** Trail del frame: color por tipo de efecto e intensidad (0 = sin trail). */
+    trail?: { color: string; alpha: number } | null;
+  };
+  /** Segundos reales desde el frame anterior (para integrar el giro de la bola). */
+  dt?: number;
   paddles: [PaddleFrame, PaddleFrame];
   target: { x: number; z: number } | null;
   bounceMarker: { x: number; z: number; alpha: number } | null;
@@ -111,6 +123,114 @@ function radialTexture(inner: string, outer: string): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
+/**
+ * Textura de la bola: una costura (círculo máximo que pasa por los polos) y dos "logos" en el ecuador. Con
+ * eso se ve el giro sea cual sea el eje: topspin, backspin o lateral.
+ */
+function ballTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#fff6e8';
+  g.fillRect(0, 0, 256, 128);
+  g.fillStyle = '#ff8a1f';
+  g.fillRect(58, 0, 12, 128);
+  g.fillRect(186, 0, 12, 128);
+  g.fillStyle = '#22252e';
+  g.beginPath();
+  g.ellipse(128, 64, 18, 20, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#e4572e';
+  g.beginPath();
+  g.ellipse(0, 64, 10, 12, 0, 0, Math.PI * 2);
+  g.ellipse(256, 64, 10, 12, 0, 0, Math.PI * 2);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Trail de la bola: cinta orientada a la cámara que se estrecha y se desvanece hacia atrás. */
+class Trail {
+  readonly mesh: THREE.Mesh;
+  private readonly pts: THREE.Vector3[] = [];
+  private readonly pos: Float32Array;
+  private readonly col: Float32Array;
+  private readonly geo = new THREE.BufferGeometry();
+  private readonly max: number;
+  private readonly width: number;
+  private readonly tmp = { dir: new THREE.Vector3(), view: new THREE.Vector3(), side: new THREE.Vector3(), color: new THREE.Color() };
+
+  constructor(max: number, width: number) {
+    this.max = max;
+    this.width = width;
+    this.pos = new Float32Array(max * 2 * 3);
+    this.col = new Float32Array(max * 2 * 4);
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    this.geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4));
+    const idx: number[] = [];
+    for (let i = 0; i + 1 < max; i++) {
+      const a = i * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    this.geo.setIndex(idx);
+    this.mesh = new THREE.Mesh(
+      this.geo,
+      new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+  }
+
+  clear(): void {
+    this.pts.length = 0;
+    this.mesh.visible = false;
+  }
+
+  update(p: THREE.Vector3, camera: THREE.Camera, color: string, alpha: number): void {
+    const last = this.pts[this.pts.length - 1];
+    // Un salto grande (saque nuevo, bola recolocada) no es una trayectoria.
+    if (last && last.distanceTo(p) > 0.6) this.pts.length = 0;
+    this.pts.push(p.clone());
+    if (this.pts.length > this.max) this.pts.shift();
+    const n = this.pts.length;
+    if (n < 2 || alpha <= 0.01) {
+      this.mesh.visible = false;
+      return;
+    }
+    const { dir, view, side } = this.tmp;
+    const c = this.tmp.color.set(color);
+    for (let i = 0; i < this.max; i++) {
+      const k = Math.min(i, n - 1);
+      const q = this.pts[k];
+      const prev = this.pts[Math.max(0, k - 1)];
+      const next = this.pts[Math.min(n - 1, k + 1)];
+      dir.subVectors(next, prev).normalize();
+      view.subVectors(q, camera.position).normalize();
+      side.crossVectors(dir, view).normalize();
+      const f = n > 1 ? k / (n - 1) : 1;
+      const w = this.width * (0.15 + 0.85 * f);
+      const a = i < n ? alpha * f * f : 0;
+      for (let s = 0; s < 2; s++) {
+        const sign = s === 0 ? 1 : -1;
+        const o = (i * 2 + s) * 3;
+        this.pos[o] = q.x + side.x * w * sign;
+        this.pos[o + 1] = q.y + side.y * w * sign;
+        this.pos[o + 2] = q.z + side.z * w * sign;
+        const oc = (i * 2 + s) * 4;
+        this.col[oc] = c.r;
+        this.col[oc + 1] = c.g;
+        this.col[oc + 2] = c.b;
+        this.col[oc + 3] = a;
+      }
+    }
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
+    this.mesh.visible = true;
+  }
+}
+
 function netTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 512;
@@ -142,6 +262,9 @@ export class World {
   readonly camera: THREE.PerspectiveCamera;
   private readonly cfg: GameConfig;
   private readonly ball: THREE.Mesh;
+  private readonly trail: Trail;
+  private readonly spinAxis = new THREE.Vector3();
+  private readonly spinStep = new THREE.Quaternion();
   private readonly shadow: THREE.Mesh;
   private readonly shadowMat: THREE.MeshBasicMaterial;
   private readonly paddles: [PaddleView, PaddleView];
@@ -189,9 +312,11 @@ export class World {
     const ballR = cfg.ball.radius * pres.ballVisualScale;
     this.ball = new THREE.Mesh(
       new THREE.SphereGeometry(ballR, 24, 16),
-      new THREE.MeshStandardMaterial({ color: COLORS.ball, roughness: 0.35, emissive: 0x2a2620 }),
+      new THREE.MeshStandardMaterial({ map: ballTexture(), color: 0xffffff, roughness: 0.35, emissive: 0x2a2620 }),
     );
     this.scene.add(this.ball);
+    this.trail = new Trail(pres.trailFrames, ballR * 0.9);
+    this.scene.add(this.trail.mesh);
     this.shadowMat = new THREE.MeshBasicMaterial({
       map: radialTexture('rgba(0,0,0,1)', 'rgba(0,0,0,0)'),
       transparent: true,
@@ -306,6 +431,18 @@ export class World {
     const { tableHeight: H, tableWidth: W, tableLength: L } = this.cfg.world;
     this.ball.visible = f.ball.visible;
     this.ball.position.set(f.ball.x, f.ball.y, f.ball.z);
+    // Spin visible: gira sobre el eje real del spin, a una fracción de su velocidad real.
+    const w = f.ball.spin;
+    if (w && f.dt) {
+      const rate = Math.hypot(w.x, w.y, w.z) * this.cfg.sim.gameSpeed * this.cfg.presentation.spinVisualScale;
+      if (rate > 1e-3) {
+        this.spinAxis.set(w.x, w.y, w.z).normalize();
+        this.spinStep.setFromAxisAngle(this.spinAxis, rate * f.dt);
+        this.ball.quaternion.premultiply(this.spinStep);
+      }
+    }
+    if (f.ball.visible && f.ball.trail) this.trail.update(this.ball.position, this.camera, f.ball.trail.color, f.ball.trail.alpha);
+    else this.trail.clear();
 
     // Sombra proyectada en vertical sobre la mesa o el suelo.
     const overTable = Math.abs(f.ball.x) <= W / 2 && Math.abs(f.ball.z) <= L / 2 && f.ball.y >= H;

@@ -13,7 +13,10 @@ export interface GameOverInfo {
   perfectPct: number;
   maxStreak: number;
   netErrors: number;
+  outErrors: number;
   hits: number;
+  /** "Topspin 5 · Slice 2 · …" */
+  shots: string;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -95,9 +98,13 @@ export class Hud {
     this.hint.textContent = text;
   }
 
-  /** Mensaje de golpe pequeño junto a la raqueta: sube y se desvanece [§5.2]. */
-  feedback(text: string, kind: FeedbackKind, x: number, y: number, scale = 1, durationMs = 400): void {
+  /**
+   * Mensaje de golpe pequeño junto a la raqueta: sube y se desvanece [§5.2]. `sub`: segunda línea más pequeña
+   * (el tipo de golpe propio: Topspin, Slice, Smash, Bloqueo).
+   */
+  feedback(text: string, kind: FeedbackKind, x: number, y: number, scale = 1, durationMs = 400, sub?: string): void {
     const node = el('div', `fb fb-${kind}`, text);
+    if (sub) node.append(el('span', 'fb-sub', sub));
     node.style.left = `${x}px`;
     node.style.top = `${y}px`;
     node.style.setProperty('--s', String(scale));
@@ -218,11 +225,26 @@ export class Hud {
     this.overlay.className = 'overlay show';
   }
 
+  /** Interruptor "¿Por qué fallé?" [§2.2: siempre, desactivable]. */
+  private explainToggle(on: boolean, onToggle: (on: boolean) => void): HTMLElement {
+    const wrap = el('div', 'latency');
+    const b = this.button(on ? 'Explicar mis errores: sí' : 'Explicar mis errores: no', false, () => {
+      const next = b.dataset.on !== '1';
+      b.dataset.on = next ? '1' : '0';
+      b.textContent = next ? 'Explicar mis errores: sí' : 'Explicar mis errores: no';
+      onToggle(next);
+    }, 'explain');
+    b.dataset.on = on ? '1' : '0';
+    wrap.append(el('p', 'latency-text', 'Al perder un punto por un error tuyo, una frase dice la causa (pronto, bola baja, ángulo, smash bajo…).'), b);
+    return wrap;
+  }
+
   showStart(
     current: BotDifficulty,
     labels: Record<BotDifficulty, string>,
     onPick: (d: BotDifficulty) => void,
     latency?: { offsetMs: number | null; onCalibrate: () => void },
+    explain?: { on: boolean; onToggle: (on: boolean) => void },
   ): void {
     const panel = el('div', 'panel');
     const logoUrl = assetUrl(UI_ASSETS.logo);
@@ -234,21 +256,22 @@ export class Hud {
     } else {
       panel.append(el('h1', '', 'Ping Pong PvP'));
     }
-    panel.append(el('p', 'lead', 'Un game a 11 contra el bot. Prototipo V0.1 para probar el tacto del golpe.'));
+    panel.append(el('p', 'lead', 'Un game a 11 contra el bot. Prototipo V0.2: tipos de golpe, spin y bloqueo.'));
     panel.append(el('h2', '', 'Elige rival'));
     panel.append(this.difficultyButtons(current, labels, onPick));
     if (latency) {
       panel.append(el('h2', '', 'Latencia'));
       panel.append(this.latencySection(latency.offsetMs, latency.onCalibrate));
     }
+    if (explain) panel.append(this.explainToggle(explain.on, explain.onToggle));
     const how = el('ul', 'how');
     for (const line of [
-      'Mueve el ratón: la raqueta te sigue con algo de inercia.',
-      'Haz click justo cuando la bola llega al centro de la raqueta. A tiempo y centrado es ¡Perfecto!',
+      'Mueve el ratón: la raqueta te sigue con algo de inercia. Click justo cuando la bola llega al centro: ¡Perfecto!',
       'Pronto: la bola sale baja y puede ir a la red. Tarde: sale alta y lenta.',
-      'Para sacar, click (o espera un segundo) y otro click cuando la bola baje.',
-      'Para cruzar la bola, colócate y mueve el ratón hacia un lado al golpear. Si llegas corriendo, sale recta.',
-      'D muestra los datos de precisión. Esc pausa.',
+      'Tipo de golpe: con la raqueta ya colocada, un gesto seco del ratón al hacer click. Si llegas corriendo, sale un golpe normal y recto.',
+      'Hacia arriba: topspin (más rápido y baja antes). Hacia un lado: cruzas; muy rápido: slice (curva). Hacia abajo con la bola alta: smash.',
+      'Bloqueo: mantén Espacio y haz click. Devuelve con la fuerza de la bola que llega; mientras lo mantienes, la raqueta va más lenta.',
+      'Para sacar, click (o espera un segundo) y otro click cuando la bola baje. D: datos de precisión. Esc: pausa.',
     ])
       how.append(el('li', '', line));
     panel.append(how);
@@ -280,7 +303,9 @@ export class Hud {
       ['Golpes PERFECT', `${Math.round(info.perfectPct)} %`],
       ['Racha máxima', String(info.maxStreak)],
       ['Bolas a la red', String(info.netErrors)],
+      ['Bolas fuera', String(info.outErrors)],
       ['Golpes', String(info.hits)],
+      ['Por tipo', info.shots],
     ]) {
       const d = el('div');
       d.append(el('dt', '', k), el('dd', '', v));

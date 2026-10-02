@@ -4,8 +4,10 @@
  *
  *  - target: el cursor proyectado sobre un plano horizontal a la altura de la mesa (coordenadas
  *    del jugador: x lateral, z profundidad desde la red).
- *  - swing: velocidad del cursor en los últimos ~150 ms, en alturas de pantalla por segundo.
+ *  - swing: velocidad del cursor en los últimos ~150 ms, en alturas de pantalla por segundo. Su dirección
+ *    y velocidad eligen el tipo de golpe y la potencia (V0.2, la clasificación vive en @ppp/shared).
  *  - fire: instante del click en ms de tiempo de juego (timestamp del propio evento, no del frame).
+ *  - block: Space mantenido (teclado; el ratón y Space forman el control de §3.3).
  */
 import { type InputIntent, neutralIntent, type Side, sideSign } from '@ppp/shared';
 import * as THREE from 'three';
@@ -42,6 +44,10 @@ export class MouseTranslator {
    * compensar el retardo de pantalla y de entrada. Positivo = sus clicks llegan tarde respecto a lo que ve.
    */
   latencyOffsetMs = 0;
+  /** Bloqueo: Space mantenido [§3.3, §8]. El click con Space mantenido es un bloqueo. */
+  private blockHeld = false;
+  /** Con la partida en marcha, Space no llega a la página (no hace scroll ni pulsa botones). */
+  captureKeys = false;
 
   constructor(el: HTMLElement, camera: THREE.Camera, planeY: number, clock: InputClock, side: Side = 0) {
     this.el = el;
@@ -52,12 +58,33 @@ export class MouseTranslator {
     window.addEventListener('pointermove', this.onMove, { passive: true });
     el.addEventListener('pointerdown', this.onDown);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('keydown', this.onKey);
+    window.addEventListener('keyup', this.onKey);
+    window.addEventListener('blur', this.onBlur);
   }
 
   dispose(): void {
     window.removeEventListener('pointermove', this.onMove);
     this.el.removeEventListener('pointerdown', this.onDown);
+    window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('keyup', this.onKey);
+    window.removeEventListener('blur', this.onBlur);
   }
+
+  /** ¿Space mantenido ahora? (para el panel y la raqueta). */
+  get blocking(): boolean {
+    return this.blockHeld;
+  }
+
+  private onKey = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space') return;
+    if (this.captureKeys) e.preventDefault();
+    this.blockHeld = e.type === 'keydown';
+  };
+
+  private onBlur = (): void => {
+    this.blockHeld = false;
+  };
 
   /** Objetivo actual en coordenadas del jugador (para dibujar el marcador del cursor). */
   get currentTarget(): { x: number; z: number } {
@@ -103,6 +130,7 @@ export class MouseTranslator {
     const intent = neutralIntent();
     intent.target = { x: this.target.x, z: this.target.z };
     intent.swing = this.swingAt(this.clock.epoch + tickEndMs);
+    intent.block = this.blockHeld;
     if (this.fires.length && this.fires[0] <= tickEndMs) intent.fire = this.fires.shift();
     return intent;
   }

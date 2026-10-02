@@ -152,6 +152,26 @@ const SYNTHS: Record<SfxName, Synth> = {
   hit_normal: hit(0),
   hit_good: hit(0.5),
   hit_perfect: hit(1),
+  // Topspin: roce que sube (la goma "cepilla" la bola).
+  hit_topspin: (ctx, out, t, noise) => {
+    const f = noiseBurst(ctx, out, t, noise, 'bandpass', 900, 3, 0.004, 0.11, 0.45);
+    f.frequency.exponentialRampToValueAtTime(3800, t + 0.11);
+  },
+  // Slice: corte seco que baja.
+  hit_slice: (ctx, out, t, noise) => {
+    const f = noiseBurst(ctx, out, t, noise, 'highpass', 4200, 1.5, 0.002, 0.09, 0.4);
+    f.frequency.exponentialRampToValueAtTime(1200, t + 0.09);
+  },
+  // Smash: chasquido fuerte con cuerpo grave.
+  hit_smash: (ctx, out, t, noise) => {
+    noiseBurst(ctx, out, t, noise, 'lowpass', 6000, 0.7, 0.001, 0.09, 0.9);
+    tone(ctx, out, t, 160, 'sine', 0.002, 0.12, 0.5);
+  },
+  // Bloqueo: golpe sordo y corto.
+  hit_block: (ctx, out, t, noise) => {
+    noiseBurst(ctx, out, t, noise, 'lowpass', 900, 1, 0.001, 0.05, 0.6);
+    tone(ctx, out, t, 300, 'triangle', 0.001, 0.05, 0.3);
+  },
   streak_1: note(NOTES[0]),
   streak_2: note(NOTES[1]),
   streak_3: note(NOTES[2]),

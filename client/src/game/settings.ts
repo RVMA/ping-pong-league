@@ -8,6 +8,7 @@
  *  - autostart: 1 empieza sin menú (para pruebas automáticas)
  *  - seed: semilla del bot
  *  - offset: desfase de latencia en ms (sustituye al calibrado; para pruebas)
+ *  - why: 0 / 1 desactiva o activa "¿por qué fallé?" (sustituye a lo guardado)
  */
 import type { BotDifficulty, ConfigOverrides } from '@ppp/shared';
 
@@ -19,6 +20,28 @@ export interface Settings {
   seed: number;
   /** Desfase de latencia forzado por URL; si no hay, se usa el calibrado guardado. */
   latencyOffset: number | null;
+  /** "¿Por qué fallé?" forzado por URL; si no hay, lo guardado o el valor de la config. */
+  explain: boolean | null;
+}
+
+const EXPLAIN_KEY = 'ppp.explainErrors';
+
+/** Preferencia guardada de "¿por qué fallé?" (por navegador), o null si no hay. */
+export function loadExplain(): boolean | null {
+  try {
+    const v = localStorage.getItem(EXPLAIN_KEY);
+    return v === null ? null : v === '1';
+  } catch {
+    return null;
+  }
+}
+
+export function saveExplain(on: boolean): void {
+  try {
+    localStorage.setItem(EXPLAIN_KEY, on ? '1' : '0');
+  } catch {
+    // Sin almacenamiento: solo dura esta sesión.
+  }
 }
 
 export function readSettings(search = window.location.search): Settings {
@@ -50,5 +73,6 @@ export function readSettings(search = window.location.search): Settings {
     autostart: q.get('autostart') === '1',
     seed: num('seed') ?? Math.floor(Math.random() * 1e9),
     latencyOffset: offset ?? null,
+    explain: q.get('why') === '0' ? false : q.get('why') === '1' ? true : null,
   };
 }
