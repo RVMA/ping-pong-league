@@ -33,12 +33,22 @@ Cambian §3.3 ✅ y §4.6–§4.7: regístralas como decisión del autor.
 5. **Cruce** (por defecto, editable): se mantiene el gesto lateral de V0.1, que el autor aprobó. **Pregúntame al empezar si también me cuesta.** La alternativa son A/D mantenidas, pero entonces el panel de precisión tendría que pasar de `D` a otra tecla.
 6. **Dirección de la curva del slice:** hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado donde golpeas.
 7. **Sin golpe dominante:** comprueba con el partido entre bots que un bot que siempre da topspin no gana con claridad a uno que mezcla golpes. Si gana, reequilibra y explícalo.
-8. **Teclas siempre visibles y feedback del golpe** (solo para el jugador local):
-   - Una barra pequeña con las teclas (W Topspin · S Slice · E Smash · Espacio Bloqueo), siempre visible, en una esquina inferior. Sin tapar la mesa ni la bola (§5.2: nunca en el centro).
-   - Mientras mantienes una tecla, se ilumina en la barra **y** tu raqueta toma el color del golpe (los mismos del trail: naranja topspin, magenta slice, blanco smash, cian bloqueo). Al golpear se mira la raqueta, no la esquina.
-   - Tras el golpe, el mensaje junto a la raqueta dice qué salió y con qué fuerza (por ejemplo, «¡Perfecto! · TOPSPIN completo» o «Bien · TOPSPIN reducido»). Si salió algo distinto de lo que pediste, dice por qué: bola baja para el smash, persiguiendo, o la tecla no estaba pulsada al hacer click.
-   - El rival no debe ver estas señales antes del golpe (§13 ✅: el golpe se lee, pero no con certeza). Anótalo como requisito para el multijugador (V0.3–V0.4).
-   - Accesibilidad (§19): el color va siempre con texto o icono.
+8. **Teclas visibles y feedback del golpe:**
+   - **Barra de teclas** pequeña (W Topspin · S Slice · E Smash · Espacio Bloqueo) en una esquina inferior, sin tapar la mesa ni la bola (§5.2: nunca en el centro).
+     - Visible por defecto; **Tab** la muestra u oculta, y la preferencia se guarda en el navegador.
+     - Durante la partida, Tab no debe mover el foco de la página.
+   - **Tecla pulsada** (antes de golpear; solo la ve el jugador local):
+     - la tecla se ilumina en la barra;
+     - unas pocas **chispas suaves** del color del golpe giran alrededor del borde de tu raqueta (los colores del trail: naranja topspin, magenta slice, blanco smash, cian bloqueo).
+     - Al golpear se mira la raqueta, no la esquina.
+   - **Resultado** (al golpear): una ráfaga de chispas del color del golpe que sale de la raqueta.
+     - **Más chispas cuanto mejor el golpe:** PERFECT muchas, GOOD algunas, débil pocas y grises, fallo ninguna.
+     - Breve (~0.3 s), abriéndose hacia fuera para no tapar la bola que vuelve.
+     - Obedece a la opción de reducir destellos (§19).
+     - El rival puede verla, porque ocurre tras el golpe (como sus mensajes, §5.2).
+   - **Texto del resultado:** el mensaje junto a la raqueta dice qué salió y con qué fuerza (por ejemplo, «¡Perfecto! · TOPSPIN completo» o «Bien · TOPSPIN reducido»). Si salió algo distinto de lo que pediste, dice por qué: bola baja para el smash, persiguiendo, o la tecla no estaba pulsada al hacer click.
+   - **Multijugador:** el rival no debe ver las señales de tecla pulsada antes del golpe (§13 ✅: el golpe se lee, pero no con certeza). Anótalo como requisito para V0.3–V0.4.
+   - **Accesibilidad (§19):** el color va siempre con texto o icono.
 
 ## Requisitos técnicos
 - **Arquitectura:**
