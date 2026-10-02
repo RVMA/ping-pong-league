@@ -11,6 +11,7 @@
 import type { GameConfig, ShotCurvePoint } from './config.ts';
 import type { HitEvaluation } from './hit.ts';
 import { type BallState, type PhysicsEnv, stepBall } from './physics.ts';
+import { relativeSpin } from './spin.ts';
 import type { InputIntent, Side, Vec3 } from './types.ts';
 import { sideSign } from './types.ts';
 
@@ -24,8 +25,8 @@ export interface ShotTargets {
   aim: number;
 }
 
-/** Lo que necesita el solver: dónde botar, con qué margen sobre la red y si es saque. */
-export type ShotGoal = Pick<ShotTargets, 'landing' | 'clearance' | 'serve'>;
+/** Lo que necesita el solver: dónde botar, con qué margen sobre la red, si es saque y el spin de salida (mundo). */
+export type ShotGoal = Pick<ShotTargets, 'landing' | 'clearance' | 'serve'> & { spin?: Vec3 };
 
 export function interpolateCurve(curve: ShotCurvePoint[], dt: number): { clearance: number; depth: number } {
   if (dt <= curve[0].dt) return { clearance: curve[0].clearance, depth: curve[0].depth };
@@ -133,17 +134,33 @@ export function keepServeBounceOnTable(contact: Vec3, landing: { x: number; z: n
 interface TrialResult {
   /** Margen (parte inferior de la bola − cinta) al cruzar z = 0; −1 si no cruza. */
   clearance: number;
-  /** Distancia horizontal recorrida hasta el bote en campo rival, a lo largo de la dirección de tiro. */
-  landing: number;
+  /** Bote en campo rival, medido desde el punto de salida: a lo largo de la dirección de tiro y en lateral. */
+  along: number;
+  lateral: number;
 }
 
 const MAX_TRIAL_STEPS = 2400;
 
-function runTrial(start: Vec3, dirX: number, dirZ: number, vh: number, vy: number, env: PhysicsEnv, dt: number, serve: boolean): TrialResult {
+/**
+ * Simula un tiro candidato con la física real (Magnus incluido) pero sin red: la velocidad inicial es
+ * dir·vh + lat·vl + arriba·vy, con lat = (−dirZ, 0, dirX) (la derecha de quien golpea). Sin trigonometría.
+ */
+function runTrial(
+  start: Vec3,
+  dirX: number,
+  dirZ: number,
+  vh: number,
+  vy: number,
+  vl: number,
+  spin: Vec3,
+  env: PhysicsEnv,
+  dt: number,
+  serve: boolean,
+): TrialResult {
   const b: BallState = {
     pos: { x: start.x, y: start.y, z: start.z },
-    vel: { x: dirX * vh, y: vy, z: dirZ * vh },
-    spin: { x: 0, y: 0, z: 0 },
+    vel: { x: dirX * vh - dirZ * vl, y: vy, z: dirZ * vh + dirX * vl },
+    spin: { x: spin.x, y: spin.y, z: spin.z },
   };
   const s0 = start.z >= 0 ? 1 : -1;
   let clearance = Number.NaN;
@@ -163,14 +180,13 @@ function runTrial(start: Vec3, dirX: number, dirZ: number, vh: number, vy: numbe
     }
     if (crossed && b.pos.y <= env.tableContactY && b.vel.y < 0) {
       const f = (py - env.tableContactY) / (py - b.pos.y);
-      const x = px + (b.pos.x - px) * f;
-      const z = pz + (b.pos.z - pz) * f;
-      const landing = (x - start.x) * dirX + (z - start.z) * dirZ;
-      return { clearance, landing };
+      const ox = px + (b.pos.x - px) * f - start.x;
+      const oz = pz + (b.pos.z - pz) * f - start.z;
+      return { clearance, along: ox * dirX + oz * dirZ, lateral: -ox * dirZ + oz * dirX };
     }
     if (b.pos.y < 0) break;
   }
-  return { clearance: crossed ? clearance : -1, landing: 0 };
+  return { clearance: crossed ? clearance : -1, along: 0, lateral: 0 };
 }
 
 export interface SolveResult {
@@ -179,10 +195,28 @@ export interface SolveResult {
   /** Errores residuales (m). */
   clearanceError: number;
   landingError: number;
+  lateralError: number;
+}
+
+/** Resuelve J·x = r (3×3) por la regla de Cramer. Devuelve null si el sistema es singular. */
+function solve3(j: number[][], r: number[]): number[] | null {
+  const det3 = (m: number[][]) =>
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const det = det3(j);
+  if (Math.abs(det) < 1e-12) return null;
+  const out: number[] = [];
+  for (let c = 0; c < 3; c++) {
+    const m = j.map((row, i) => row.map((v, k) => (k === c ? r[i] : v)));
+    out.push(det3(m) / det);
+  }
+  return out;
 }
 
 /**
- * Busca la velocidad inicial que bota en `targets.landing` pasando la red con `targets.clearance`.
+ * Busca la velocidad inicial que bota en `targets.landing` pasando la red con `targets.clearance`, con el
+ * spin del golpe ya aplicado: el Magnus va DENTRO de las trayectorias que se resuelven (§7.5), así que el
+ * topspin permite pegar más fuerte con el mismo margen y el lateral se compensa apuntando hacia dentro.
+ * Newton 3×3 (velocidad horizontal, vertical y lateral) con diferencias finitas.
  * Determinista: número fijo máximo de iteraciones y mismas operaciones en cliente y servidor.
  */
 export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: number, cfg: GameConfig): SolveResult {
@@ -191,58 +225,78 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
   const D = Math.sqrt(dxT * dxT + dzT * dzT);
   const dirX = dxT / D;
   const dirZ = dzT / D;
+  const spin = targets.spin ?? { x: 0, y: 0, z: 0 };
+  const rel = relativeSpin(spin, { x: dirX, y: 0, z: dirZ });
   // Distancia horizontal hasta la red a lo largo de la dirección de tiro.
   const sNet = -start.z / dirZ;
   const yNet = env.netTop + env.r + targets.clearance;
   const yLand = env.tableContactY;
 
-  const evalErr = (h: number, y: number) => {
-    const r = runTrial(start, dirX, dirZ, h, y, env, dt, targets.serve);
-    return { ec: r.clearance - targets.clearance, el: r.landing - D };
+  const evalErr = (h: number, y: number, l: number) => {
+    const r = runTrial(start, dirX, dirZ, h, y, l, spin, env, dt, targets.serve);
+    return { ec: r.clearance - targets.clearance, el: r.along - D, eq: r.lateral };
   };
-  const isConverged = (b: { ec: number; el: number }) => Math.abs(b.ec) < 0.004 && Math.abs(b.el) < 0.01;
+  const isConverged = (b: { ec: number; el: number; eq: number }) => Math.abs(b.ec) < 0.004 && Math.abs(b.el) < 0.01 && Math.abs(b.eq) < 0.01;
 
-  /** Newton 2×2 con diferencias finitas desde una estimación inicial; devuelve el mejor intento. */
-  const newton = (vh0: number, vy0: number) => {
+  /** Newton 3×3 con diferencias finitas desde una estimación inicial; devuelve el mejor intento. */
+  const newton = (vh0: number, vy0: number, vl0: number) => {
     let vh = vh0;
     let vy = vy0;
-    let best = { vh, vy, err: Number.POSITIVE_INFINITY, ec: 0, el: 0 };
+    let vl = vl0;
+    let best = { vh, vy, vl, err: Number.POSITIVE_INFINITY, ec: 0, el: 0, eq: 0 };
     for (let iter = 0; iter < 12; iter++) {
-      const e = evalErr(vh, vy);
-      const err = Math.abs(e.ec) + Math.abs(e.el);
-      if (err < best.err) best = { vh, vy, err, ec: e.ec, el: e.el };
-      if (Math.abs(e.ec) < 0.002 && Math.abs(e.el) < 0.005) break;
+      const e = evalErr(vh, vy, vl);
+      const err = Math.abs(e.ec) + Math.abs(e.el) + Math.abs(e.eq);
+      if (err < best.err) best = { vh, vy, vl, err, ec: e.ec, el: e.el, eq: e.eq };
+      if (Math.abs(e.ec) < 0.002 && Math.abs(e.el) < 0.005 && Math.abs(e.eq) < 0.005) break;
       const h = 1e-3;
-      const eh = evalErr(vh + h, vy);
-      const ey = evalErr(vh, vy + h);
-      const j11 = (eh.ec - e.ec) / h;
-      const j12 = (ey.ec - e.ec) / h;
-      const j21 = (eh.el - e.el) / h;
-      const j22 = (ey.el - e.el) / h;
-      const det = j11 * j22 - j12 * j21;
-      if (Math.abs(det) < 1e-12) break;
-      let dvh = -(j22 * e.ec - j12 * e.el) / det;
-      let dvy = -(-j21 * e.ec + j11 * e.el) / det;
+      const eh = evalErr(vh + h, vy, vl);
+      const ey = evalErr(vh, vy + h, vl);
+      const ed = evalErr(vh, vy, vl + h);
+      const step = solve3(
+        [
+          [(eh.ec - e.ec) / h, (ey.ec - e.ec) / h, (ed.ec - e.ec) / h],
+          [(eh.el - e.el) / h, (ey.el - e.el) / h, (ed.el - e.el) / h],
+          [(eh.eq - e.eq) / h, (ey.eq - e.eq) / h, (ed.eq - e.eq) / h],
+        ],
+        [-e.ec, -e.el, -e.eq],
+      );
+      if (!step) break;
+      let [dvh, dvy, dvl] = step;
       // Amortiguación: pasos de como mucho 1.5 m/s.
-      const stepLen = Math.sqrt(dvh * dvh + dvy * dvy);
+      const stepLen = Math.sqrt(dvh * dvh + dvy * dvy + dvl * dvl);
       if (stepLen > 1.5) {
         dvh *= 1.5 / stepLen;
         dvy *= 1.5 / stepLen;
+        dvl *= 1.5 / stepLen;
       }
       vh = Math.max(0.5, vh + dvh);
       vy += dvy;
+      vl += dvl;
     }
     return best;
   };
 
-  let best: { vh: number; vy: number; err: number; ec: number; el: number };
+  // Estimación del lateral: el Magnus del lateral (magnusK·side·vh hacia la derecha) desplaza el bote
+  // ½·magnusK·side·D²/vh; se compensa saliendo con vl = −½·magnusK·side·D (no depende de vh).
+  const vl0 = -0.5 * env.magnusK * rel.side * D;
+
+  let best: { vh: number; vy: number; vl: number; err: number; ec: number; el: number; eq: number };
   if (!targets.serve) {
-    // Estimación sin drag: parábola y = y0 + b·s + a·s² por (sNet, yNet) y (D, yLand).
+    // Estimación sin drag: parábola y = y0 + b·s + a·s² por (sNet, yNet) y (D, yLand). El topspin actúa como
+    // una gravedad mayor (magnusK·top·vh hacia abajo): dos vueltas para estimar vh con esa gravedad.
     const y0 = start.y;
     const a = ((yLand - y0) / D - (yNet - y0) / sNet) / (D - sNet);
     const bq = (yNet - y0) / sNet - a * sNet;
-    const vh = a < -1e-6 ? Math.sqrt(env.g / (-2 * a)) : D / 0.4;
-    best = newton(vh, bq * vh);
+    let vh = D / 0.4;
+    if (a < -1e-6) {
+      vh = Math.sqrt(env.g / (-2 * a));
+      for (let k = 0; k < 2; k++) {
+        const gEff = env.g + env.magnusK * rel.top * vh;
+        if (gEff > 0.5) vh = Math.sqrt(gEff / (-2 * a));
+      }
+    }
+    best = newton(vh, bq * vh, vl0);
   } else {
     // Saque, estimación 1 (sirve para casi todos): primer bote B1 a una fracción fija hasta la red; el tramo
     // B1 → red → bote rival se resuelve como un tiro normal desde la mesa y el tramo contacto → B1 se
@@ -252,7 +306,7 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
     const post = solveShot({ x: start.x + dirX * s1, y: yLand, z: start.z + dirZ * s1 }, { landing: targets.landing, clearance: targets.clearance, serve: false }, env, dt, cfg);
     const vh1 = Math.sqrt(post.vel.x * post.vel.x + post.vel.z * post.vel.z) / (1 - env.flatBounceLoss);
     const T1 = s1 / vh1;
-    best = newton(vh1, (0.5 * env.g * T1 * T1 - h0) / T1);
+    best = newton(vh1, (0.5 * env.g * T1 * T1 - h0) / T1, vl0);
     if (!isConverged(best)) {
       // Estimación 2 (saques tardíos, contacto bajo): hay que golpear hacia abajo con fuerza para que el bote
       // suba lo bastante. Velocidad de llegada a B1 que pide el tramo posterior (deshaciendo restitución y
@@ -270,15 +324,16 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
         vyB = vyImpact + env.g * T;
         sB = Math.max(0.15 * sNet, Math.min(0.85 * sNet, vhB * T));
       }
-      const alt = newton(vhB, vyB);
+      const alt = newton(vhB, vyB, vl0);
       if (alt.err < best.err) best = alt;
     }
   }
 
   return {
-    vel: { x: dirX * best.vh, y: best.vy, z: dirZ * best.vh },
+    vel: { x: dirX * best.vh - dirZ * best.vl, y: best.vy, z: dirZ * best.vh + dirX * best.vl },
     converged: isConverged(best),
     clearanceError: best.ec,
     landingError: best.el,
+    lateralError: best.eq,
   };
 }
