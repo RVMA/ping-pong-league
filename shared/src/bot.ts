@@ -1,16 +1,17 @@
 /**
  * Bot [§17.5]: predice la intercepción con la MISMA física compartida (Magnus y bote con spin incluidos) y
- * produce InputIntent como un jugador humano (objetivo de raqueta, gesto, Space y instante de click).
- * La "humanidad" sale de: retardo de reacción, error de posición, una distribución de calidades de golpe y
- * una mezcla de golpes por dificultad (V0.2). La calidad y el tipo reales los decide el mismo código que al
- * humano: si el bot llega persiguiendo la bola, su gesto no cuenta (regla de "colocado") y el golpe es normal.
+ * produce InputIntent como un jugador humano (objetivo de raqueta, gesto lateral para cruzar, teclas de golpe,
+ * Space e instante de click). La "humanidad" sale de: retardo de reacción, error de posición, una distribución de
+ * calidades de golpe y una mezcla de golpes por dificultad (V0.2). V0.2b: pide el golpe con las mismas teclas que
+ * un humano (`modifiers`); la potencia y el resto los decide el mismo código que al humano: sale de la calidad que
+ * saque, y si llega persiguiendo la bola, a la mitad (regla de "colocado") y sin cruzar.
  */
 import type { BotDifficultyConfig, GameConfig } from './config.ts';
-import type { ShotType } from './gesture.ts';
+import type { ShotType } from './stroke.ts';
 import { cloneBall, stepBall, type BallContact } from './physics.ts';
 import type { Simulation } from './sim.ts';
 import { relativeSpin } from './spin.ts';
-import { type InputIntent, neutralIntent, type Side, sideSign } from './types.ts';
+import { type InputIntent, neutralIntent, type ShotKeys, type Side, sideSign } from './types.ts';
 
 /** PRNG determinista (mulberry32). */
 export function makeRng(seed: number): () => number {
@@ -33,6 +34,8 @@ interface Plan {
   clickMs: number;
   fired: boolean;
   swing: { vx: number; vy: number };
+  /** Teclas de golpe que mantiene hasta el click (V0.2b). */
+  keys: ShotKeys;
   block: boolean;
   shot: ShotType;
   tier: Tier;
@@ -106,37 +109,29 @@ export class Bot {
   }
 
   private aim(): number {
-    // Velocidad de gesto que produce un objetivo lateral en [−spread, +spread] de la mesa (por debajo del slice).
+    // Velocidad de gesto lateral que produce un objetivo en [−spread, +spread] de la mesa (cruce de §4.5).
     const s = this.cfg.shot;
     const maxSwing = (this.cfg.world.tableWidth / 2) / s.aimSwingGain;
     const v = this.rand(-1, 1) * this.diff.aimSpread * maxSwing;
-    const out = v === 0 ? 0 : v + Math.sign(v) * s.aimSwingDeadZone;
-    const lim = this.cfg.shotTypes.sliceThreshold - 0.1;
-    return Math.max(-lim, Math.min(lim, out));
+    return v === 0 ? 0 : v + Math.sign(v) * s.aimSwingDeadZone;
   }
 
-  /** Gesto para un tipo de golpe (alturas de pantalla/s), por encima de su umbral según la potencia. */
-  private gesture(shot: ShotType): { vx: number; vy: number } {
-    const t = this.cfg.shotTypes;
-    const [p0, p1] = this.diff.shots.power;
-    const p = this.rand(p0, p1);
-    const over = (thr: number, full: number) => thr + 0.01 + p * (full - thr);
-    const lateral = (vert: number) => Math.max(-0.8 * vert, Math.min(0.8 * vert, this.aim()));
+  /**
+   * Teclas y gesto lateral para un golpe (V0.2b): la tecla elige el tipo y el gesto lateral cruza la bola (en el
+   * slice, la mitad de las veces sin cruce: entonces curva hacia fuera desde el lado donde golpea).
+   */
+  private stroke(shot: ShotType): { swing: { vx: number; vy: number }; keys: ShotKeys } {
     switch (shot) {
-      case 'TOPSPIN': {
-        const vy = over(t.topspinThreshold, t.topspinFullPower);
-        return { vx: lateral(vy), vy };
-      }
-      case 'SMASH': {
-        const vy = over(t.smashThreshold, t.smashFullPower);
-        return { vx: lateral(vy) * 0.5, vy: -vy };
-      }
+      case 'TOPSPIN':
+        return { swing: { vx: this.aim(), vy: 0 }, keys: { topspin: true } };
+      case 'SMASH':
+        return { swing: { vx: this.aim() * 0.5, vy: 0 }, keys: { smash: true } };
       case 'SLICE':
-        return { vx: this.sign() * over(t.sliceThreshold, t.sliceFullPower), vy: 0 };
+        return { swing: { vx: this.rng() < 0.5 ? this.aim() : 0, vy: 0 }, keys: { slice: true } };
       case 'BLOCK':
-        return { vx: 0, vy: 0 };
+        return { swing: { vx: 0, vy: 0 }, keys: {} };
       default:
-        return { vx: this.aim(), vy: 0 };
+        return { swing: { vx: this.aim(), vy: 0 }, keys: {} };
     }
   }
 
@@ -203,6 +198,8 @@ export class Bot {
     if (plan && !plan.skip) {
       intent.target = { ...plan.target };
       intent.swing = { ...plan.swing };
+      // Las teclas de golpe se mantienen hasta el click, como haría una persona.
+      if (!plan.fired) intent.modifiers = { ...plan.keys };
       // Space solo en el último tramo: mientras se mantiene, la raqueta va más despacio [§8].
       intent.block = plan.block && !plan.fired && tNext >= plan.clickMs - this.cfg.bot.blockHoldMs;
       if (!plan.fired && tNext >= plan.clickMs) {
@@ -241,6 +238,7 @@ export class Bot {
       clickMs: tIdeal + err.dtMs,
       fired: false,
       swing: { vx: this.aim(), vy: 0 },
+      keys: {},
       block: false,
       shot: 'NORMAL',
       tier,
@@ -296,13 +294,15 @@ export class Bot {
     if (shot === 'SMASH' && !bestHigh && this.diff.shots.badSmash === 0) shot = 'NORMAL';
     const tier = this.pickTier();
     const err = this.sampleError(tier);
+    const { swing, keys } = this.stroke(shot);
     return {
       shotId: s.rally.hits,
       skip: false,
       target: { x: at.x + this.sign() * err.pos * pc.radius, z: at.z },
       clickMs: at.t + err.dtMs,
       fired: false,
-      swing: this.gesture(shot),
+      swing,
+      keys,
       block: shot === 'BLOCK',
       shot,
       tier,
@@ -317,6 +317,7 @@ export class Bot {
       clickMs: Number.POSITIVE_INFINITY,
       fired: true,
       swing: { vx: 0, vy: 0 },
+      keys: {},
       block: false,
       shot: 'NORMAL',
       tier: 'whiff',

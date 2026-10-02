@@ -9,7 +9,7 @@
  *  - No devuelta: el fallo al aire (pronto, tarde, fuera de la raqueta, fuera de alcance) o que no hubo click.
  */
 import type { GameConfig } from './config.ts';
-import type { ShotType } from './gesture.ts';
+import type { ShotType } from './stroke.ts';
 import type { HitEvaluation } from './hit.ts';
 import type { PointReason } from './rules.ts';
 import type { ShotTargets } from './shot.ts';

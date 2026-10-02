@@ -1,6 +1,7 @@
 /**
- * Simulación completa de un game: bola con spin, dos raquetas, golpe por click con tipo de golpe por
- * gesto (V0.2), bloqueo, saque simplificado, reglas y marcador. Paso fijo de 120 Hz. Solo consume InputIntent.
+ * Simulación completa de un game: bola con spin, dos raquetas, golpe por click con tipo de golpe por teclas
+ * (V0.2b: las teclas mantenidas en el click; la potencia sale de la calidad), bloqueo, saque simplificado, reglas y
+ * marcador. Paso fijo de 120 Hz. Solo consume InputIntent.
  *
  * Tiempos:
  *  - `tick` avanza 1 por paso; el instante de un estado es tick · tickMs (ms de tiempo real).
@@ -8,7 +9,7 @@
  *  - Las raquetas se mueven con 1/120 s de tiempo real.
  */
 import { type GameConfig, simDt, tickMs } from './config.ts';
-import { classifyGesture, type ShotType } from './gesture.ts';
+import { type ShotType, shotFromKeys, type StrokeType, strokePower } from './stroke.ts';
 import { classifyHit, type HitEvaluation, measureClosestApproach, type QualityTier } from './hit.ts';
 import { stepPaddle } from './paddle.ts';
 import { type BallContact, type BallState, makeEnv, type PathSample, type PhysicsEnv, predictPath, stepBall } from './physics.ts';
@@ -24,7 +25,7 @@ import {
   serverFor,
 } from './rules.ts';
 import { planShot, type ShotTargets, solveShot } from './shot.ts';
-import { type InputIntent, type Side, sideSign, type Vec3 } from './types.ts';
+import { type InputIntent, type ShotKeys, type Side, sideSign, type Vec3 } from './types.ts';
 
 interface PaddleSample {
   t: number;
@@ -38,13 +39,15 @@ export type SimPhase = 'serveHold' | 'serveToss' | 'rally' | 'pointOver' | 'game
 export interface PendingHit {
   contactMs: number;
   evaluation: HitEvaluation;
-  /** Gesto efectivo: el del intento × aimFactor (persiguiendo, se anula: golpe normal y recto). */
+  /** Gesto efectivo: el del intento × aimFactor (persiguiendo, se anula: la bola sale recta). Solo cuenta vx. */
   swing: { vx: number; vy: number };
+  /** Golpe pedido con las teclas mantenidas en el click (V0.2b). */
+  type: StrokeType;
   serve: boolean;
   /** Click con Space mantenido [§8]. */
   block: boolean;
   lockPos: { x: number; z: number };
-  /** 0 = persiguiendo (la bola sale recta y normal), 1 = colocado (el gesto apunta y elige golpe del todo). */
+  /** 0 = persiguiendo (la bola sale recta y con la mitad de potencia), 1 = colocado (el gesto apunta del todo). */
   aimFactor: number;
 }
 
@@ -98,9 +101,12 @@ export type SimEvent =
       evaluation: HitEvaluation;
       contactMs: number;
       aimFactor: number;
-      /** Tipo de golpe según el gesto efectivo (el umbral del smash se comprueba en el contacto). */
+      /** Tipo de golpe: el de las teclas del click (el umbral del smash se comprueba en el contacto). */
       shot: ShotType;
+      /** Potencia 0..1: calidad × «colocado» (V0.2b). */
       power: number;
+      /** Teclas de golpe mantenidas en el click. */
+      keys: ShotKeys;
       /** Gesto del intento sin escalar (para el panel de precisión). */
       rawSwing: { vx: number; vy: number };
     }
@@ -384,6 +390,8 @@ export class Simulation {
     const block = intent.block && !serve;
     const aimFactor = block ? 0 : this.aimFactor(side, fire);
     const swing = { vx: intent.swing.vx * aimFactor, vy: intent.swing.vy * aimFactor };
+    // V0.2b: el tipo lo eligen las teclas mantenidas en el click (en el saque no hay tipo).
+    const type: StrokeType = serve ? 'NORMAL' : shotFromKeys(intent.modifiers);
     const hitPos = this.clickPaddlePos(side, fire, swing, aimFactor);
     const evaluation = swingAtNothing ? null : this.evaluateClick(side, fire, hitPos);
     if (!evaluation || evaluation.tier === 'WHIFF') {
@@ -394,10 +402,12 @@ export class Simulation {
       return;
     }
     const contactMs = Math.max(fire, evaluation.tIdeal);
-    pad.pending = { contactMs, evaluation, swing, serve, block, lockPos: hitPos, aimFactor };
+    pad.pending = { contactMs, evaluation, swing, type, serve, block, lockPos: hitPos, aimFactor };
     pad.lockUntil = contactMs + this.cfg.hit.swingMs;
-    const g = serve ? { type: 'NORMAL' as const, power: 0 } : block ? { type: 'BLOCK' as const, power: 0 } : classifyGesture(swing, this.cfg);
-    events.push({ type: 'swing', player: side, evaluation, contactMs, aimFactor, shot: g.type, power: g.power, rawSwing: { ...intent.swing } });
+    const shot: ShotType = block ? 'BLOCK' : type;
+    const power = block ? 0 : strokePower(type, evaluation.tier, aimFactor, this.cfg);
+    const keys = { ...(intent.modifiers ?? {}) };
+    events.push({ type: 'swing', player: side, evaluation, contactMs, aimFactor, shot, power, keys, rawSwing: { ...intent.swing } });
   }
 
   /**
@@ -415,15 +425,15 @@ export class Simulation {
   }
 
   /**
-   * Posición de la raqueta con la que se mide el golpe. Si estabas colocado y el gesto es un golpe seco
-   * (por encima de la zona muerta, en CUALQUIER dirección: §4.6), el gesto es swing, no recolocación: se usa
-   * la raqueta de antes del gesto (click − aimSettleToMs), mezclada según lo colocado que estuvieras. Así
-   * cruzar o elegir golpe no cuesta posición; su riesgo está en el ángulo, el margen y la potencia (shot.ts).
-   * `swing` es el gesto efectivo (ya × aimFactor).
+   * Posición de la raqueta con la que se mide el golpe. Si estabas colocado y el gesto LATERAL es un golpe seco
+   * (por encima de la zona muerta), el gesto es swing, no recolocación: se usa la raqueta de antes del gesto
+   * (click − aimSettleToMs), mezclada según lo colocado que estuvieras. Así cruzar no cuesta posición; su riesgo
+   * está en el ángulo (shot.ts). Desde V0.2b el tipo de golpe va con teclas: un movimiento vertical vuelve a ser
+   * solo recolocación (como en V0.1). `swing` es el gesto efectivo (ya × aimFactor).
    */
   clickPaddlePos(side: Side, fire: number, swing: { vx: number; vy: number }, aimFactor: number): { x: number; z: number } {
     const pad = this.state.paddles[side].pos;
-    const mag = Math.sqrt(swing.vx * swing.vx + swing.vy * swing.vy);
+    const mag = swing.vx < 0 ? -swing.vx : swing.vx;
     if (aimFactor <= 0 || mag <= this.cfg.shot.aimSwingDeadZone) return { x: pad.x, z: pad.z };
     const tRef = fire - this.cfg.shot.aimSettleToMs;
     let ref: { x: number; z: number } | null = null;
@@ -448,7 +458,10 @@ export class Simulation {
     }
     const contact = { x: s.ball.pos.x, y: s.ball.pos.y, z: s.ball.pos.z };
     const incoming = { vel: { ...s.ball.vel }, spin: { ...s.ball.spin } };
-    const targets = planShot(pend.evaluation, contact, { swing: pend.swing }, side, this.cfg, serve, { block: pend.block, incoming });
+    const targets = planShot(pend.evaluation, contact, { swing: pend.swing, type: pend.type, aimFactor: pend.aimFactor }, side, this.cfg, serve, {
+      block: pend.block,
+      incoming,
+    });
     const sol = solveShot(contact, targets, this.env, this.dt, this.cfg);
     s.ball.vel.x = sol.vel.x;
     s.ball.vel.y = sol.vel.y;

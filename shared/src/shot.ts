@@ -1,7 +1,8 @@
 /**
  * Del resultado del golpe a la trayectoria [§4.3, §4.6, §7.5].
  *
- * 1. planShot: calidad + gesto (tipo y potencia) + punto de contacto → objetivos del tiro: punto de bote en
+ * 1. planShot: calidad + tipo de golpe (teclas, V0.2b) + gesto lateral (cruce) + punto de contacto → objetivos del
+ *    tiro (la potencia sale de la calidad y de si estabas colocado, stroke.ts): punto de bote en
  *    campo rival, margen sobre la red y spin de salida. Todo determinista: el desvío del borde es
  *    proporcional a la distancia al centro, sin aleatoriedad. Cada objetivo se guarda desglosado en partes
  *    con nombre (timing, bola baja, potencia, ángulo…) para poder explicar un error ("¿por qué fallé?").
@@ -10,11 +11,11 @@
  * 3. Después manda la física real: si el margen pedido es negativo, la bola choca con la red.
  */
 import type { GameConfig, PaceCurvePoint, ShotCurvePoint } from './config.ts';
-import { classifyGesture, type ShotType } from './gesture.ts';
+import { type ShotType, type StrokeType, strokePower } from './stroke.ts';
 import type { HitEvaluation } from './hit.ts';
 import { type BallState, type PhysicsEnv, stepBall } from './physics.ts';
 import { type RelSpin, relativeSpin, worldSpin } from './spin.ts';
-import type { InputIntent, Side, Vec3 } from './types.ts';
+import type { Side, Vec3 } from './types.ts';
 import { sideSign } from './types.ts';
 
 /** Partes con nombre del margen sobre la red (m). base + resto = margen pedido. */
@@ -50,7 +51,7 @@ export interface ShotTargets {
   /** Parte del objetivo lateral que viene del gesto, ya con el riesgo de ángulo (m, coordenadas del que golpea). */
   aim: number;
   type: ShotType;
-  /** Potencia 0..1 (velocidad del gesto por encima del umbral del tipo) [§4.7]. */
+  /** Potencia 0..1 [§4.7]: la de la calidad del golpe × el factor de «colocado» (V0.2b, stroke.ts). */
   power: number;
   /** Spin de salida: relativo al vuelo (top/side) y en el mundo (lo que usa la física). */
   spinRel: RelSpin;
@@ -63,7 +64,17 @@ export interface ShotTargets {
 /** Lo que necesita el solver: dónde botar, con qué margen sobre la red, si es saque y el spin de salida (mundo). */
 export type ShotGoal = Pick<ShotTargets, 'landing' | 'clearance' | 'serve'> & { spin?: Vec3 };
 
-/** Opciones del golpe que no salen del gesto. */
+/**
+ * El golpe que pide el jugador: el gesto (solo cuenta `swing.vx`, el cruce de §4.5, ya × el factor de «colocado»),
+ * el tipo elegido con teclas (por defecto, normal) y el factor de «colocado» (0 = persiguiendo: la mitad de potencia).
+ */
+export interface Stroke {
+  swing: { vx: number; vy: number };
+  type?: StrokeType;
+  aimFactor?: number;
+}
+
+/** Opciones del golpe que no salen del jugador. */
 export interface ShotOptions {
   /** Click con Space mantenido: bloqueo [§8]. */
   block?: boolean;
@@ -117,18 +128,33 @@ export function aimLateral(contactLateral: number, swingVx: number, cfg: GameCon
   return base + aim;
 }
 
+/** Parte del gesto lateral por encima de la zona muerta (alturas de pantalla/s): lo que cruza la bola [§4.5]. */
+function crossSwing(swingVx: number, cfg: GameConfig): number {
+  const dz = cfg.shot.aimSwingDeadZone;
+  return swingVx > dz ? swingVx - dz : swingVx < -dz ? swingVx + dz : 0;
+}
+
 /**
- * Puntería separada en dos partes: `base` (sale de dónde golpeas) y `aim` (sale del gesto), con la suma
- * limitada al interior de la mesa (a `edgeMargin` de la banda; el slice llega más cerca).
+ * Puntería separada en dos partes: `base` (sale de dónde golpeas) y `aim` (sale del gesto y, en el slice, de su
+ * ángulo extra `extra`), con la suma limitada al interior de la mesa (a `edgeMargin` de la banda; el slice llega
+ * más cerca).
  */
-export function aimComponents(contactLateral: number, swingVx: number, cfg: GameConfig, edgeMargin = cfg.shot.aimEdgeMargin): { base: number; aim: number } {
+export function aimComponents(contactLateral: number, swingVx: number, cfg: GameConfig, edgeMargin = cfg.shot.aimEdgeMargin, extra = 0): { base: number; aim: number } {
   const s = cfg.shot;
   const maxX = cfg.world.tableWidth / 2 - edgeMargin;
-  const dz = s.aimSwingDeadZone;
-  const swing = swingVx > dz ? swingVx - dz : swingVx < -dz ? swingVx + dz : 0;
   const base = Math.max(-maxX, Math.min(maxX, contactLateral * s.aimBaseFromContact));
-  const total = Math.max(-maxX, Math.min(maxX, base + swing * s.aimSwingGain));
+  const total = Math.max(-maxX, Math.min(maxX, base + crossSwing(swingVx, cfg) * s.aimSwingGain + extra));
   return { base, aim: total - base };
+}
+
+/**
+ * Lado de la curva del slice (decisión del autor, V0.2b): hacia el lado al que cruzas; sin cruce, hacia fuera desde
+ * el lado donde golpeas. +1 = derecha de quien golpea.
+ */
+export function sliceDirection(contactLateral: number, swingVx: number, cfg: GameConfig): 1 | -1 {
+  const cross = crossSwing(swingVx, cfg);
+  if (cross !== 0) return cross > 0 ? 1 : -1;
+  return contactLateral >= 0 ? 1 : -1;
 }
 
 /** Fracción 0..1 del error de timing entre el borde de la ventana PERFECT y el de la débil. */
@@ -171,16 +197,10 @@ function sumParts(parts: Partial<Record<string, number>>): number {
   return t;
 }
 
-/** Calidad (sin WHIFF, que nunca llega a golpear) → factor de control del spin. */
-function spinControl(evalr: HitEvaluation, cfg: GameConfig): number {
-  const q = cfg.shotTypes.spinByTier;
-  return evalr.tier === 'PERFECT' ? q.PERFECT : evalr.tier === 'GOOD' ? q.GOOD : q.WEAK;
-}
-
 export function planShot(
   evalr: HitEvaluation,
   contact: Vec3,
-  intent: Pick<InputIntent, 'swing'>,
+  stroke: Stroke,
   side: Side,
   cfg: GameConfig,
   serve: boolean,
@@ -196,7 +216,7 @@ export function planShot(
   // ——— Saque normal simplificado (V0.1): sin tipo de golpe, sin spin ———
   if (serve) {
     const { clearance, depth } = interpolateCurve(cfg.serve.timingCurve, dt);
-    const { base, aim: cleanAim } = aimComponents(contactLateral, intent.swing.vx, cfg);
+    const { base, aim: cleanAim } = aimComponents(contactLateral, stroke.swing.vx, cfg);
     const aim = angleRisk(cleanAim, dt, cfg);
     const maxX = cfg.world.tableWidth / 2 - cfg.shot.aimEdgeMargin;
     const anglePen = -cfg.shot.aimClearancePenalty * Math.min(1, Math.abs(cleanAim) / maxX);
@@ -218,25 +238,25 @@ export function planShot(
 
   if (opts.block) return planBlock(evalr, contact, side, cfg, opts.incoming, aboveTape, edge);
 
-  const { type, power: p } = classifyGesture(intent.swing, cfg);
+  const type: StrokeType = stroke.type ?? 'NORMAL';
+  const p = strokePower(type, evalr.tier, stroke.aimFactor ?? 1, cfg);
   const st = cfg.shotTypes;
-  const sens = 1 + p * st.powerTimingGain;
-  const ctl = spinControl(evalr, cfg);
+  // Riesgo de los golpes de ataque: no depende de la potencia (un golpe de ataque débil es flojo y más arriesgado).
+  const sens = type === 'NORMAL' ? 1 : 1 + st.attackTimingGain;
 
-  // ——— Dirección: base + gesto (+ riesgo de ángulo) + borde ———
+  // ——— Dirección: base + gesto (+ ángulo del slice) (+ riesgo de ángulo) + borde ———
   const edgeMargin = type === 'SLICE' ? st.slice.edgeMargin : cfg.shot.aimEdgeMargin;
-  const { base, aim: cleanAim } = aimComponents(contactLateral, intent.swing.vx, cfg, edgeMargin);
+  const sliceDir = sliceDirection(contactLateral, stroke.swing.vx, cfg);
+  const { base, aim: cleanAim } = aimComponents(contactLateral, stroke.swing.vx, cfg, edgeMargin, type === 'SLICE' ? sliceDir * st.slice.angle : 0);
   const aim = angleRisk(cleanAim, dt, cfg, sens);
   const lateralParts: ShotParts['lateral'] = { base, aim: cleanAim, angleRisk: aim - cleanAim, edge };
   const lateral = base + aim + edge;
 
-  // ——— Spin de salida ———
+  // ——— Spin de salida: la potencia (calidad) controla el spin [§4.3 PERFECT: «mejor control del spin»] ———
   let spinRel: RelSpin = { top: 0, side: 0 };
-  if (type === 'TOPSPIN') spinRel = { top: (st.topspin.spinMin + p * (st.topspin.spinMax - st.topspin.spinMin)) * ctl, side: 0 };
-  else if (type === 'SLICE') {
-    const sideSpin = (st.slice.sideMin + p * (st.slice.sideMax - st.slice.sideMin)) * ctl;
-    spinRel = { top: -st.slice.backspin * ctl, side: intent.swing.vx >= 0 ? sideSpin : -sideSpin };
-  } else if (type === 'SMASH') spinRel = { top: st.smash.topspin * ctl, side: 0 };
+  if (type === 'TOPSPIN') spinRel = { top: st.topspin.spinMin + p * (st.topspin.spinMax - st.topspin.spinMin), side: 0 };
+  else if (type === 'SLICE') spinRel = { top: -st.slice.backspin, side: sliceDir * (st.slice.sideMin + p * (st.slice.sideMax - st.slice.sideMin)) };
+  else if (type === 'SMASH') spinRel = { top: st.smash.topspin, side: 0 };
 
   const cp: ShotParts['clearance'] = {};
   const dp: ShotParts['depth'] = {};
@@ -274,7 +294,9 @@ export function planShot(
     dp.base = c0.depth;
     dp.timing = (c.depth - c0.depth) * (dt < 0 ? sens : 1);
     if (p > 0) dp.power = p * st.powerDepth;
-    if (p > 0 && dt > 0) dp.powerLate = p * timingErrorFraction(dt, cfg) * st.powerLateLong;
+    // «Golpe fuerte y tarde → larga»: riesgo del topspin, no de la potencia (tarde nunca es un golpe completo).
+    const late = type === 'TOPSPIN' && dt > 0 ? timingErrorFraction(dt, cfg) * st.topspin.lateLong : 0;
+    if (late > 0) dp.powerLate = late;
     landing = { x: lateral * sgn, z: -sgn * sumParts(dp) * half };
     const anglePen = -cfg.shot.aimClearancePenalty * Math.min(1, Math.abs(cleanAim) / maxX);
     if (anglePen < 0) cp.angle = anglePen;

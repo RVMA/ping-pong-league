@@ -49,10 +49,10 @@ export interface BotDifficultyConfig {
   /**
    * Mezcla de golpes (V0.2) [§17.5]. Probabilidades cuando la situación lo permite: smash solo si la bola va a
    * pasar alta (salvo `badSmash`: probabilidad, en cada devolución sin bola alta, de intentarlo igualmente →
-   * red); bloqueo contra bolas rápidas o con mucho spin; si no, topspin / slice / normal. Potencia en
-   * [power[0], power[1]].
+   * red); bloqueo contra bolas rápidas o con mucho spin; si no, topspin / slice / normal. V0.2b: el golpe se pide
+   * con teclas, como un humano, y la potencia sale de la calidad que saca (`quality`), no de un rango propio.
    */
-  shots: { topspin: number; slice: number; smash: number; badSmash: number; block: number; power: [number, number] };
+  shots: { topspin: number; slice: number; smash: number; badSmash: number; block: number };
 }
 
 export const DEFAULT_CONFIG = {
@@ -222,59 +222,58 @@ export const DEFAULT_CONFIG = {
   },
 
   /**
-   * Tipos de golpe por gesto [§4.6, V0.2] 🟡. El gesto llega en alturas de pantalla por segundo y YA
-   * multiplicado por el factor de "colocado" (pregunta abierta 11, propuesta actual: la regla vale para todos
-   * los golpes): persiguiendo la bola, cualquier gesto da un golpe normal y recto.
-   * Clasificación por la dirección dominante del gesto:
-   *  - lateral (|vx| ≥ |vy|): SLICE si |vx| ≥ sliceThreshold; por debajo, golpe normal (cruzado si pasa de la
-   *    zona muerta de puntería, §4.5). El slice es el cruce por encima de un umbral.
-   *  - vertical: TOPSPIN si vy ≥ topspinThreshold (hacia la red); SMASH si −vy ≥ smashThreshold; si no, normal.
-   * La potencia (0..1) crece desde el umbral hasta `…FullPower` [§4.7]. Un cruce a tope (puntería máxima)
-   * se alcanza con ~1.8: el umbral del slice queda claramente por encima.
+   * Tipos de golpe [§4.6, §4.7] — V0.2b (decisión del autor, 2026-10-02): el tipo se elige con TECLAS mantenidas en
+   * el instante del click (W topspin, S slice, E smash; sin tecla, normal; Space, bloqueo) y la potencia sale de la
+   * CALIDAD del golpe, no de la velocidad de un gesto (se premia el PERFECT). El ratón solo mueve, hace click y cruza
+   * la bola (gesto lateral de V0.1, §4.5 ✅). Lógica en stroke.ts y shot.ts.
+   *
+   * Potencia (0..1) = powerByTier[calidad] × (chasingPower + (1 − chasingPower) · factor de «colocado»):
+   *  - PERFECT = golpe completo (1); GOOD = reducido (0.5); débil = flojo (0.15). Así el PERFECT es la única manera
+   *    de sacar todo el golpe y ningún error de timing da más velocidad que un PERFECT (P5).
+   *  - Llegar persiguiendo la bola ya no anula el tipo (las teclas son deliberadas): reduce la potencia a la mitad.
+   * Qué hace la potencia [§4.7 ✅]: más spin, más velocidad (techo de ritmo del topspin, ritmo del smash), el bote algo
+   * más al fondo (+powerDepth) y más bajo sobre la red (−powerClearance).
+   * Riesgo de los golpes de ataque (topspin, slice, smash), que NO depende de la potencia: las desviaciones de la
+   * curva de timing crecen ×(1 + attackTimingGain) (en pronto también la profundidad). Un golpe de ataque débil sale
+   * flojo y además más arriesgado que un golpe normal con el mismo error.
    */
   shotTypes: {
-    topspinThreshold: 1.2,
-    topspinFullPower: 4.0,
-    smashThreshold: 1.2,
-    smashFullPower: 4.0,
-    sliceThreshold: 2.5,
-    sliceFullPower: 5.0,
-    /**
-     * Potencia [§4.7 ✅: más velocidad, menos margen, más sensibilidad al timing, más riesgo de red o fuera]:
-     *  - el bote se va más al fondo (+powerDepth) y más bajo sobre la red (−powerClearance);
-     *  - las desviaciones de la curva de timing crecen ×(1 + powerTimingGain·p) (en pronto también la profundidad);
-     *  - tarde con potencia la bola se va larga: +powerLateLong·p·l (l = 0..1 entre la ventana PERFECT y la débil).
-     */
+    powerByTier: { PERFECT: 1, GOOD: 0.5, WEAK: 0.15 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+    chasingPower: 0.5,
+    /** Etiqueta del golpe junto a la raqueta: «completo» desde full, «reducido» desde reduced, si no «flojo». */
+    powerLevels: { full: 0.95, reduced: 0.3 },
+    attackTimingGain: 0.6,
     powerDepth: 0.06,
     powerClearance: 0.03,
-    powerTimingGain: 0.6,
-    powerLateLong: 0.9,
-    /** "Mejor control del spin" de PERFECT [§4.3]: fracción del spin pedido que sale según la calidad. */
-    spinByTier: { PERFECT: 1, GOOD: 0.85, WEAK: 0.6 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
     /**
-     * Topspin: spin de spinMin (en el umbral) a spinMax (potencia máxima), rad/s de simulación. Con el Magnus
-     * el solver lo convierte en un golpe más rápido con el mismo margen. Riesgo [§4.6]: apunta algo más bajo
-     * (−clearanceDrop·p) y desde una bola baja la penalización de "posición desfavorable" se multiplica.
+     * Topspin: spin de spinMin (potencia 0) a spinMax (completo), rad/s de simulación. Con el Magnus el solver lo
+     * convierte en un golpe más rápido con el mismo margen. Riesgos [§4.6]: apunta algo más bajo (−clearanceDrop·p),
+     * desde una bola baja la penalización de "posición desfavorable" se multiplica (×(1 + lowContactGain)) y
+     * «golpe fuerte y tarde → larga»: tarde, el bote se alarga lateLong·l (l = 0..1 entre la ventana PERFECT y la
+     * débil): un topspin GOOD algo tarde todavía entra; uno claramente tarde (≳ +75 ms) se va largo.
      */
-    topspin: { spinMin: 160, spinMax: 340, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10, paceCapPower: 1.2 },
+    topspin: { spinMin: 100, spinMax: 340, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10, paceCapPower: 1.2, lateLong: 0.5 },
     /**
-     * Slice: el cruce con efecto lateral (curva hacia el lado del gesto) y algo de backspin. "Más ángulo": la
-     * puntería puede llegar hasta edgeMargin de la banda (cruce normal: shot.aimEdgeMargin). Riesgo: poco
-     * margen sobre la red (−clearancePenalty·p) y el riesgo de ángulo al golpear pronto (§4.5).
+     * Slice: corte con efecto lateral (curva) y algo de backspin, con MÁS ÁNGULO: el objetivo se abre `angle` m hacia
+     * el lado de la curva (además del cruce), hasta edgeMargin de la banda (cruce normal: shot.aimEdgeMargin).
+     * Dirección de la curva (decisión del autor): hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado
+     * donde golpeas. Riesgos: poco margen sobre la red (−clearancePenalty·p) y el riesgo de ángulo de §4.5 sobre
+     * todo el ángulo del slice: pronto (≳ −60 ms) se pasa de ángulo y sale por la banda.
      */
-    slice: { sideMin: 150, sideMax: 350, backspin: 80, edgeMargin: 0.08, clearancePenalty: 0.02, paceCap: 10 },
+    slice: { sideMin: 100, sideMax: 350, backspin: 80, angle: 0.55, edgeMargin: 0.08, clearancePenalty: 0.02, paceCap: 10 },
     /**
      * Techo de ritmo de los golpes de margen (normal, topspin, slice): velocidad horizontal equivalente sin drag
      * (m/s de simulación) que el golpe no supera aunque el margen pedido lo permitiera. Desde una bola baja no
      * se nota (el margen manda: el normal PERFECT sale a ~7.6); desde una bola alta evita que un golpe normal
      * sea un smash ("bajo riesgo, baja recompensa"). Con error de timing el techo baja hasta un
-     * paceCapTimingLoss (×sensibilidad de la potencia): ningún error da más velocidad que un PERFECT.
+     * paceCapTimingLoss (×sensibilidad del golpe de ataque): ningún error da más velocidad que un PERFECT.
      */
     normalPaceCap: 9.5,
     paceCapTimingLoss: 0.2,
     /**
      * Smash [§4.6]: muy rápido. El objetivo es de RITMO: velocidad horizontal pace (de paceMin a paceMax con la
-     * potencia; equivalente sin drag, m/s de simulación: ~1.7–2.1 veces el normal) y bote; el margen sobre la
+     * potencia; equivalente sin drag, m/s de simulación: débil ~11.2, GOOD ~12.8, PERFECT 15 = ~2 veces el normal)
+     * y bote; el margen sobre la
      * red sale de la geometría (cuerda contacto → bote + flecha de la parábola a esa velocidad).
      * Umbral relativo a la red: con la parte inferior de la bola a menos de minAboveTape sobre la cinta, la
      * bola baja más empinada: el bote se acorta lowDepthPerM (fracción de media mesa) por metro que falte y
@@ -285,8 +284,8 @@ export const DEFAULT_CONFIG = {
     smash: {
       minAboveTape: 0.15,
       lowDepthPerM: 10,
-      paceMin: 13,
-      paceMax: 16,
+      paceMin: 10.5,
+      paceMax: 15,
       topspin: 50,
       timingCurve: [
         { dt: -120, clearance: 0, depth: 0.3, pace: 0.8 },
@@ -383,7 +382,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.1, good: 0.45, weak: 0.35, whiff: 0.1 },
         aimSpread: 0.4,
         preferredDepth: 1.65,
-        shots: { topspin: 0.1, slice: 0.05, smash: 0.35, badSmash: 0.03, block: 0.15, power: [0, 0.4] },
+        shots: { topspin: 0.1, slice: 0.05, smash: 0.35, badSmash: 0.03, block: 0.15 },
       },
       medium: {
         label: 'Normal',
@@ -391,7 +390,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.3, good: 0.5, weak: 0.15, whiff: 0.05 },
         aimSpread: 0.75,
         preferredDepth: 1.6,
-        shots: { topspin: 0.22, slice: 0.1, smash: 0.6, badSmash: 0.005, block: 0.3, power: [0.1, 0.55] },
+        shots: { topspin: 0.22, slice: 0.1, smash: 0.6, badSmash: 0.005, block: 0.3 },
       },
       hard: {
         label: 'Difícil',
@@ -399,7 +398,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.45, good: 0.42, weak: 0.1, whiff: 0.03 },
         aimSpread: 1.0,
         preferredDepth: 1.55,
-        shots: { topspin: 0.35, slice: 0.18, smash: 0.85, badSmash: 0, block: 0.35, power: [0.3, 0.9] },
+        shots: { topspin: 0.35, slice: 0.18, smash: 0.85, badSmash: 0, block: 0.35 },
       },
     } as Record<'easy' | 'medium' | 'hard', BotDifficultyConfig>,
     /** Bandas que usa el bot para fabricar su error, por calidad elegida. */

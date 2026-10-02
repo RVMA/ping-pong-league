@@ -18,9 +18,20 @@ export type Side = 0 | 1;
  *  - target.x: lateral en metros, positivo = a la derecha del jugador.
  *  - target.z: profundidad en metros desde la red, positivo = hacia el jugador.
  *  - swing: velocidad del gesto en los últimos ~150 ms, en alturas de pantalla por segundo
- *           (vx positivo = derecha, vy positivo = arriba / hacia la red).
+ *           (vx positivo = derecha, vy positivo = arriba / hacia la red). Desde V0.2b solo cuenta vx: cruzar la bola.
  *  - fire: instante del disparo (click) en ms de tiempo de juego.
+ *  - modifiers: teclas de tipo de golpe mantenidas EN EL INSTANTE DEL CLICK (V0.2b).
  */
+/**
+ * Teclas de tipo de golpe mantenidas (V0.2b): W topspin, S slice, E smash. Las traduce cada dispositivo
+ * (ratón + teclado; en V0.7, botones táctiles). Con ninguna, el golpe es normal.
+ */
+export interface ShotKeys {
+  topspin?: boolean;
+  slice?: boolean;
+  smash?: boolean;
+}
+
 export interface InputIntent {
   target: { x: number; z: number };
   swing: { vx: number; vy: number };
@@ -28,7 +39,7 @@ export interface InputIntent {
   block: boolean;
   special?: number;
   specialServe: boolean;
-  modifiers?: { forceTopspin?: boolean; forceSlice?: boolean };
+  modifiers?: ShotKeys;
 }
 
 export function neutralIntent(depth = 1.6): InputIntent {
