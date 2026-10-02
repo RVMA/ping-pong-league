@@ -4,6 +4,7 @@
 > Implementación: commits posteriores a `2d8ae72` en `master` (de `f6bc46b` en adelante). Sin etiqueta `v0.2.0`: la fase la cierra el autor.
 > Este documento **no modifica** el diseño: describe lo implementado y propone cambios.
 > Marcas: ✅ decidido por el autor · 🟡 propuesta base · ❓ abierto · ⚠️ cambio sobre ✅ pendiente de aprobación.
+> **V0.2b** (golpes con teclas y PERFECT premiado, 2026-10-02): ver el apartado final [«V0.2b»](#v02b--golpes-con-teclas-y-perfect-premiado-2026-10-02).
 
 ---
 
@@ -281,3 +282,255 @@ Arrancar con `npm run dev` (ver README). En todos los puntos sirve el panel `D`:
 9. **«¿Por qué fallé?»** — `http://localhost:5173/?bot=medium`. Juega un game. Tras cada punto perdido, ¿la frase coincide con lo que crees que pasó?
    - Prueba a desactivarlo en el menú («Explicar mis errores: no») y vuelve a activarlo.
 10. **Ritmo con los golpes nuevos** — `http://localhost:5173/?bot=hard`. ¿Te da tiempo a reaccionar al smash y al topspin del bot a `gameSpeed` 0.75? Si no, prueba `http://localhost:5173/?bot=hard&speed=0.7` y compara.
+
+---
+
+## V0.2b — Golpes con teclas y PERFECT premiado (2026-10-02)
+
+> Implementación: commits desde `4523bd9` en `master` (después de `b76d8fd`). Sin etiqueta.
+> Este apartado **no modifica** el documento de diseño: registra las decisiones del autor y propone los cambios (P37–P47).
+
+### B.0 Resumen
+
+- **Por qué.** En el playtest de V0.2 (2026-10-02) el autor no consiguió ningún topspin, slice ni smash con gestos del ratón. El gesto tenía que cumplir tres cosas a la vez, además de acertar el timing:
+  - hacerse en los 150 ms anteriores al click;
+  - ser rápido (≥ 1.2 alturas de pantalla/s; el slice, ≥ 2.5);
+  - empezar con la raqueta quieta entre 270 y 150 ms antes del click.
+
+  El E2E de V0.2 pasaba porque despachaba gestos sintéticos perfectos: probaba el código, no que una persona pudiera hacerlo.
+- **Qué cambia.**
+  - El tipo de golpe se elige con **teclas mantenidas en el instante del click**: W topspin, S slice, E smash; sin tecla, golpe normal; Espacio, bloqueo.
+  - La **potencia sale de la calidad**: PERFECT = golpe completo, GOOD = reducido, débil = flojo y más arriesgado.
+  - Llegar persiguiendo la bola ya no anula el tipo: **reduce la potencia a la mitad**.
+  - El cruce sigue siendo el gesto lateral de V0.1.
+  - Feedback nuevo:
+    - barra de teclas (Tab);
+    - chispas alrededor de la raqueta con la tecla mantenida;
+    - ráfaga de chispas al golpear, según la calidad;
+    - un texto que dice qué salió, con qué fuerza y por qué salió distinto de lo pedido.
+- **Evidencia.**
+  - 179 tests en `shared/`: los 164 de antes, salvo 20 que se sustituyeron porque comprobaban el gesto (B.6), más 35 nuevos.
+  - Bots Normal contra Normal: **6.2–6.5 golpes por punto** (30 partidas con 3 semillas), **100 %** de los puntos perdidos con causa nombrada (533/533).
+  - **Ningún golpe domina**: un bot que siempre da topspin gana el 50.8 % de los puntos contra uno que mezcla (antes del ajuste, el 60.5 % de los games).
+  - E2E con **teclado y clicks reales** y ±30 ms de error de timing: **30 de 30** golpes salieron del tipo pedido.
+  - Los 4 E2E de V0.1 pasan.
+- **Lo más importante para el autor.**
+  1. Para el golpe **completo** hace falta PERFECT y llegar colocado. En las tres pasadas del E2E, 1 o 2 de cada 30 golpes salieron «reducido · persiguiendo» porque la raqueta llegó en los últimos 270 ms. El texto lo dice, pero en el playtest hay que ver si se entiende o frustra (B.7).
+  2. El **slice** es ahora un golpe con objetivo fijo: va a la banda (62 cm del centro). Contra los bots es el golpe más flojo (42 % de los puntos jugando solo slice), porque el bot lee la curva perfectamente. Contra una persona puede ser distinto.
+
+### B.1 Decisiones del autor (registradas)
+
+Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las propuestas para integrarlas en el documento están en B.8.
+
+| # | Decisión (2026-10-02) | Cómo se ha implementado |
+|---|---|---|
+| 1 | Tipo de golpe con **teclas mantenidas en el click**: W topspin, S slice, E smash; sin tecla, normal; Espacio, bloqueo; el ratón solo mueve y hace click | `InputIntent.modifiers = { topspin, slice, smash }` (§3.1). Las teclas se **fotografían en el propio evento del click**: una tecla pulsada 5 ms después ya no cuenta. Con varias a la vez, prioridad fija smash > topspin > slice (`shotFromKeys`, `shared/src/stroke.ts`). Espacio + tecla = bloqueo |
+| 2 | **Se premia el PERFECT**: la potencia y el spin salen de la calidad, no del gesto; ningún error de timing más rápido que un PERFECT | `strokePower`: PERFECT 1, GOOD 0.5, débil 0.15 (B.3). El spin del topspin y del slice y el ritmo del smash salen de esa potencia. Test por tipo: «ningún error de timing sale más rápido que un PERFECT» |
+| 3 | Se mantienen los riesgos legibles | Smash con la bola baja → red. Topspin desde una bola muy baja → red. Slice pronto → fuera por la banda (se rediseñó tras el E2E, B.2). Topspin fuerte y tarde → larga. Los cuatro tienen test y su texto de «¿por qué fallé?» |
+| 4 | «Colocado» ya no decide el tipo; persiguiendo, la potencia a la mitad | `potencia = calidad × (0.5 + 0.5 · factor de colocado)`. El cruce sigue necesitando estar colocado (§4.5 ✅) |
+| 5 | Cruce: se mantiene el gesto lateral de V0.1 | **Preguntado al empezar (2026-10-02):** el autor eligió mantener el gesto. No hay A/D; el panel de precisión sigue en `D` |
+| 6 | Curva del slice: hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado donde golpeas | `sliceDirection` (`shot.ts`). Tests de los dos casos |
+| 7 | Sin golpe dominante, comprobado con bots | `shared/scripts/mix-vs.ts`. Se reequilibró el topspin (B.4) |
+| 8 | Teclas visibles y feedback del golpe | Barra de teclas, chispas de la tecla mantenida (solo el jugador local), ráfaga por calidad (también la ve el rival), texto del resultado y por qué, accesibilidad (B.2) |
+
+### B.2 Qué cambió y por qué
+
+**`shared/` (lógica, sin DOM, determinista)**
+
+- `gesture.ts` pasa a ser `stroke.ts`:
+  - `shotFromKeys` (teclas → tipo);
+  - `strokePower` (calidad × colocado → potencia);
+  - `powerLevel` (completo / reducido / flojo);
+  - `describeStroke` (qué salió y por qué: `CHASING`, `SMASH_LOW`).
+  
+  Desaparecen `classifyGesture`, los umbrales del gesto y la potencia por velocidad.
+- `planShot` recibe `{ swing, type, aimFactor }`:
+  - el tipo viene de las teclas;
+  - del gesto solo cuenta `vx` (el cruce).
+  
+  El riesgo de los golpes de ataque **ya no depende de la potencia**. Cada tipo tiene su sensibilidad al timing (topspin 0.8, smash 0.6). Así un golpe de ataque débil es flojo **y** más arriesgado que un golpe normal con el mismo error, como pidió el autor.
+- **Slice**:
+  - va a un punto fijo cerca de la banda (62 cm del centro, hacia el lado de su curva);
+  - su margen sobre la red es tan sensible al timing como el de un golpe normal;
+  - su riesgo es el **ángulo**: pronto se abre ×(1 + 0.9·e).
+  
+  Primera versión: el ángulo se sumaba al cruce y la sensibilidad era la del topspin. **El E2E con entrada humana mostró que un slice pronto iba a la red, no fuera por la banda.** El test unitario solo comprobaba el punto de bote pedido, no que la bola pasara la red. Ahora el test exige que la bola pase la red y bote fuera. Desde el centro sale por la banda a partir de unos −50 ms; cruzado, de −45 ms; desde un lado hacia fuera, de −60 ms. La red solo llega antes, hacia −72 ms.
+- **Topspin**: «golpe fuerte y tarde → larga» es ahora un riesgo del topspin (`lateLong` 0.5), no de la potencia, porque un golpe tarde nunca es completo. Un GOOD algo tarde (+45 ms) entra; uno claramente tarde (≳ +75 ms) se va largo.
+- Simulación:
+  - el click lee `intent.modifiers`;
+  - el evento `swing` lleva `keys` y la potencia;
+  - la posición del golpe se mide con la raqueta de antes del gesto solo si el gesto **lateral** es seco, como en V0.1: un movimiento vertical vuelve a ser solo recolocación.
+- **Bot**: pide su golpe con las mismas teclas (`modifiers`) que mantiene hasta el click, y cruza con el gesto lateral. Su potencia sale de la calidad que saca: desaparecen sus rangos de potencia propios.
+
+**`client/` (solo traduce teclas y presenta)**
+
+- **Traductor**:
+  - W/S/E por código físico;
+  - teclas fotografiadas en el evento del click;
+  - recuerda una tecla soltada justo antes del click o pulsada justo después (200 ms), para explicarlo.
+- **Barra de teclas** (abajo a la izquierda, fuera de la mesa): `W Topspin · S Slice · E Smash · Espacio Bloqueo`.
+  - Visible por defecto.
+  - **Tab** la muestra u oculta sin mover el foco, y la preferencia se guarda en el navegador (`ppp.keyBar`).
+  - La tecla mantenida se ilumina con el color del golpe; la letra y el nombre siguen ahí (§19).
+- **Chispas** (`world.ts`, colores del trail; el normal, dorado):
+  - con la tecla mantenida, 6 chispas suaves giran alrededor del borde de **tu** raqueta; las del rival no se dibujan nunca;
+  - al golpear, una ráfaga de 0.3 s se abre hacia fuera en el plano de la cara: 22 en PERFECT, 10 en GOOD, 4 grises en débil y ninguna en el fallo;
+  - mezcla normal, no aditiva: con mezcla aditiva el magenta salía azulado sobre la mesa, lo mismo que pasó con el trail en V0.2.
+- **Texto junto a la raqueta**: «¡Perfecto! · TOPSPIN completo», «Bien · SLICE reducido · persiguiendo», «¡Perfecto! · SMASH completo · bola baja para el smash», «Bien · NORMAL · pulsaste W después del click», «soltaste W antes del click». Si la tecla llega después de que aparezca el mensaje, el mensaje se completa.
+- **Reducir destellos (§19)**:
+  - `?reduce=1`, o la preferencia «reducir movimiento» del sistema;
+  - sin ráfagas ni temblor, y las chispas de la tecla quietas;
+  - `?reduce=0` ignora la preferencia del sistema.
+- **Panel D**: «Teclas en el click», «Tipo · potencia % (completo/reducido/flojo)» y «Gesto lateral (cruce)».
+- Menú: instrucciones de V0.2b.
+
+### B.3 Valores elegidos (🟡)
+
+| Parámetro (`shared/src/config.ts`) | Valor | Por qué |
+|---|---|---|
+| Potencia por calidad `shotTypes.powerByTier` | PERFECT 1 · GOOD 0.5 · débil 0.15 | El PERFECT es la única forma de sacar el golpe completo. GOOD a la mitad se entiende sin números («reducido»). El débil casi no aporta, pero conserva el riesgo del golpe. Con GOOD 0.4 el equilibrio entre golpes era el mismo (B.4); se deja la mitad |
+| Persiguiendo `chasingPower` | ×0.5 (factor de colocado 0) | Decisión del autor 4. Proporcional entre 0 y 1 |
+| Etiquetas `powerLevels` | completo ≥ 0.95 · reducido ≥ 0.3 · flojo | PERFECT colocado = completo; GOOD, o PERFECT persiguiendo = reducido; débil, o GOOD persiguiendo = flojo |
+| Prioridad con varias teclas | smash > topspin > slice | El smash es el golpe más situacional: si está pulsado, es a propósito |
+| Ventana del aviso de tecla | 200 ms antes o después del click | Lo que tarda una persona en coordinar tecla y click; más allá ya no es «a destiempo» |
+| Sensibilidad al timing | topspin 0.8 · smash 0.6 · slice 0 · normal 0 | El topspin era el golpe dominante con 0.6 (B.4). El riesgo del slice es el ángulo |
+| Topspin | spin 100–340 rad/s · techo de ritmo 10 + 1.2·p · tarde → larga 0.5 | Débil: ~136 rad/s, poco más que un normal («flojo»). Completo: 340, como el máximo de V0.2 |
+| Slice | objetivo a 0.62 m del centro · se abre pronto 0.9 · lateral 100–350 rad/s · backspin 80 | «Más ángulo» desde cualquier sitio; riesgo «pronto → fuera» legible entre −50 y −72 ms |
+| Smash | ritmo 10.5 + 4.5·p (débil ~11.2, GOOD ~12.8, completo 15 m/s de simulación) | El completo, ~2 veces un normal. En V0.2 iba de 13 a 16 por la velocidad del gesto; ahora un smash débil es más lento de verdad |
+| Chispas `presentation.sparks` | órbita: 6 chispas a 1.1 vueltas/s · ráfaga: 22 / 10 / 4, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
+
+**Desaparecen**:
+- los umbrales y la potencia del gesto (`topspinThreshold`, `sliceThreshold`, `smashThreshold`, `…FullPower`);
+- `spinByTier`, sustituido por la potencia por calidad;
+- `powerTimingGain` y `powerLateLong`, sustituidos por la sensibilidad por tipo y `topspin.lateLong`;
+- los rangos de potencia del bot (`bot.difficulties.*.shots.power`).
+
+**Ajustes durante la implementación** (partidos de bots y E2E):
+
+| Valor | Inicial → final | Motivo |
+|---|---|---|
+| Sensibilidad al timing del topspin | 0.6 → **0.8** | Un bot que siempre daba topspin ganaba el 60.5 % de los games (52.4 % de los puntos) |
+| Slice: ángulo | cruce + 0.55 m → **objetivo fijo a 0.62 m** | Con el cruce sumado, el objetivo quedaba pegado a la línea: un GOOD a −40 ms ya salía (falló el 17 % de los slices) |
+| Slice: riesgo de timing | sensibilidad 0.6 → 0.3 → **0 + apertura 0.9** | El E2E mostró que el slice pronto iba a la red, no fuera por la banda |
+| Potencia del GOOD | 0.5 → 0.4 → **0.5** | Cambiarla no movía el equilibrio entre golpes |
+| Chispas | 0.032 m y tenues → **0.075 m** | En la primera captura apenas se veían |
+
+### B.4 Sin golpe dominante (decisión del autor 7)
+
+`node shared/scripts/mix-vs.ts <dificultad> 200 1 <golpe>`: un bot que siempre pide el mismo golpe juega contra uno de la **misma calidad** que usa la mezcla de su dificultad. Alterna lados y saque. Criterio de «gana con claridad»: **≥ 55 % de los puntos o ≥ 60 % de los games** en 200 games.
+
+| Normal contra Normal (200 games) | Puntos del bot de un solo golpe | Games |
+|---|---|---|
+| Solo topspin, **antes** del ajuste (sensibilidad 0.6) | 52.4 % | **60.5 %** → domina |
+| **Solo topspin, final** | **50.8 %** | **53.0 %** |
+| Solo normal | 50.7 % | 50.5 % |
+| Solo slice | 42.2 % | 24.0 % |
+| Solo smash (también con la bola baja) | 11.1 % | 0 % |
+
+- En Fácil, solo topspin gana el 48.1 % de los puntos; en Difícil, el 38.0 % (la mezcla difícil hace smash y bloquea mucho).
+- **Por qué se reequilibró con riesgo y no con recompensa.** Bajar la potencia del GOOD (0.5 → 0.4) apenas cambió nada (de 52.4 % a 51.8 % de los puntos), porque la ventaja del topspin no venía de los GOOD. Subir su sensibilidad al timing la quitó sin tocar el topspin PERFECT, que sigue siendo el golpe más fuerte. Esto premia la precisión, que es lo que le gusta al autor.
+- **El slice es el golpe más débil contra bots.** Falla el 12 % de las veces y apenas hace ganadores (5 %), como un golpe normal. El bot lee la curva y el ángulo sin error y llega siempre. Contra una persona, el ángulo a la banda y la curva deberían pesar más: es una pregunta para el playtest.
+
+### B.5 Evidencia de verificación
+
+| Qué | Resultado |
+|---|---|
+| Tests (`npm test`) | **179/179**. Nuevos en `keys.test.ts` (35): teclas → tipo y prioridad; tecla soltada antes del click = normal; el gesto vertical ya no elige; Espacio + tecla = bloqueo; potencia PERFECT > GOOD > débil en velocidad (por tipo) y en spin; un golpe de ataque débil arriesga más que uno normal; ningún error de timing más rápido que PERFECT (4 tipos); persiguiendo = mitad de potencia (también en la simulación); smash bajo → red; topspin bajo → red; slice pronto → fuera (la bola pasa la red y bota fuera); topspin tarde → largo; dirección de la curva del slice; determinismo bit a bit con teclas |
+| Typecheck de `shared/` y `client/`, build | Sin errores |
+| `shot-stats` Normal contra Normal (30 partidas, semillas 7 / 1 / 99) | **6.19 / 6.49 / 6.53 golpes por punto** (mediana 4–5). Red 34 %, no devuelta 46 %, fuera 11 %, bota en tu campo 4 %, saque fallido 5 %. **533/533** puntos perdidos con causa nombrada |
+| Velocidad de salida (m/s reales, `gameSpeed` 0.75) | Normal 5.8 · Slice 6.1 · Bloqueo 6.7 · **Topspin 7.9** · **Smash 10.0** (V0.2: 5.8 / 6.1 / 6.9 / 7.6 / 10.9) |
+| Otras dificultades (20 partidas) | Fácil–Fácil 3.23 golpes/punto (V0.2: 3.20) · Difícil–Difícil 9.62 (V0.2: 9.36) · Normal–Difícil 6.47 |
+| **E2E con entrada humana** `client/e2e/keys-check.js` (Chromium, bot Normal) | Teclado real (`page.keyboard.down/up`) y clicks reales (`page.mouse`), sin gestos sintéticos, ±30 ms de error aleatorio con semilla. **30/30 golpes salieron del tipo pedido** (9 topspin, 5 slice, 3 smash con la bola a 18–22 cm, 8 normales, 5 bloqueos). 24 PERFECT y 6 GOOD, \|Δt\| medio 16.6 ms. Ráfaga: 22 chispas en PERFECT, 10 en GOOD |
+| E2E: casos explicados | Tecla 60 ms después del click → «NORMAL · pulsaste W después del click». Soltada 90 ms antes → «NORMAL · soltaste W antes del click». Persiguiendo → «TOPSPIN flojo · persiguiendo». Smash con la bola baja → «SMASH completo · bola baja para el smash» y «Red. Smash con la bola por debajo de la cinta (hacen falta 15 cm por encima).». Topspin +91 ms → «TOPSPIN flojo», 4 chispas grises y «Fuera. Topspin tarde (+91 ms): se te fue largo.». Slice −58 ms → «Fuera. Slice pronto (−58 ms): te pasaste de ángulo.» |
+| E2E: barra y accesibilidad | Las 4 teclas iluminan la barra y muestran chispas; al soltar, se apagan. Tab oculta y muestra la barra con el foco en `BODY`, guarda `ppp.keyBar` y la preferencia sobrevive a recargar. Con `?reduce=1`: 0 chispas tras 3 golpes |
+| `shots-check.js` (V0.2, actualizado a teclas reales) | Topspin, slice, normal y bloqueo pedidos con su tecla. Bloquear un topspin de 160–220 rad/s → **−86 a −116** (backspin, trail cian). Avisos: smash bajo, slice pronto (−68 ms) → fuera, topspin −94 ms → red. En esa pasada el bot no dio ninguna bola alta (≥ 17 cm) para el smash; ese caso está en `keys-check` (3/3) |
+| Regresión E2E de V0.1 | `autoplay-rally`: rallies de 8 y 46 golpes, Δt iguales a los provocados (±13 ms). `aim-check`: colocado → cruza 22–67 cm; persiguiendo → recta (factor 0). `autoplay-errors`: game 2-11 con los errores provocados. `calibration-check`: +45 ms y luego 11/11 PERFECT con Δt medio de 0 ms |
+| Consola del navegador | 0 errores. El aviso conocido del AudioContext con `?autostart=1` |
+
+Capturas en `docs/screenshots/v0.2b/`:
+
+| Archivo | Contenido |
+|---|---|
+| `01-menu.png` | Menú con las instrucciones de V0.2b |
+| `held-topspin.png`, `held-slice.png`, `held-smash.png`, `held-block.png` | Tecla mantenida: barra iluminada y chispas alrededor de la raqueta |
+| `shot-*.png` | Cada golpe pedido con su tecla: ráfaga, mensaje («TOPSPIN completo»…) y trail |
+| `case-*.png` | Tecla a destiempo, persiguiendo, smash bajo, topspin tarde (chispas grises), slice pronto |
+| `keybar-hidden.png` | Barra oculta con Tab |
+| `shots-check/` | El E2E de V0.2 con teclas (golpes y «¿por qué fallé?») |
+| `regresion/` | Los E2E de V0.1 |
+
+### B.6 Tests cambiados a propósito
+
+| Test (V0.2) | Cambio | Por qué |
+|---|---|---|
+| `shot-types.test.ts` «gesto → tipo de golpe» (11 casos: clasificación, umbral del slice, potencia por velocidad del gesto) | **Sustituidos** por «teclas → tipo de golpe» (`keys.test.ts`) | El gesto ya no elige el golpe ni la potencia (decisiones 1 y 2) |
+| `shot-types.test.ts` «regla de "colocado" para todos los golpes» (2) | **Sustituidos** por «persiguiendo reduce la potencia a la mitad» | Decisión 4: «colocado» ya no decide el tipo |
+| `shot-types.test.ts` «potencia [§4.7]» (3: velocidad del gesto → velocidad, sensibilidad y largo) | **Sustituidos** por «potencia por calidad», «un golpe de ataque débil es más arriesgado» y «topspin fuerte y tarde → larga» | La potencia sale de la calidad y el riesgo, del tipo de golpe |
+| `shot-types.test.ts` «ningún error de timing da más velocidad que un PERFECT» (4) | **Movidos** a `keys.test.ts` con las mismas comprobaciones | Ahora el tipo va por tecla y la potencia cambia con la calidad: la comprobación es la misma y más exigente |
+| `shot-types.test.ts` topspin, slice, smash y «suma de partes» | El tipo se pide con `type` en lugar de con un gesto. «El topspin pega más fuerte manteniendo la bola baja» admite ahora **±1 cm** sobre el margen del normal | Con la potencia completa del PERFECT actúa el techo de ritmo del topspin: sale un 25 % más rápido y pasa 0.8 cm más alto que un normal |
+| `shot-types.test.ts` slice | Cruce de 1.2 alturas/s en lugar de gestos de 2.0 y 3.5 | Ya no hay umbral de slice; el cruce es opcional |
+| `why.test.ts` (topspin bajo, smash bajo, smash pronto, slice pronto, golpe fuerte y tarde) | El tipo se pide con `type` | Mismo motivo; las causas esperadas no cambian |
+
+El resto de los 164 tests pasa sin cambios. `block.test.ts` también: el bloqueo ignora el gesto y las teclas.
+
+### B.7 Problemas, riesgos y requisitos
+
+1. **Multijugador (requisito para V0.3–V0.4).**
+   - El rival **no debe recibir las señales de tecla mantenida antes del golpe** (§13 ✅: el golpe se lee, pero no con certeza). Las teclas viajan **solo dentro del evento de golpe** (`{t_click, posición, swing.vx, block, keys}`), nunca como estado continuo. El cliente del rival no dibuja chispas de tecla.
+   - La ráfaga y el mensaje sí se ven, porque ocurren tras el golpe (§5.2).
+   - El servidor recalcula la potencia con la calidad y el factor de «colocado»: el historial de velocidades de la raqueta sigue siendo estado rebobinable (§5.1-1). Ahora decide la potencia, no el tipo.
+2. **Con teclas, el `swing` deja de ser la entrada más difícil de validar** (§5.1-4). Lo único que el cliente decide es qué tecla había, y eso es legítimo. Anti-cheat sigue fuera de alcance ✅.
+3. **Llegar colocado cuesta 270 ms.** En el E2E, 1 o 2 de cada 30 golpes salieron «reducido · persiguiendo» por recolocarse tarde. El texto lo explica, pero puede frustrar si pasa a menudo. Mandos: `shot.aimSettleFromMs` / `aimSettleToMs` (ventana) y `shotTypes.chasingPower`.
+4. **Slice débil contra bots** (B.4). Si en el playtest tampoco compensa contra una persona, los mandos son `slice.target` (ángulo) y `slice.sideMax` (curva).
+5. **Bote en tu campo.** Con la sensibilidad 0.8, un topspin muy pronto puede botar en tu propio campo: 23 de 559 puntos (4 %) en 30 partidas de bots. Tiene causa y texto («La bola botó en tu campo. Golpeaste pronto…»).
+6. **Teclados no QWERTY.** Las teclas son posiciones físicas (`KeyW`, `KeyS`, `KeyE`). En AZERTY la tecla W es la que lleva una Z impresa, pero la barra dice «W». Si hace falta, se puede leer la distribución real con `navigator.keyboard.getLayoutMap()`.
+7. Archivo suelto `client/src/game/0` (vacío): sigue ahí; no lo pide esta fase.
+
+### B.8 Propuestas de cambio al documento de diseño (no modificado)
+
+> Continúa la numeración de §6. «Decisión del autor» = ya decidido el 2026-10-02: solo falta escribirlo en el documento.
+
+| # | Sección | Cambio propuesto | Motivo | Aprobación |
+|---|---|---|---|---|
+| P37 | §3.3 ✅ | Fila «Tipo de golpe»: **teclas mantenidas en el click: W topspin, S slice, E smash; sin tecla, normal**. Fila nueva «Barra de teclas: Tab (mostrar/ocultar)». «Cruzar la bola» sigue con el gesto lateral ✅ | Playtest de V0.2: el gesto no era factible para una persona | **Decisión del autor** (integrar como ✅) |
+| P38 | §3.1 | `modifiers?: { topspin?: boolean; slice?: boolean; smash?: boolean }` (sustituye a `forceTopspin` / `forceSlice`), leídas **en el instante del click**. `swing` solo se usa por `vx` (cruce). Con varias teclas, prioridad smash > topspin > slice | Lo implementado; el servidor debe resolverlo igual | 🟡 libre |
+| P39 | §4.6 | Reescribir la tabla: el tipo lo eligen las teclas. «Colocado» ya no decide el tipo: persiguiendo, la potencia a la mitad. Slice: va a la banda (≈ 0.62 m del centro); curva hacia el lado del cruce o, sin cruce, hacia fuera; su riesgo es el ángulo (pronto → fuera). Smash: umbral de 15 cm sin cambios | Decisiones 1, 3, 4 y 6 | **Decisión del autor** (+ valores 🟡) |
+| P40 | §4.7 | «La potencia sale de la **calidad** del golpe: PERFECT completo, GOOD reducido, débil flojo. El riesgo es del tipo de golpe (sensibilidad al timing), no de la potencia: un golpe de ataque mal dado es flojo y más arriesgado. Topspin tarde → largo». Quitar «sale de la velocidad del gesto» | Decisión 2; sin esto el riesgo desaparecería en los golpes débiles | **Decisión del autor** (+ valores 🟡) |
+| P41 | §4.3 | Fila PERFECT: «potencia máxima disponible» pasa a ser literal (golpe completo). Añadir «GOOD: golpe reducido» y «débil: golpe flojo» | Coherencia con P40 | 🟡 libre |
+| P42 | §5 | Feedback del golpe propio en dos líneas: la calidad (como ahora) + qué salió y con qué fuerza, y por qué salió distinto de lo pedido. Barra de teclas en una esquina inferior; chispas con la tecla mantenida; ráfaga por calidad (también la ve el rival) | Decisión 8 | **Decisión del autor** |
+| P43 | §13, §17.2 | El evento de golpe lleva `keys`. El rival **no recibe** el estado de las teclas antes del golpe | Decisión 8 (multijugador); ver B.7-1 | **Decisión del autor** (requisito V0.3–V0.4) |
+| P44 | §19 | «Reducir destellos» también sin ráfagas, y por defecto según «reducir movimiento» del sistema (URL `reduce=1` hasta que haya opciones). Los «Modificadores W/S» dejan de ser accesibilidad: son el control principal | Decisiones 1 y 8 | 🟡 libre |
+| P45 | §3.4, §3.5 | Trackpad: las mismas teclas que el ratón. Táctil (V0.7): tres botones de golpe mantenidos que producen los mismos `modifiers` | El modelo de intento ya lo permite | 🟡 libre |
+| P46 | §21 | Criterio nuevo y medible de V0.2: «con entrada humana (teclado y clicks reales, ±30 ms), el tipo pedido sale en ≥ 95 % de los golpes»; y «un bot de un solo golpe no gana ≥ 55 % de los puntos contra la mezcla (200 games)» | Lo que no detectó el E2E de V0.2 | 🟡 libre |
+| P47 | §6 de este análisis | **Quedan obsoletas**: P21 (clasificación del gesto), P35 (W/S de trackpad: ahora son el control de todos) y P36b (smash «medio colocado»: el smash ya no exige estar colocado). La pregunta 11 de §24 («¿colocado para todos?») queda **respondida por el autor** (decisión 4) | — | — |
+
+### B.9 Checklist de playtest de V0.2b
+
+Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «Teclas en el click», «Tipo · potencia» y «Puntería».
+
+1. **Teclas y barra** — `http://localhost:5173/?bot=easy&debug=1`. Durante la partida, sin hacer click, mantén W, luego S, luego E y luego Espacio.
+   - Mirar: la tecla se ilumina abajo a la izquierda y unas chispas giran alrededor de tu raqueta: naranja (W), magenta (S), blanca (E), cian (Espacio).
+   - Pulsa Tab: la barra desaparece; Tab otra vez: vuelve. Recarga la página: se queda como la dejaste.
+2. **Topspin** — misma URL. Colócate donde va a llegar la bola un momento antes, mantén W y haz click cuando la bola llegue al centro.
+   - Mirar: «¡Perfecto!» y debajo «TOPSPIN completo», muchas chispas naranjas y trail naranja. Con un «Bien»: «TOPSPIN reducido» y menos chispas.
+   - ¿Te salen 10 topspin seguidos sin pensar en la tecla? ¿Cuántos salen como querías?
+3. **Slice y cruce** — misma URL. Mantén S y golpea sin mover el ratón; luego mantén S y haz el gesto lateral al hacer click.
+   - Mirar: sin gesto, la bola curva hacia fuera del lado donde golpeas; con gesto, hacia el lado al que cruzas. Trail magenta, bote cerca de la banda.
+   - Golpea un slice algo pronto: «Fuera. Slice pronto (−XX ms): te pasaste de ángulo.»
+   - Prueba también W + gesto lateral (topspin cruzado).
+4. **Smash** — `http://localhost:5173/?bot=easy&debug=1`. Espera una bola que bote alta (la sombra lejos de la bola), mantén E y haz click en lo más alto.
+   - Mirar: «SMASH completo», chispas blancas, bola muy rápida.
+   - Con una bola baja: «SMASH completo · bola baja para el smash» y luego «Red. Smash con la bola baja…».
+5. **Persiguiendo** — misma URL. Llega a la bola en el último momento, con W mantenida.
+   - Mirar: «TOPSPIN reducido · persiguiendo» (o «flojo» si además fue un «Bien»); en el panel, «Puntería: recta (persiguiendo)» y «potencia 50 %».
+   - ¿Se entiende? ¿Frustra?
+6. **Tecla a destiempo** — misma URL.
+   - Pulsa W justo **después** del click: «NORMAL · pulsaste W después del click».
+   - Suéltala justo **antes**: «NORMAL · soltaste W antes del click».
+   - ¿Te ha pasado sin querer en los puntos 2–5?
+7. **Riesgo y premio** — `http://localhost:5173/?bot=medium&debug=1`.
+   - Haz un topspin claramente tarde: «tarde», «TOPSPIN flojo», pocas chispas grises y «Fuera. Topspin tarde (+XX ms): se te fue largo.»
+   - ¿Se nota la diferencia entre un golpe completo, uno reducido y uno flojo? ¿El riesgo te parece justo?
+8. **Un game entero** — `http://localhost:5173/?bot=medium`, sin panel.
+   - ¿Hay un golpe que usarías siempre? ¿Las chispas o los mensajes te distraen de la bola?
+   - Si molestan los destellos, compara con `http://localhost:5173/?bot=medium&reduce=1`.
