@@ -248,12 +248,20 @@ describe('riesgos legibles que se mantienen (V0.2b)', () => {
     expect(shoot(evalAt(0), 'TOPSPIN', top(0.04)).net).toBe(true);
   });
 
-  it('slice pronto → fuera por la banda, aunque no cruces', () => {
-    for (const x of [0, 0.3, -0.3]) {
-      const r = shoot(evalAt(-70), 'SLICE', top(0.2, 1.6, x));
-      expect(Math.abs(r.targets.landing.x), `x=${x}`).toBeGreaterThan(cfg.world.tableWidth / 2);
+  it('slice pronto → fuera por la banda (pasa la red y bota fuera), aunque no cruces', () => {
+    // Desde el centro con un GOOD algo pronto, y desde los lados (hacia fuera) con un golpe débil pronto.
+    for (const [x, d] of [
+      [0, -58],
+      [0.3, -65],
+      [-0.3, -65],
+    ]) {
+      const r = shoot(evalAt(d), 'SLICE', top(0.2, 1.6, x));
+      expect(r.net, `x=${x} Δt=${d}: red`).toBe(false);
+      expect(r.valid, `x=${x} Δt=${d}`).toBe(false);
+      expect(Math.abs(r.targets.landing.x), `x=${x} Δt=${d}`).toBeGreaterThan(cfg.world.tableWidth / 2);
     }
     expect(shoot(evalAt(0), 'SLICE', top(0.2)).valid).toBe(true);
+    expect(shoot(evalAt(-35), 'SLICE', top(0.2)).valid).toBe(true);
   });
 
   it('topspin fuerte y tarde → larga', () => {

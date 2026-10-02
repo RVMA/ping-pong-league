@@ -165,11 +165,12 @@ export function timingErrorFraction(dtMs: number, cfg: GameConfig): number {
 
 /**
  * Riesgo de ángulo: pronto te pasas (el gesto abre más) y tarde no llegas a cruzar (abre menos).
- * Dentro de la ventana PERFECT no cambia nada. `gain` > 1 en los golpes de ataque (más sensibilidad al timing).
+ * Dentro de la ventana PERFECT no cambia nada. `gain` > 1 en los golpes de ataque (más sensibilidad al timing);
+ * `widen`: cuánto se abre pronto (el slice, más que un cruce).
  */
-export function angleRisk(aim: number, dtMs: number, cfg: GameConfig, gain = 1): number {
+export function angleRisk(aim: number, dtMs: number, cfg: GameConfig, gain = 1, widen = cfg.shot.aimEarlyWiden): number {
   const f = timingErrorFraction(dtMs, cfg) * gain;
-  return dtMs < 0 ? aim * (1 + cfg.shot.aimEarlyWiden * f) : aim * (1 - cfg.shot.aimLateNarrow * Math.min(1, f));
+  return dtMs < 0 ? aim * (1 + widen * f) : aim * (1 - cfg.shot.aimLateNarrow * Math.min(1, f));
 }
 
 /**
@@ -248,7 +249,7 @@ export function planShot(
   const sliceDir = sliceDirection(contactLateral, stroke.swing.vx, cfg);
   const { base, aim: crossAim } = aimComponents(contactLateral, stroke.swing.vx, cfg);
   const cleanAim = type === 'SLICE' ? sliceDir * st.slice.target - base : crossAim;
-  const aim = angleRisk(cleanAim, dt, cfg, sens);
+  const aim = angleRisk(cleanAim, dt, cfg, sens, type === 'SLICE' ? st.slice.earlyWiden : cfg.shot.aimEarlyWiden);
   const lateralParts: ShotParts['lateral'] = { base, aim: cleanAim, angleRisk: aim - cleanAim, edge };
   const lateral = base + aim + edge;
 

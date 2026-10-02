@@ -256,11 +256,13 @@ export const DEFAULT_CONFIG = {
      * Slice: corte con efecto lateral (curva) y algo de backspin, con MÁS ÁNGULO: va siempre a la banda, a `target` m
      * del centro (14 cm dentro de la línea) hacia el lado de la curva, desde donde golpees. Dirección de la curva
      * (decisión del autor): hacia el lado al que cruzas; sin cruce, hacia fuera desde el lado donde golpeas. Es un
-     * golpe de corte, no de potencia: menos sensible al timing que el topspin (timingGain), pero su riesgo es el
-     * ÁNGULO: pronto, el ángulo se abre como un cruce (§4.5) y sale por la banda (≳ −55 ms; cruzado, antes); además
-     * pasa con poco margen sobre la red (−clearancePenalty·p y el del cruce a tope).
+     * golpe de corte, no de potencia: su margen sobre la red es tan sensible al timing como el de un golpe normal
+     * (timingGain 0), pero su riesgo es el ÁNGULO: pronto, el ángulo se abre ×(1 + earlyWiden·e) (más que un cruce,
+     * shot.aimEarlyWiden) y sale por la banda: desde el centro hacia −50 ms, cruzado hacia −45, desde un lado hacia
+     * fuera hacia −60; la red solo llega antes, hacia −72 ms. Además pasa con poco margen (−clearancePenalty·p y el
+     * del cruce a tope).
      */
-    slice: { timingGain: 0.3, sideMin: 100, sideMax: 350, backspin: 80, target: 0.62, clearancePenalty: 0.02, paceCap: 10 },
+    slice: { timingGain: 0, earlyWiden: 0.9, sideMin: 100, sideMax: 350, backspin: 80, target: 0.62, clearancePenalty: 0.02, paceCap: 10 },
     /**
      * Techo de ritmo de los golpes de margen (normal, topspin, slice): velocidad horizontal equivalente sin drag
      * (m/s de simulación) que el golpe no supera aunque el margen pedido lo permitiera. Desde una bola baja no
