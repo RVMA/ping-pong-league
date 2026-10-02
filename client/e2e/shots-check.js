@@ -1,23 +1,19 @@
-// Prueba E2E (V0.2): los cuatro golpes (normal, topspin, slice, smash) y el bloqueo contra el bot, en un navegador
-// real, y después errores provocados para ver "¿por qué fallé?".
-//  - La raqueta se coloca con eventos de ratón REALES de Playwright (page.mouse.move) bastante antes del golpe:
-//    así está "colocada" y el gesto cuenta.
-//  - El gesto seco (~25 ms) se despacha DENTRO de la página como PointerEvents con su temporización exacta:
-//    Playwright no puede enviar movimientos a menos de ~10 ms de intervalo. Entran por el mismo traductor de ratón.
-//  - El bloqueo usa Space y click reales (page.keyboard.down('Space') + page.mouse.down/up).
+// Prueba E2E (V0.2, actualizada en V0.2b): los cuatro golpes (normal, topspin, slice, smash) y el bloqueo contra el
+// bot, en un navegador real, y después errores provocados para ver "¿por qué fallé?".
+//  - La raqueta se coloca con eventos de ratón REALES de Playwright (page.mouse.move) bastante antes del golpe.
+//  - V0.2b: el golpe se elige con TECLAS reales mantenidas en el click (page.keyboard.down: W topspin, S slice,
+//    E smash; Space bloqueo) y click real (page.mouse.down/up). Ya no hay gestos sintéticos dentro de la página:
+//    en V0.2 el gesto seco se despachaba como PointerEvents porque Playwright no puede moverse a <10 ms.
 //  - Solo LEE el estado (window.__ppp, window.__pppShared) para saber dónde y cuándo llega la bola, como un jugador
 //    mirando la sombra. No inyecta InputIntent ni toca la simulación.
 // Uso: con `npm run dev` arrancado, ejecutar con la herramienta browser_run_code de Playwright MCP.
 async (page) => {
-  const SHOT_DIR = 'docs/screenshots/v0.2';
+  const SHOT_DIR = 'docs/screenshots/v0.2b/shots-check';
   // true = solo la fase B (errores provocados).
   const ONLY_ERRORS = false;
   const base = page.url().split('?')[0];
   await page.goto(base + '?autostart=1&bot=medium&seed=23&debug=1&offset=0');
   await page.waitForTimeout(500);
-  const H = await page.evaluate(() => document.getElementById('scene').clientHeight);
-  // Desplazamiento (px) de un gesto de 25 ms que mide `v` alturas de pantalla/s en el traductor (5 muestras + click).
-  const px = (v) => (v * H * 0.025) / 0.8;
 
   const planFn = (want) => {
     const g = window.__ppp;
@@ -98,25 +94,6 @@ async (page) => {
     return { kind: 'wait', phase: st.phase };
   };
 
-  /** Gesto seco despachado en la página: 5 movimientos en 25 ms terminando en el click. */
-  const flick = (x, y, dx, dy, clickPerf) =>
-    page.evaluate(
-      ({ x, y, dx, dy, clickPerf }) =>
-        new Promise((resolve) => {
-          const canvas = document.getElementById('scene');
-          const at = (t, fn) => setTimeout(fn, Math.max(0, t - performance.now()));
-          for (let k = 1; k <= 5; k++) {
-            at(clickPerf - 30 + 5 * k, () =>
-              window.dispatchEvent(new PointerEvent('pointermove', { clientX: x + (dx * k) / 5, clientY: y + (dy * k) / 5, bubbles: true })),
-            );
-          }
-          at(clickPerf, () => {
-            canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x + dx, clientY: y + dy, button: 0, bubbles: true }));
-            resolve(performance.now());
-          });
-        }),
-      { x, y, dx, dy, clickPerf },
-    );
   const waitUntil = async (perf) => {
     const wait = perf - (await page.evaluate(() => performance.now()));
     if (wait > 0) await page.waitForTimeout(wait);
@@ -200,8 +177,9 @@ async (page) => {
       continue;
     }
 
-    // Elección del golpe de este turno.
-    let want = nextWant;
+    // Elección del golpe de este turno. El smash se decide con el plan definitivo (no con la consulta anterior):
+    // si la bola ya no va a pasar alta, topspin (en V0.2 un «smash con bola alta» se dio a 2.6 cm de la cinta).
+    let want = nextWant === 'SMASH' && !(plan.above >= 0.17) ? 'TOPSPIN' : nextWant;
     const timeLeft = plan.clickPerf - plan.nowPerf;
     if (timeLeft < 330) {
       // No da tiempo a colocarse: golpe normal (persiguiendo, el gesto no contaría).
@@ -216,7 +194,7 @@ async (page) => {
     const usePoint = want === 'SMASH_LOW' ? { x: plan.lowPoint.x, y: plan.lowPoint.y, click: plan.lowClick } : { x: plan.x, y: plan.y, click: plan.clickPerf };
     await page.mouse.move(usePoint.x, usePoint.y, { steps: 3 });
     let dtOffset = 0;
-    // Slice pronto con poca potencia: se abre de ángulo (con mucha potencia, pronto ya es red).
+    // Slice algo pronto: se abre de ángulo y sale por la banda (muy pronto ya sería red).
     if (want === 'SLICE_EARLY') dtOffset = -58;
     if (want === 'TOPSPIN_EARLY') dtOffset = -95;
     const clickAt = usePoint.click + dtOffset;
@@ -233,15 +211,15 @@ async (page) => {
       await page.mouse.down();
       await page.mouse.up();
     } else {
-      const g = {
-        TOPSPIN: [0, -px(2.8)],
-        TOPSPIN_EARLY: [0, -px(3.6)],
-        SLICE: [px(3.6), 0],
-        SLICE_EARLY: [px(3.2), 0],
-        SMASH: [0, px(2.8)],
-        SMASH_LOW: [0, px(2.8)],
-      }[want];
-      await flick(usePoint.x, usePoint.y, g[0], g[1], clickAt);
+      // Tecla del golpe mantenida desde 250 ms antes del click hasta después (teclado y click reales).
+      const key = { TOPSPIN: 'KeyW', TOPSPIN_EARLY: 'KeyW', SLICE: 'KeyS', SLICE_EARLY: 'KeyS', SMASH: 'KeyE', SMASH_LOW: 'KeyE' }[want];
+      await waitUntil(clickAt - 250);
+      await page.keyboard.down(key);
+      await waitUntil(clickAt - 4);
+      await page.mouse.down();
+      await page.mouse.up();
+      await page.waitForTimeout(60);
+      await page.keyboard.up(key);
     }
     // Captura con el trail en vuelo (~180 ms después del contacto).
     await page.waitForTimeout(180);
@@ -253,7 +231,7 @@ async (page) => {
     else {
       // Esperar al fin del punto para leer el "¿por qué fallé?".
       let text = '';
-      for (let i = 0; i < 40 && !text; i++) {
+      for (let i = 0; i < 80 && !text; i++) {
         await page.waitForTimeout(60);
         const s = await page.evaluate(() => window.__ppp.sim.state.phase);
         if (s === 'pointOver') text = await lastPointText();
