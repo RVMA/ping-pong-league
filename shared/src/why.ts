@@ -95,16 +95,21 @@ function netCause(t: ShotTargets, ev: HitEvaluation): WhyCause {
   // Varias partes de la misma causa (p. ej. potencia + topspin) se suman.
   const total = new Map<WhyCause, number>();
   for (const [cause, v] of candidates) if (v !== undefined && v < 0) total.set(cause, (total.get(cause) ?? 0) + v);
-  let best: WhyCause | null = null;
-  let worst = 0;
-  for (const [cause, v] of total) {
-    if (v < worst) {
-      worst = v;
-      best = cause;
-    }
-  }
+  const best = decisive([...total].map(([cause, v]) => [cause, -v] as [WhyCause, number]), (v) => t.clearance + v >= 0);
   if (best) return best;
   return ev.posFrac >= 0.5 ? 'EDGE' : 'UNKNOWN';
+}
+
+/**
+ * Elige la causa: primero las decisivas (sin esa parte, el golpe habría entrado) y, entre ellas o si no hay
+ * ninguna, la que más pesó. `push` = cuánto empujó hacia el error (> 0). Con `byOrder`, entre las decisivas
+ * gana la primera de la lista (errores de ejecución antes que la elección del golpe).
+ */
+function decisive(push: [WhyCause, number][], wouldBeIn: (push: number) => boolean, byOrder = false): WhyCause | null {
+  const pos = push.filter(([, v]) => v > 0);
+  if (!pos.length) return null;
+  const bySize = [...pos].sort((a, b) => b[1] - a[1]);
+  return ((byOrder ? pos : bySize).find(([, v]) => wouldBeIn(v)) ?? bySize[0])[0];
 }
 
 function minOf(...v: (number | undefined)[]): number {
@@ -120,23 +125,23 @@ function outCause(t: ShotTargets, ev: HitEvaluation, cfg: GameConfig): WhyCause 
     // Partes que empujaron hacia el lado por el que salió (coordenadas de quien golpea).
     const l = t.parts.lateral;
     const dir = (l.base ?? 0) + (l.aim ?? 0) + (l.angleRisk ?? 0) + (l.edge ?? 0) >= 0 ? 1 : -1;
+    const over = Math.abs(t.landing.x) - halfW;
     const push: [WhyCause, number][] = [
       [t.type === 'SLICE' ? 'SLICE_EARLY' : 'CROSS_EARLY', (l.angleRisk ?? 0) * dir],
       ['EDGE_WIDE', (l.edge ?? 0) * dir],
-      ['SLICE_ANGLE', t.type === 'SLICE' ? (l.aim ?? 0) * dir * 0.25 : 0],
+      ['SLICE_ANGLE', t.type === 'SLICE' ? (l.aim ?? 0) * dir : 0],
     ];
-    push.sort((a, b) => b[1] - a[1]);
-    return push[0][1] > 0 ? push[0][0] : ev.posFrac >= 0.5 ? 'EDGE_WIDE' : 'UNKNOWN';
+    return decisive(push, (v) => v >= over, true) ?? (ev.posFrac >= 0.5 ? 'EDGE_WIDE' : 'UNKNOWN');
   }
   if (Math.abs(t.landing.z) > halfL) {
     const d = t.parts.depth;
+    const over = (Math.abs(t.landing.z) - halfL) / halfL;
     const push: [WhyCause, number][] = [
       ['POWER_LATE', d.powerLate ?? 0],
       ['BLOCK_TOPSPIN', d.blockSpin ?? 0],
       ['POWER_LONG', d.power ?? 0],
     ];
-    push.sort((a, b) => b[1] - a[1]);
-    return push[0][1] > 0 ? push[0][0] : 'UNKNOWN';
+    return decisive(push, (v) => v >= over, true) ?? 'UNKNOWN';
   }
   return ev.posFrac >= 0.5 ? 'EDGE_WIDE' : 'UNKNOWN';
 }

@@ -39,6 +39,21 @@ describe('simulación completa', () => {
     expect(long / rallies.length).toBeGreaterThan(0.3);
   });
 
+  it('el bot usa los cuatro golpes y el bloqueo (V0.2), y el difícil más que el fácil', () => {
+    const count = (d: BotDifficulty) => {
+      const { sim } = playGame(d, d, 21);
+      const t = { NORMAL: 0, TOPSPIN: 0, SLICE: 0, SMASH: 0, BLOCK: 0 };
+      for (const st of sim.state.stats) for (const k of Object.keys(t) as (keyof typeof t)[]) t[k] += st.types[k];
+      return t;
+    };
+    const medium = count('medium');
+    for (const k of ['NORMAL', 'TOPSPIN', 'SLICE', 'SMASH', 'BLOCK'] as const) expect(medium[k], k).toBeGreaterThan(0);
+    const easy = count('easy');
+    const hard = count('hard');
+    const special = (t: typeof easy) => (t.TOPSPIN + t.SLICE + t.SMASH) / (t.NORMAL + t.TOPSPIN + t.SLICE + t.SMASH + t.BLOCK);
+    expect(special(hard)).toBeGreaterThan(special(easy));
+  });
+
   it('la dificultad importa: el bot difícil gana al fácil', () => {
     let hardWins = 0;
     for (const seed of [1, 2, 3]) {

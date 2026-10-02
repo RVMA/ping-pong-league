@@ -128,7 +128,7 @@ describe('topspin [§4.6]', () => {
     const topspin = shoot(0, { vx: 0, vy: 2.6 }, top(0.2));
     expect(topspin.valid).toBe(true);
     expect(topspin.targets.type).toBe('TOPSPIN');
-    expect(topspin.targets.spinRel.top).toBeGreaterThan(300);
+    expect(topspin.targets.spinRel.top).toBeGreaterThan(cfg.shotTypes.topspin.spinMin);
     expect(topspin.speed).toBeGreaterThan(normal.speed * 1.25);
     expect(topspin.targets.clearance).toBeLessThanOrEqual(normal.targets.clearance);
   });

@@ -6,7 +6,7 @@
  * Muestra, por tipo de golpe: cuántos, velocidad horizontal de salida (m/s de simulación y reales), altura
  * del contacto, margen pedido sobre la red, partes que más pesan y cómo acaban los puntos.
  */
-import { Bot, type BotDifficulty, makeConfig, Simulation, type SimEvent } from '../src/index.ts';
+import { Bot, type BotDifficulty, diagnose, type HitEvaluation, makeConfig, type ShotTargets, Simulation, type SimEvent } from '../src/index.ts';
 
 const d0 = (process.argv[2] ?? 'medium') as BotDifficulty;
 const d1 = (process.argv[3] ?? 'medium') as BotDifficulty;
@@ -28,6 +28,9 @@ const rallies: number[] = [];
 const flights: number[] = [];
 let lastHitter: { type: string } | null = null;
 const endByLastType: Record<string, Record<string, number>> = {};
+const causes: Record<string, number> = {};
+const blockedFrom: Record<string, number> = {};
+const whiffWhy: Record<string, number> = {};
 
 for (let g = 0; g < games; g++) {
   const seed = seed0 + g * 101;
@@ -35,6 +38,10 @@ for (let g = 0; g < games; g++) {
   const bots = [new Bot(0, cfg.bot.difficulties[d0], cfg, seed), new Bot(1, cfg.bot.difficulties[d1], cfg, seed * 31 + 1)];
   let hits = 0;
   let lastT = 0;
+  const lastHit: ({ targets: ShotTargets; evaluation: HitEvaluation; contactHeight: number } | null)[] = [null, null];
+  const whiff: (HitEvaluation | null)[] = [null, null];
+  const whiffed = [false, false];
+  let prevType = '-';
   for (let i = 0; i < 120 * 60 * 30 && sim.state.phase !== 'gameOver'; i++) {
     const ev: SimEvent[] = sim.step([bots[0].think(sim), bots[1].think(sim)]);
     for (const e of ev) {
@@ -51,14 +58,32 @@ for (let g = 0; g < games; g++) {
         if ((e.targets.parts.clearance.paceCap ?? 0) > 0) a.capped++;
         for (const [k, v] of Object.entries(e.targets.parts.clearance)) if (k !== 'base') a.parts[k] = (a.parts[k] ?? 0) + (v ?? 0);
         lastHitter = { type: key };
+        lastHit[e.player] = { targets: e.targets, evaluation: e.evaluation, contactHeight: e.pos.y - cfg.world.tableHeight };
+        if (key === 'BLOCK') blockedFrom[prevType] = (blockedFrom[prevType] ?? 0) + 1;
+        prevType = key;
+      }
+      if (e.type === 'whiff') {
+        whiff[e.player] = e.evaluation;
+        whiffed[e.player] = true;
+        const ev = e.evaluation;
+        const kind = !ev ? 'nada' : ev.timingTier === 'WHIFF' ? (ev.dtMs < 0 ? 'pronto' : 'tarde') : 'posición';
+        const k = `${bots[e.player].lastIntendedTier}/${bots[e.player].lastIntendedShot} vs ${prevType}: ${kind}`;
+        whiffWhy[k] = (whiffWhy[k] ?? 0) + 1;
       }
       if (e.type === 'point') {
         reasons[e.reason] = (reasons[e.reason] ?? 0) + 1;
         const lt = lastHitter?.type ?? '-';
         (endByLastType[lt] ??= {})[e.reason] = (endByLastType[lt][e.reason] ?? 0) + 1;
         rallies.push(hits);
+        const loser = e.winner === 0 ? 1 : 0;
+        const d = diagnose({ reason: e.reason, lastHit: lastHit[loser], whiff: whiff[loser], whiffed: whiffed[loser] }, cfg);
+        if (d) causes[`${e.reason}:${d.cause}`] = (causes[`${e.reason}:${d.cause}`] ?? 0) + 1;
         hits = 0;
         lastHitter = null;
+        lastHit[0] = lastHit[1] = null;
+        whiff[0] = whiff[1] = null;
+        whiffed[0] = whiffed[1] = false;
+        prevType = '-';
       }
       if (e.type === 'let') hits = 0;
     }
@@ -82,3 +107,8 @@ for (const [k, a] of Object.entries(byType)) {
   );
 }
 console.log('fin del punto según el último golpe:', JSON.stringify(endByLastType));
+const named = Object.entries(causes).filter(([k]) => !k.endsWith('UNKNOWN')).reduce((a, [, v]) => a + v, 0);
+const all = Object.values(causes).reduce((a, b) => a + b, 0);
+console.log(`causas ("¿por qué fallé?"): ${named}/${all} con nombre`, JSON.stringify(Object.fromEntries(Object.entries(causes).sort((a, b) => b[1] - a[1]))));
+console.log('bloqueos contra:', JSON.stringify(blockedFrom));
+console.log('whiffs (calidad/golpe que intentaba vs golpe que llegaba):', JSON.stringify(Object.fromEntries(Object.entries(whiffWhy).sort((a, b) => b[1] - a[1]))));

@@ -1,13 +1,15 @@
 /**
- * Bot simple [§17.5]: predice la intercepción con la MISMA física compartida y produce
- * InputIntent como un jugador humano (objetivo de raqueta + instante de click).
- * La "humanidad" sale de: retardo de reacción, error de posición y una distribución de
- * calidades de golpe por dificultad. La calidad real la decide el mismo evaluador que al humano:
- * si el bot no llega a tiempo con su raqueta con inercia, falla igual que una persona.
+ * Bot [§17.5]: predice la intercepción con la MISMA física compartida (Magnus y bote con spin incluidos) y
+ * produce InputIntent como un jugador humano (objetivo de raqueta, gesto, Space y instante de click).
+ * La "humanidad" sale de: retardo de reacción, error de posición, una distribución de calidades de golpe y
+ * una mezcla de golpes por dificultad (V0.2). La calidad y el tipo reales los decide el mismo código que al
+ * humano: si el bot llega persiguiendo la bola, su gesto no cuenta (regla de "colocado") y el golpe es normal.
  */
 import type { BotDifficultyConfig, GameConfig } from './config.ts';
+import type { ShotType } from './gesture.ts';
 import { cloneBall, stepBall, type BallContact } from './physics.ts';
 import type { Simulation } from './sim.ts';
+import { relativeSpin } from './spin.ts';
 import { type InputIntent, neutralIntent, type Side, sideSign } from './types.ts';
 
 /** PRNG determinista (mulberry32). */
@@ -30,8 +32,22 @@ interface Plan {
   target: { x: number; z: number };
   clickMs: number;
   fired: boolean;
-  aimVx: number;
+  swing: { vx: number; vy: number };
+  block: boolean;
+  shot: ShotType;
   tier: Tier;
+}
+
+/** Punto candidato de intercepción tras el bote. */
+interface Intercept {
+  t: number;
+  x: number;
+  z: number;
+  /** Parte inferior de la bola sobre la cinta (m). */
+  aboveTape: number;
+  vh: number;
+  top: number;
+  score: number;
 }
 
 export class Bot {
@@ -45,8 +61,9 @@ export class Bot {
   private serveTossAt: number | null = null;
   private serveX = 0;
   private ready = { x: 0, z: 1.7 };
-  /** Calidad que el bot intentó en su último golpe (para depuración / tests). */
+  /** Calidad y golpe que el bot intentó en su último golpe (para depuración / tests). */
   lastIntendedTier: Tier | null = null;
+  lastIntendedShot: ShotType | null = null;
 
   constructor(side: Side, diff: BotDifficultyConfig, cfg: GameConfig, seed = 1) {
     this.side = side;
@@ -89,11 +106,51 @@ export class Bot {
   }
 
   private aim(): number {
-    // Velocidad de gesto que produce un objetivo lateral en [−spread, +spread] de la mesa.
+    // Velocidad de gesto que produce un objetivo lateral en [−spread, +spread] de la mesa (por debajo del slice).
     const s = this.cfg.shot;
     const maxSwing = (this.cfg.world.tableWidth / 2) / s.aimSwingGain;
     const v = this.rand(-1, 1) * this.diff.aimSpread * maxSwing;
-    return v === 0 ? 0 : v + Math.sign(v) * s.aimSwingDeadZone;
+    const out = v === 0 ? 0 : v + Math.sign(v) * s.aimSwingDeadZone;
+    const lim = this.cfg.shotTypes.sliceThreshold - 0.1;
+    return Math.max(-lim, Math.min(lim, out));
+  }
+
+  /** Gesto para un tipo de golpe (alturas de pantalla/s), por encima de su umbral según la potencia. */
+  private gesture(shot: ShotType): { vx: number; vy: number } {
+    const t = this.cfg.shotTypes;
+    const [p0, p1] = this.diff.shots.power;
+    const p = this.rand(p0, p1);
+    const over = (thr: number, full: number) => thr + 0.01 + p * (full - thr);
+    const lateral = (vert: number) => Math.max(-0.8 * vert, Math.min(0.8 * vert, this.aim()));
+    switch (shot) {
+      case 'TOPSPIN': {
+        const vy = over(t.topspinThreshold, t.topspinFullPower);
+        return { vx: lateral(vy), vy };
+      }
+      case 'SMASH': {
+        const vy = over(t.smashThreshold, t.smashFullPower);
+        return { vx: lateral(vy) * 0.5, vy: -vy };
+      }
+      case 'SLICE':
+        return { vx: this.sign() * over(t.sliceThreshold, t.sliceFullPower), vy: 0 };
+      case 'BLOCK':
+        return { vx: 0, vy: 0 };
+      default:
+        return { vx: this.aim(), vy: 0 };
+    }
+  }
+
+  /** Elige el golpe según la bola que llega y la mezcla de su dificultad. */
+  private pickShot(ic: Intercept, high: boolean): ShotType {
+    const sh = this.diff.shots;
+    const bc = this.cfg.bot;
+    if ((ic.vh > bc.blockMinSpeed || Math.abs(ic.top) > bc.blockMinSpin) && this.rng() < sh.block) return 'BLOCK';
+    if (high && this.rng() < sh.smash) return 'SMASH';
+    if (!high && this.rng() < sh.badSmash) return 'SMASH';
+    const r = this.rng();
+    if (r < sh.topspin) return 'TOPSPIN';
+    if (r < sh.topspin + sh.slice) return 'SLICE';
+    return 'NORMAL';
   }
 
   think(sim: Simulation): InputIntent {
@@ -145,11 +202,14 @@ export class Bot {
     const plan = this.plan;
     if (plan && !plan.skip) {
       intent.target = { ...plan.target };
-      intent.swing = { vx: plan.aimVx, vy: 0 };
+      intent.swing = { ...plan.swing };
+      // Space solo en el último tramo: mientras se mantiene, la raqueta va más despacio [§8].
+      intent.block = plan.block && !plan.fired && tNext >= plan.clickMs - this.cfg.bot.blockHoldMs;
       if (!plan.fired && tNext >= plan.clickMs) {
         intent.fire = plan.clickMs;
         plan.fired = true;
         this.lastIntendedTier = plan.tier;
+        this.lastIntendedShot = plan.shot;
       }
     }
     return intent;
@@ -180,7 +240,9 @@ export class Bot {
       target: { x: pad.x * sgn + this.sign() * err.pos * this.cfg.paddle.radius, z: pad.z * sgn },
       clickMs: tIdeal + err.dtMs,
       fired: false,
-      aimVx: this.aim(),
+      swing: { vx: this.aim(), vy: 0 },
+      block: false,
+      shot: 'NORMAL',
       tier,
     };
   }
@@ -196,7 +258,11 @@ export class Bot {
     let bounced = false;
     // En el saque, el primer bote es en el campo de quien saca: no cuenta.
     let serverBouncePending = s.rally.isServe && s.rally.bounces.length === 0;
-    let best: { t: number; x: number; z: number; score: number } | null = null;
+    let best: Intercept | null = null;
+    let bestHigh: Intercept | null = null;
+    /** Para bloquear: el punto más alto cerca de su profundidad preferida (bloquear bajo una bola rápida = red). */
+    let bestBlock: Intercept | null = null;
+    const smashFrom = this.cfg.shotTypes.smash.minAboveTape + this.cfg.bot.smashMargin;
     for (let i = 0; i < 600; i++) {
       contacts.length = 0;
       stepBall(b, sim.dt, env, contacts);
@@ -217,23 +283,43 @@ export class Bot {
       const h = b.pos.y - env.tableTop;
       if (depth < pc.minDepth || depth > pc.maxDepth || h < pc.minReachHeight + 0.04 || h > pc.maxReachHeight) continue;
       const score = Math.abs(depth - this.diff.preferredDepth);
-      if (!best || score < best.score) best = { t, x: b.pos.x * sgn, z: depth, score };
+      const aboveTape = b.pos.y - env.r - env.netTop;
+      const ic: Intercept = { t, x: b.pos.x * sgn, z: depth, aboveTape, vh: Math.hypot(b.vel.x, b.vel.z), top: relativeSpin(b.spin, b.vel).top, score };
+      if (!best || score < best.score) best = ic;
+      if (aboveTape >= smashFrom && (!bestHigh || score < bestHigh.score)) bestHigh = ic;
+      if (score < 0.6 && (!bestBlock || aboveTape > bestBlock.aboveTape)) bestBlock = ic;
     }
     if (!best) return this.skipPlan(s.rally.hits);
+    let shot = this.pickShot(best, bestHigh !== null);
+    // Para el smash espera la bola alta (otro punto de la trayectoria) si la hay.
+    const at = shot === 'SMASH' && bestHigh ? bestHigh : shot === 'BLOCK' && bestBlock ? bestBlock : best;
+    if (shot === 'SMASH' && !bestHigh && this.diff.shots.badSmash === 0) shot = 'NORMAL';
     const tier = this.pickTier();
     const err = this.sampleError(tier);
     return {
       shotId: s.rally.hits,
       skip: false,
-      target: { x: best.x + this.sign() * err.pos * pc.radius, z: best.z },
-      clickMs: best.t + err.dtMs,
+      target: { x: at.x + this.sign() * err.pos * pc.radius, z: at.z },
+      clickMs: at.t + err.dtMs,
       fired: false,
-      aimVx: this.aim(),
+      swing: this.gesture(shot),
+      block: shot === 'BLOCK',
+      shot,
       tier,
     };
   }
 
   private skipPlan(shotId: number): Plan {
-    return { shotId, skip: true, target: { ...this.ready }, clickMs: Number.POSITIVE_INFINITY, fired: true, aimVx: 0, tier: 'whiff' };
+    return {
+      shotId,
+      skip: true,
+      target: { ...this.ready },
+      clickMs: Number.POSITIVE_INFINITY,
+      fired: true,
+      swing: { vx: 0, vy: 0 },
+      block: false,
+      shot: 'NORMAL',
+      tier: 'whiff',
+    };
   }
 }

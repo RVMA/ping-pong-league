@@ -46,6 +46,12 @@ export interface BotDifficultyConfig {
   aimSpread: number;
   /** Profundidad preferida (m desde la red) a la que intenta golpear. */
   preferredDepth: number;
+  /**
+   * Mezcla de golpes (V0.2) [§17.5]. Probabilidades cuando la situación lo permite: smash solo si la bola va a
+   * pasar alta (salvo `badSmash`, el error de intentarlo con la bola baja); bloqueo contra bolas rápidas o con
+   * mucho spin; si no, topspin / slice / normal. Potencia en [power[0], power[1]].
+   */
+  shots: { topspin: number; slice: number; smash: number; badSmash: number; block: number; power: [number, number] };
 }
 
 export const DEFAULT_CONFIG = {
@@ -241,7 +247,7 @@ export const DEFAULT_CONFIG = {
     powerDepth: 0.06,
     powerClearance: 0.03,
     powerTimingGain: 0.6,
-    powerLateLong: 0.3,
+    powerLateLong: 0.9,
     /** "Mejor control del spin" de PERFECT [§4.3]: fracción del spin pedido que sale según la calidad. */
     spinByTier: { PERFECT: 1, GOOD: 0.85, WEAK: 0.6 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
     /**
@@ -249,13 +255,13 @@ export const DEFAULT_CONFIG = {
      * el solver lo convierte en un golpe más rápido con el mismo margen. Riesgo [§4.6]: apunta algo más bajo
      * (−clearanceDrop·p) y desde una bola baja la penalización de "posición desfavorable" se multiplica.
      */
-    topspin: { spinMin: 250, spinMax: 500, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 12, paceCapPower: 2 },
+    topspin: { spinMin: 180, spinMax: 380, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 10.5, paceCapPower: 1.5 },
     /**
      * Slice: el cruce con efecto lateral (curva hacia el lado del gesto) y algo de backspin. "Más ángulo": la
      * puntería puede llegar hasta edgeMargin de la banda (cruce normal: shot.aimEdgeMargin). Riesgo: poco
      * margen sobre la red (−clearancePenalty·p) y el riesgo de ángulo al golpear pronto (§4.5).
      */
-    slice: { sideMin: 150, sideMax: 350, backspin: 80, edgeMargin: 0.04, clearancePenalty: 0.02, paceCap: 10 },
+    slice: { sideMin: 150, sideMax: 350, backspin: 80, edgeMargin: 0.06, clearancePenalty: 0.02, paceCap: 10 },
     /**
      * Techo de ritmo de los golpes de margen (normal, topspin, slice): velocidad horizontal equivalente sin drag
      * (m/s de simulación) que el golpe no supera aunque el margen pedido lo permitiera. Desde una bola baja no
@@ -376,6 +382,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.1, good: 0.45, weak: 0.35, whiff: 0.1 },
         aimSpread: 0.4,
         preferredDepth: 1.65,
+        shots: { topspin: 0.1, slice: 0.05, smash: 0.35, badSmash: 0.04, block: 0.15, power: [0, 0.4] },
       },
       medium: {
         label: 'Normal',
@@ -383,6 +390,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.3, good: 0.5, weak: 0.15, whiff: 0.05 },
         aimSpread: 0.75,
         preferredDepth: 1.6,
+        shots: { topspin: 0.25, slice: 0.12, smash: 0.6, badSmash: 0.02, block: 0.3, power: [0.15, 0.65] },
       },
       hard: {
         label: 'Difícil',
@@ -390,6 +398,7 @@ export const DEFAULT_CONFIG = {
         quality: { perfect: 0.45, good: 0.42, weak: 0.1, whiff: 0.03 },
         aimSpread: 1.0,
         preferredDepth: 1.55,
+        shots: { topspin: 0.35, slice: 0.18, smash: 0.85, badSmash: 0, block: 0.35, power: [0.3, 0.9] },
       },
     } as Record<'easy' | 'medium' | 'hard', BotDifficultyConfig>,
     /** Bandas que usa el bot para fabricar su error, por calidad elegida. */
@@ -401,6 +410,13 @@ export const DEFAULT_CONFIG = {
     },
     /** Posición de espera tras golpear (coordenadas del bot). */
     readyDepth: 1.7,
+    /** Bloquea si la bola llega a más de esta velocidad horizontal (m/s de simulación) o con este topspin (rad/s). */
+    blockMinSpeed: 8.5,
+    blockMinSpin: 250,
+    /** Mantiene Space desde este tiempo antes del click (la raqueta va más lenta mientras tanto). */
+    blockHoldMs: 220,
+    /** Margen extra sobre el umbral del smash para intentarlo (m). */
+    smashMargin: 0.03,
   },
 
   /** Feedback estilo TTYD [§5] ✅ concepto / 🟡 detalle. */
