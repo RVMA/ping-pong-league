@@ -1,11 +1,10 @@
 /**
- * Física propia de la bola [§7]: gravedad, drag cuadrático, bote en la mesa, red (malla + cinta) y suelo.
+ * Física propia de la bola [§7]: gravedad, drag cuadrático, efecto Magnus, bote en la mesa con
+ * intercambio spin↔velocidad, red (malla + cinta) y suelo.
  *
  * Determinista: solo usa + − × ÷ y Math.sqrt (correctamente redondeada por IEEE-754), sin
  * Math.sin/cos/exp/pow, sin aleatoriedad y sin dependencias del DOM. Paso fijo: el llamador
  * decide dt (normalmente simDt(cfg) = gameSpeed / 120).
- *
- * V0.2 añadirá Magnus e intercambio spin↔velocidad en el bote: el estado ya transporta `spin`.
  */
 import type { GameConfig } from './config.ts';
 import type { Side, Vec3 } from './types.ts';
@@ -13,7 +12,7 @@ import type { Side, Vec3 } from './types.ts';
 export interface BallState {
   pos: Vec3;
   vel: Vec3;
-  /** rad/s. Sin uso en V0.1 (preparado para V0.2). */
+  /** rad/s de tiempo de simulación, en el mundo (ver spin.ts para el spin relativo al vuelo). */
   spin: Vec3;
 }
 
@@ -35,7 +34,14 @@ export interface PhysicsEnv {
   netTop: number;
   netHalfWidth: number;
   tableE: number;
-  tableFriction: number;
+  /** Fracción del deslizamiento del punto de contacto que elimina el bote. */
+  tableGrip: number;
+  /** Fracción de velocidad horizontal que pierde en el bote una bola sin spin (= 2/5 · agarre). */
+  flatBounceLoss: number;
+  magnusK: number;
+  spinDecay: number;
+  netSpinKeep: number;
+  floorSpinKeep: number;
   floorE: number;
   floorFriction: number;
   netFaceE: number;
@@ -53,8 +59,14 @@ export interface StepOptions {
   table?: boolean;
 }
 
+/**
+ * Esfera hueca (I = ⅔·m·R²): de un impulso tangencial en el punto de contacto, la fracción que cambia la
+ * velocidad del centro es 1 / (1 + m·R²/I) = 2/5; el resto cambia el giro.
+ */
+const SHELL_LINEAR = 0.4;
+
 export function makeEnv(cfg: GameConfig): PhysicsEnv {
-  const { world, ball } = cfg;
+  const { world, ball, spin } = cfg;
   return {
     r: ball.radius,
     g: ball.gravity,
@@ -66,7 +78,12 @@ export function makeEnv(cfg: GameConfig): PhysicsEnv {
     netTop: world.tableHeight + world.netHeight,
     netHalfWidth: world.tableWidth / 2 + world.netOverhang,
     tableE: ball.tableRestitution,
-    tableFriction: ball.tableFriction,
+    tableGrip: ball.tableGrip,
+    flatBounceLoss: SHELL_LINEAR * ball.tableGrip,
+    magnusK: spin.magnusK,
+    spinDecay: spin.airDecay,
+    netSpinKeep: spin.netSpinKeep,
+    floorSpinKeep: spin.floorSpinKeep,
     floorE: ball.floorRestitution,
     floorFriction: ball.floorFriction,
     netFaceE: ball.netFaceRestitution,
@@ -94,17 +111,27 @@ export function sideOfZ(z: number): Side {
  * a lo largo del segmento recorrido. Muta `b`.
  * Integración: velocidad con Euler explícito y posición con la velocidad media del paso
  * (trapezoidal), exacta para gravedad constante. Las colisiones se añaden a `contacts`.
+ * Fuerzas: gravedad, drag −k·|v|·v y Magnus magnusK·(ω × v) [§7.1].
  */
 export function stepBall(b: BallState, dt: number, env: PhysicsEnv, contacts?: BallContact[], opts?: StepOptions): void {
   const v = b.vel;
+  const w = b.spin;
   const v0x = v.x;
   const v0y = v.y;
   const v0z = v.z;
   const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
   const kd = env.k * speed;
-  v.x += -kd * v.x * dt;
-  v.y += (-env.g - kd * v.y) * dt;
-  v.z += -kd * v.z * dt;
+  const km = env.magnusK;
+  const mx0 = km * (w.y * v0z - w.z * v0y);
+  const my0 = km * (w.z * v0x - w.x * v0z);
+  const mz0 = km * (w.x * v0y - w.y * v0x);
+  v.x += (-kd * v0x + mx0) * dt;
+  v.y += (-env.g - kd * v0y + my0) * dt;
+  v.z += (-kd * v0z + mz0) * dt;
+  const keep = 1 - env.spinDecay * dt;
+  w.x *= keep;
+  w.y *= keep;
+  w.z *= keep;
 
   let remaining = dt;
   // Velocidad media del tramo antes de la primera colisión; después, la velocidad ya reflejada.
@@ -219,8 +246,17 @@ function respond(b: BallState, type: ContactType, env: PhysicsEnv, contacts?: Ba
     case 'table': {
       const impactSpeed = -v.y;
       v.y = -v.y * env.tableE;
-      v.x *= 1 - env.tableFriction;
-      v.z *= 1 - env.tableFriction;
+      // Fricción en el punto de contacto (r = (0, −R, 0)): su velocidad es v + ω × r = (vx + R·ωz, 0, vz − R·ωx).
+      // El bote elimina la fracción `tableGrip` de ese deslizamiento: el topspin (que "rueda" más rápido que la
+      // bola) la empuja hacia delante y el backspin la frena [§7.1]. Δω = (3 / 2R)·(−jz, 0, jx).
+      const w = b.spin;
+      const R = env.r;
+      const jx = -env.flatBounceLoss * (v.x + R * w.z);
+      const jz = -env.flatBounceLoss * (v.z - R * w.x);
+      v.x += jx;
+      v.z += jz;
+      w.x += (-1.5 * jz) / R;
+      w.z += (1.5 * jx) / R;
       p.y = env.tableContactY;
       contacts?.push({ kind: 'table', pos: { x: p.x, y: p.y, z: p.z }, side: sideOfZ(p.z), impactSpeed });
       break;
@@ -229,6 +265,9 @@ function respond(b: BallState, type: ContactType, env: PhysicsEnv, contacts?: Ba
       v.y = -v.y * env.floorE;
       v.x *= 1 - env.floorFriction;
       v.z *= 1 - env.floorFriction;
+      b.spin.x *= env.floorSpinKeep;
+      b.spin.y *= env.floorSpinKeep;
+      b.spin.z *= env.floorSpinKeep;
       p.y = env.r;
       contacts?.push({ kind: 'floor', pos: { x: p.x, y: p.y, z: p.z } });
       break;
@@ -238,6 +277,9 @@ function respond(b: BallState, type: ContactType, env: PhysicsEnv, contacts?: Ba
       v.z = -v.z * env.netFaceE;
       v.x *= env.netFaceDamping;
       v.y *= env.netFaceDamping;
+      b.spin.x *= env.netSpinKeep;
+      b.spin.y *= env.netSpinKeep;
+      b.spin.z *= env.netSpinKeep;
       contacts?.push({ kind: 'net', pos: { x: p.x, y: p.y, z: p.z }, cord: false, fromSide });
       break;
     }

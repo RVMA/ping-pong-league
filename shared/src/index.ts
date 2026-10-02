@@ -1,6 +1,7 @@
 export * from './config.ts';
 export * from './types.ts';
 export * from './physics.ts';
+export * from './spin.ts';
 export * from './hit.ts';
 export * from './shot.ts';
 export * from './paddle.ts';

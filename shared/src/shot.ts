@@ -250,7 +250,7 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
     const h0 = start.y - yLand;
     const s1 = sNet * cfg.serve.firstBounceFraction;
     const post = solveShot({ x: start.x + dirX * s1, y: yLand, z: start.z + dirZ * s1 }, { landing: targets.landing, clearance: targets.clearance, serve: false }, env, dt, cfg);
-    const vh1 = Math.sqrt(post.vel.x * post.vel.x + post.vel.z * post.vel.z) / (1 - env.tableFriction);
+    const vh1 = Math.sqrt(post.vel.x * post.vel.x + post.vel.z * post.vel.z) / (1 - env.flatBounceLoss);
     const T1 = s1 / vh1;
     best = newton(vh1, (0.5 * env.g * T1 * T1 - h0) / T1);
     if (!isConverged(best)) {
@@ -263,7 +263,7 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
       for (let k = 0; k < 3; k++) {
         const p = solveShot({ x: start.x + dirX * sB, y: yLand, z: start.z + dirZ * sB }, { landing: targets.landing, clearance: targets.clearance, serve: false }, env, dt, cfg);
         const vyImpact = -p.vel.y / env.tableE;
-        vhB = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z) / (1 - env.tableFriction);
+        vhB = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z) / (1 - env.flatBounceLoss);
         // h0 + vy0·T − g·T²/2 = 0 con vy0 = vyImpact + g·T  →  g·T²/2 + vyImpact·T + h0 = 0 (raíz menor).
         const disc = vyImpact * vyImpact - 2 * env.g * h0;
         const T = disc > 0 ? (-vyImpact - Math.sqrt(disc)) / env.g : -vyImpact / env.g;

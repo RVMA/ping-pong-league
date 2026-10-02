@@ -1,9 +1,9 @@
 /**
- * Configuración única del juego (V0.1).
+ * Configuración única del juego (V0.2).
  *
  * TODOS los valores ajustables viven aquí: ventanas de timing, gameSpeed, radios,
- * velocidades de la raqueta, curvas de tiro, bot, feedback, Momentum (preparado) y
- * presentación. El cliente puede sobrescribir valores para playtest (parámetros de URL),
+ * velocidades de la raqueta, curvas de tiro, spin, tipos de golpe, bloqueo, bot, feedback,
+ * Momentum (preparado) y presentación. El cliente puede sobrescribir valores para playtest (parámetros de URL),
  * pero cliente y servidor deben compartir exactamente la misma config en partida.
  *
  * Unidades:
@@ -62,8 +62,14 @@ export const DEFAULT_CONFIG = {
     dragK: 0.12,
     /** Restitución vertical en la mesa [§7.2]. */
     tableRestitution: 0.89,
-    /** Fracción de velocidad tangencial perdida en el bote (sin spin en V0.1). */
-    tableFriction: 0.08,
+    /**
+     * Agarre de la mesa en el bote [§7.1, V0.2]: fracción del deslizamiento del punto de contacto que el bote
+     * elimina (0 = mesa sin fricción, 1 = la bola sale rodando). El impulso de fricción cambia velocidad y spin
+     * a la vez (esfera hueca, I = ⅔·m·R²): de cada unidad de deslizamiento eliminado, 2/5 son velocidad.
+     * Con 0.2, una bola SIN spin pierde el 8 % de su velocidad horizontal, como en V0.1; con topspin pierde
+     * menos o acelera, y con backspin frena más.
+     */
+    tableGrip: 0.2,
     floorRestitution: 0.55,
     floorFriction: 0.25,
     /** Choque contra la malla de la red: la bola pierde casi toda la velocidad. */
@@ -72,6 +78,26 @@ export const DEFAULT_CONFIG = {
     /** Choque contra la cinta superior (net cord). */
     netCordRestitution: 0.35,
     netCordFriction: 0.35,
+  },
+
+  /**
+   * Spin [§7.1, V0.2]. El spin se guarda en el mundo (rad/s de tiempo de SIMULACIÓN, como la velocidad).
+   * Convención relativa a la dirección de vuelo: topspin > 0 = la parte de arriba de la bola avanza (cae
+   * antes); topspin < 0 = backspin (sostiene); lateral > 0 = curva hacia la derecha de quien golpea.
+   */
+  spin: {
+    /**
+     * Efecto Magnus: a = magnusK · (ω × v). Con 400 rad/s de topspin a 7 m/s empuja hacia abajo ≈ 10 m/s²,
+     * como una gravedad doble: el topspin permite pegar más fuerte manteniendo la bola baja.
+     * Orden de magnitud real para 40 mm y 2.7 g: C·ρ·A·r/(2m) ≈ 0.003–0.004.
+     */
+    magnusK: 0.0035,
+    /** Pérdida de spin en el aire: fracción por segundo de simulación. */
+    airDecay: 0.1,
+    /** Choque con la malla: fracción del spin que se conserva. */
+    netSpinKeep: 0.5,
+    /** Choque con el suelo: fracción del spin que se conserva. */
+    floorSpinKeep: 0.5,
   },
 
   paddle: {

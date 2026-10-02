@@ -292,6 +292,9 @@ export class Simulation {
     s.ball.vel.x = 0;
     s.ball.vel.y = 0;
     s.ball.vel.z = 0;
+    s.ball.spin.x = 0;
+    s.ball.spin.y = 0;
+    s.ball.spin.z = 0;
   }
 
   private toss(events: SimEvent[]): void {
@@ -418,6 +421,10 @@ export class Simulation {
     s.ball.vel.x = sol.vel.x;
     s.ball.vel.y = sol.vel.y;
     s.ball.vel.z = sol.vel.z;
+    // El golpe fija el spin de salida (el solver ya lo ha tenido en cuenta).
+    s.ball.spin.x = 0;
+    s.ball.spin.y = 0;
+    s.ball.spin.z = 0;
     registerStrike(s.rally, side, serve);
     if (serve) s.phase = 'rally';
     s.lastActivityMs = this.now;
