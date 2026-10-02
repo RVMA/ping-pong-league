@@ -1,6 +1,6 @@
 /**
- * Simulación completa de un game (V0.1): bola, dos raquetas, golpe por click, saque
- * simplificado, reglas y marcador. Paso fijo de 120 Hz. Solo consume InputIntent.
+ * Simulación completa de un game: bola con spin, dos raquetas, golpe por click con tipo de golpe por
+ * gesto (V0.2), bloqueo, saque simplificado, reglas y marcador. Paso fijo de 120 Hz. Solo consume InputIntent.
  *
  * Tiempos:
  *  - `tick` avanza 1 por paso; el instante de un estado es tick · tickMs (ms de tiempo real).
@@ -8,6 +8,7 @@
  *  - Las raquetas se mueven con 1/120 s de tiempo real.
  */
 import { type GameConfig, simDt, tickMs } from './config.ts';
+import { classifyGesture, type ShotType } from './gesture.ts';
 import { classifyHit, type HitEvaluation, measureClosestApproach, type QualityTier } from './hit.ts';
 import { stepPaddle } from './paddle.ts';
 import { type BallContact, type BallState, makeEnv, type PathSample, type PhysicsEnv, predictPath, stepBall } from './physics.ts';
@@ -37,10 +38,13 @@ export type SimPhase = 'serveHold' | 'serveToss' | 'rally' | 'pointOver' | 'game
 export interface PendingHit {
   contactMs: number;
   evaluation: HitEvaluation;
+  /** Gesto efectivo: el del intento × aimFactor (persiguiendo, se anula: golpe normal y recto). */
   swing: { vx: number; vy: number };
   serve: boolean;
+  /** Click con Space mantenido [§8]. */
+  block: boolean;
   lockPos: { x: number; z: number };
-  /** 0 = persiguiendo (la bola sale recta), 1 = colocado (el gesto lateral apunta del todo). */
+  /** 0 = persiguiendo (la bola sale recta y normal), 1 = colocado (el gesto apunta y elige golpe del todo). */
   aimFactor: number;
 }
 
@@ -61,7 +65,10 @@ export interface PlayerStats {
   whiffs: number;
   maxStreak: number;
   netErrors: number;
+  outErrors: number;
   points: number;
+  /** Golpes por tipo (sin contar el saque). */
+  types: Record<ShotType, number>;
 }
 
 export interface SimState {
@@ -85,7 +92,18 @@ export interface SimState {
 export type SimEvent =
   | { type: 'serveReady'; server: Side }
   | { type: 'toss'; server: Side }
-  | { type: 'swing'; player: Side; evaluation: HitEvaluation; contactMs: number; aimFactor: number }
+  | {
+      type: 'swing';
+      player: Side;
+      evaluation: HitEvaluation;
+      contactMs: number;
+      aimFactor: number;
+      /** Tipo de golpe según el gesto efectivo (el umbral del smash se comprueba en el contacto). */
+      shot: ShotType;
+      power: number;
+      /** Gesto del intento sin escalar (para el panel de precisión). */
+      rawSwing: { vx: number; vy: number };
+    }
   | { type: 'whiff'; player: Side; evaluation: HitEvaluation | null }
   | {
       type: 'hit';
@@ -97,6 +115,8 @@ export type SimEvent =
       serve: boolean;
       targets: ShotTargets;
       aimFactor: number;
+      /** Bola que llegaba (velocidad y spin del mundo) justo antes del contacto. */
+      incoming: { vel: Vec3; spin: Vec3 };
     }
   | { type: 'bounce'; pos: Vec3; side: Side; speed: number }
   | { type: 'net'; pos: Vec3; cord: boolean }
@@ -106,7 +126,18 @@ export type SimEvent =
   | { type: 'gameOver'; winner: Side; score: [number, number] };
 
 function newStats(): PlayerStats {
-  return { hits: 0, perfect: 0, good: 0, weak: 0, whiffs: 0, maxStreak: 0, netErrors: 0, points: 0 };
+  return {
+    hits: 0,
+    perfect: 0,
+    good: 0,
+    weak: 0,
+    whiffs: 0,
+    maxStreak: 0,
+    netErrors: 0,
+    outErrors: 0,
+    points: 0,
+    types: { NORMAL: 0, TOPSPIN: 0, SLICE: 0, SMASH: 0, BLOCK: 0 },
+  };
 }
 
 function other(s: Side): Side {
@@ -348,8 +379,11 @@ export class Simulation {
     if (s.phase !== 'serveToss' && s.phase !== 'rally') return;
 
     const swingAtNothing = s.phase === 'rally' && s.rally.lastHitter === side;
-    const aimFactor = this.aimFactor(side, fire);
-    const hitPos = this.clickPaddlePos(side, fire, intent.swing.vx, aimFactor);
+    const serve = s.phase === 'serveToss';
+    const block = intent.block && !serve;
+    const aimFactor = block ? 0 : this.aimFactor(side, fire);
+    const swing = { vx: intent.swing.vx * aimFactor, vy: intent.swing.vy * aimFactor };
+    const hitPos = this.clickPaddlePos(side, fire, swing, aimFactor);
     const evaluation = swingAtNothing ? null : this.evaluateClick(side, fire, hitPos);
     if (!evaluation || evaluation.tier === 'WHIFF') {
       pad.lockUntil = fire + this.cfg.hit.whiffLockoutMs;
@@ -359,16 +393,10 @@ export class Simulation {
       return;
     }
     const contactMs = Math.max(fire, evaluation.tIdeal);
-    pad.pending = {
-      contactMs,
-      evaluation,
-      swing: { vx: intent.swing.vx * aimFactor, vy: intent.swing.vy },
-      serve: s.phase === 'serveToss',
-      lockPos: hitPos,
-      aimFactor,
-    };
+    pad.pending = { contactMs, evaluation, swing, serve, block, lockPos: hitPos, aimFactor };
     pad.lockUntil = contactMs + this.cfg.hit.swingMs;
-    events.push({ type: 'swing', player: side, evaluation, contactMs, aimFactor });
+    const g = serve ? { type: 'NORMAL' as const, power: 0 } : block ? { type: 'BLOCK' as const, power: 0 } : classifyGesture(swing, this.cfg);
+    events.push({ type: 'swing', player: side, evaluation, contactMs, aimFactor, shot: g.type, power: g.power, rawSwing: { ...intent.swing } });
   }
 
   /**
@@ -387,13 +415,15 @@ export class Simulation {
 
   /**
    * Posición de la raqueta con la que se mide el golpe. Si estabas colocado y el gesto es un golpe seco
-   * (por encima de la zona muerta), el gesto es swing, no recolocación: se usa la raqueta de antes del
-   * gesto (click − aimSettleToMs), mezclada según lo colocado que estuvieras. Así cruzar no cuesta posición;
-   * su riesgo está en el ángulo (shot.ts, angleRisk).
+   * (por encima de la zona muerta, en CUALQUIER dirección: §4.6), el gesto es swing, no recolocación: se usa
+   * la raqueta de antes del gesto (click − aimSettleToMs), mezclada según lo colocado que estuvieras. Así
+   * cruzar o elegir golpe no cuesta posición; su riesgo está en el ángulo, el margen y la potencia (shot.ts).
+   * `swing` es el gesto efectivo (ya × aimFactor).
    */
-  clickPaddlePos(side: Side, fire: number, swingVx: number, aimFactor: number): { x: number; z: number } {
+  clickPaddlePos(side: Side, fire: number, swing: { vx: number; vy: number }, aimFactor: number): { x: number; z: number } {
     const pad = this.state.paddles[side].pos;
-    if (aimFactor <= 0 || Math.abs(swingVx) <= this.cfg.shot.aimSwingDeadZone) return { x: pad.x, z: pad.z };
+    const mag = Math.sqrt(swing.vx * swing.vx + swing.vy * swing.vy);
+    if (aimFactor <= 0 || mag <= this.cfg.shot.aimSwingDeadZone) return { x: pad.x, z: pad.z };
     const tRef = fire - this.cfg.shot.aimSettleToMs;
     let ref: { x: number; z: number } | null = null;
     for (const h of this.paddleSpeedHist[side]) if (h.t <= tRef) ref = { x: h.x, z: h.z };
@@ -416,15 +446,16 @@ export class Simulation {
       }
     }
     const contact = { x: s.ball.pos.x, y: s.ball.pos.y, z: s.ball.pos.z };
-    const targets = planShot(pend.evaluation, contact, { swing: pend.swing }, side, this.cfg, serve);
+    const incoming = { vel: { ...s.ball.vel }, spin: { ...s.ball.spin } };
+    const targets = planShot(pend.evaluation, contact, { swing: pend.swing }, side, this.cfg, serve, { block: pend.block, incoming });
     const sol = solveShot(contact, targets, this.env, this.dt, this.cfg);
     s.ball.vel.x = sol.vel.x;
     s.ball.vel.y = sol.vel.y;
     s.ball.vel.z = sol.vel.z;
     // El golpe fija el spin de salida (el solver ya lo ha tenido en cuenta).
-    s.ball.spin.x = 0;
-    s.ball.spin.y = 0;
-    s.ball.spin.z = 0;
+    s.ball.spin.x = targets.spin.x;
+    s.ball.spin.y = targets.spin.y;
+    s.ball.spin.z = targets.spin.z;
     registerStrike(s.rally, side, serve);
     if (serve) s.phase = 'rally';
     s.lastActivityMs = this.now;
@@ -441,7 +472,8 @@ export class Simulation {
       else st.weak += 1;
     }
     st.maxStreak = Math.max(st.maxStreak, s.streak[side]);
-    events.push({ type: 'hit', player: side, evaluation: pend.evaluation, tier, streak: s.streak[side], pos: contact, serve, targets, aimFactor: pend.aimFactor });
+    if (!serve) st.types[targets.type] += 1;
+    events.push({ type: 'hit', player: side, evaluation: pend.evaluation, tier, streak: s.streak[side], pos: contact, serve, targets, aimFactor: pend.aimFactor, incoming });
   }
 
   private emitContact(c: BallContact, events: SimEvent[]): void {
@@ -466,6 +498,7 @@ export class Simulation {
     s.score[outcome.winner] += 1;
     s.stats[outcome.winner].points += 1;
     if (outcome.reason === 'NET') s.stats[other(outcome.winner)].netErrors += 1;
+    if (outcome.reason === 'OUT') s.stats[other(outcome.winner)].outErrors += 1;
     s.lastPoint = { winner: outcome.winner, reason: outcome.reason };
     events.push({ type: 'point', winner: outcome.winner, reason: outcome.reason, score: [s.score[0], s.score[1]] });
   }

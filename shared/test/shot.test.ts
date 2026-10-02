@@ -147,6 +147,8 @@ describe('saque desde un lateral (regresión del playtest 1)', () => {
 });
 
 describe('riesgo de ángulo al cruzar (playtest 2)', () => {
+  // V0.2: un gesto lateral de 2.5 alturas/s o más ya es slice; el cruce a tope de V0.1 se consigue con 2.0
+  // (puntería saturada: (2.0 − 0.5)·0.5 = 0.75 m > 0.66 m). Antes estos tests usaban 4.
   const evalAt = (dtMs: number) =>
     classifyHit({ dtMs, posFrac: 0.05, lateral: 0.007, tIdeal: 0, ballAtIdeal: { x: 0, y: 0, z: 0 }, reachOverflow: 0 }, cfg.hit);
   const contact = { x: 0, y: env.tableTop + 0.2, z: 1.6 };
@@ -154,8 +156,8 @@ describe('riesgo de ángulo al cruzar (playtest 2)', () => {
   const plan = (dtMs: number, vx: number) => planShot(evalAt(dtMs), contact, { swing: { vx, vy: 0 } }, 0, cfg, false);
 
   it('cruzar a tope con PERFECT entra; pronto (GOOD a −60 ms) se abre demasiado y sale por la banda', () => {
-    expect(Math.abs(plan(0, 4).landing.x)).toBeLessThan(half);
-    expect(Math.abs(plan(-60, 4).landing.x)).toBeGreaterThan(half);
+    expect(Math.abs(plan(0, 2).landing.x)).toBeLessThan(half);
+    expect(Math.abs(plan(-60, 2).landing.x)).toBeGreaterThan(half);
   });
 
   it('medio cruce con el mismo error todavía entra', () => {
@@ -163,15 +165,15 @@ describe('riesgo de ángulo al cruzar (playtest 2)', () => {
   });
 
   it('tarde no llegas a cruzar: el ángulo se reduce', () => {
-    expect(Math.abs(plan(90, 4).aim)).toBeLessThan(Math.abs(plan(0, 4).aim) * 0.6);
+    expect(Math.abs(plan(90, 2).aim)).toBeLessThan(Math.abs(plan(0, 2).aim) * 0.6);
   });
 
   it('dentro de la ventana PERFECT el ángulo no cambia', () => {
-    expect(plan(-20, 4).aim).toBeCloseTo(plan(0, 4).aim, 12);
+    expect(plan(-20, 2).aim).toBeCloseTo(plan(0, 2).aim, 12);
   });
 
   it('cruzar a tope deja menos margen sobre la red', () => {
-    expect(plan(0, 4).clearance).toBeCloseTo(plan(0, 0).clearance - cfg.shot.aimClearancePenalty, 9);
+    expect(plan(0, 2).clearance).toBeCloseTo(plan(0, 0).clearance - cfg.shot.aimClearancePenalty, 9);
   });
 });
 

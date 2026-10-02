@@ -25,6 +25,17 @@ export interface ShotCurvePoint {
   depth: number;
 }
 
+/** Punto de una curva de golpe "de ritmo" (smash, bloqueo): el margen sale de la velocidad y la geometría. */
+export interface PaceCurvePoint {
+  dt: number;
+  /** Margen extra sobre el que da la geometría (m). Negativo = más bajo. */
+  clearance: number;
+  /** Profundidad del bote (fracción de media mesa). */
+  depth: number;
+  /** Factor sobre la velocidad horizontal pedida (≤ 1). */
+  pace: number;
+}
+
 export interface BotDifficultyConfig {
   label: string;
   /** Retardo desde el golpe del rival hasta que el bot empieza a moverse hacia la intercepción. */
@@ -201,6 +212,91 @@ export const DEFAULT_CONFIG = {
      */
     edgeDeviationSmall: 0.12,
     edgeDeviationEdge: 0.9,
+  },
+
+  /**
+   * Tipos de golpe por gesto [§4.6, V0.2] 🟡. El gesto llega en alturas de pantalla por segundo y YA
+   * multiplicado por el factor de "colocado" (pregunta abierta 11, propuesta actual: la regla vale para todos
+   * los golpes): persiguiendo la bola, cualquier gesto da un golpe normal y recto.
+   * Clasificación por la dirección dominante del gesto:
+   *  - lateral (|vx| ≥ |vy|): SLICE si |vx| ≥ sliceThreshold; por debajo, golpe normal (cruzado si pasa de la
+   *    zona muerta de puntería, §4.5). El slice es el cruce por encima de un umbral.
+   *  - vertical: TOPSPIN si vy ≥ topspinThreshold (hacia la red); SMASH si −vy ≥ smashThreshold; si no, normal.
+   * La potencia (0..1) crece desde el umbral hasta `…FullPower` [§4.7]. Un cruce a tope (puntería máxima)
+   * se alcanza con ~1.8: el umbral del slice queda claramente por encima.
+   */
+  shotTypes: {
+    topspinThreshold: 1.2,
+    topspinFullPower: 4.0,
+    smashThreshold: 1.2,
+    smashFullPower: 4.0,
+    sliceThreshold: 2.5,
+    sliceFullPower: 5.0,
+    /**
+     * Potencia [§4.7 ✅: más velocidad, menos margen, más sensibilidad al timing, más riesgo de red o fuera]:
+     *  - el bote se va más al fondo (+powerDepth) y más bajo sobre la red (−powerClearance);
+     *  - las desviaciones de la curva de timing crecen ×(1 + powerTimingGain·p) (en pronto también la profundidad);
+     *  - tarde con potencia la bola se va larga: +powerLateLong·p·l (l = 0..1 entre la ventana PERFECT y la débil).
+     */
+    powerDepth: 0.06,
+    powerClearance: 0.03,
+    powerTimingGain: 0.6,
+    powerLateLong: 0.3,
+    /** "Mejor control del spin" de PERFECT [§4.3]: fracción del spin pedido que sale según la calidad. */
+    spinByTier: { PERFECT: 1, GOOD: 0.85, WEAK: 0.6 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
+    /**
+     * Topspin: spin de spinMin (en el umbral) a spinMax (potencia máxima), rad/s de simulación. Con el Magnus
+     * el solver lo convierte en un golpe más rápido con el mismo margen. Riesgo [§4.6]: apunta algo más bajo
+     * (−clearanceDrop·p) y desde una bola baja la penalización de "posición desfavorable" se multiplica.
+     */
+    topspin: { spinMin: 250, spinMax: 500, clearanceDrop: 0.02, lowContactGain: 1.5, paceCap: 12, paceCapPower: 2 },
+    /**
+     * Slice: el cruce con efecto lateral (curva hacia el lado del gesto) y algo de backspin. "Más ángulo": la
+     * puntería puede llegar hasta edgeMargin de la banda (cruce normal: shot.aimEdgeMargin). Riesgo: poco
+     * margen sobre la red (−clearancePenalty·p) y el riesgo de ángulo al golpear pronto (§4.5).
+     */
+    slice: { sideMin: 150, sideMax: 350, backspin: 80, edgeMargin: 0.04, clearancePenalty: 0.02, paceCap: 10 },
+    /**
+     * Techo de ritmo de los golpes de margen (normal, topspin, slice): velocidad horizontal equivalente sin drag
+     * (m/s de simulación) que el golpe no supera aunque el margen pedido lo permitiera. Desde una bola baja no
+     * se nota (el margen manda: el normal PERFECT sale a ~7.6); desde una bola alta evita que un golpe normal
+     * sea un smash ("bajo riesgo, baja recompensa"). Con error de timing el techo baja hasta un
+     * paceCapTimingLoss (×sensibilidad de la potencia): ningún error da más velocidad que un PERFECT.
+     */
+    normalPaceCap: 9.5,
+    paceCapTimingLoss: 0.2,
+    /**
+     * Smash [§4.6]: muy rápido. El objetivo es de RITMO: velocidad horizontal pace (de paceMin a paceMax con la
+     * potencia; equivalente sin drag, m/s de simulación: ~1.7–2.1 veces el normal) y bote; el margen sobre la
+     * red sale de la geometría (cuerda contacto → bote + flecha de la parábola a esa velocidad).
+     * Umbral relativo a la red: con la parte inferior de la bola a menos de minAboveTape sobre la cinta, la
+     * bola baja más empinada: el bote se acorta lowDepthPerM (fracción de media mesa) por metro que falte y
+     * la recta pasa por la red (~3 cm por debajo del umbral ya no entra, desde cualquier profundidad).
+     * Curva de timing: margen extra (m, solo ≥ 0: más alto y lento), profundidad y factor de ritmo (≤ 1).
+     * Pronto = más corto y empinado (red); tarde = más alto y lento. Ningún error da más velocidad que PERFECT.
+     */
+    smash: {
+      minAboveTape: 0.15,
+      lowDepthPerM: 10,
+      paceMin: 13,
+      paceMax: 16,
+      topspin: 50,
+      timingCurve: [
+        { dt: -120, clearance: 0, depth: 0.3, pace: 0.8 },
+        { dt: -60, clearance: 0, depth: 0.68, pace: 0.92 },
+        { dt: -25, clearance: 0, depth: 0.88, pace: 1 },
+        { dt: 0, clearance: 0, depth: 0.9, pace: 1 },
+        { dt: 25, clearance: 0.01, depth: 0.86, pace: 0.97 },
+        { dt: 60, clearance: 0.06, depth: 0.8, pace: 0.85 },
+        { dt: 120, clearance: 0.14, depth: 0.72, pace: 0.7 },
+      ] as PaceCurvePoint[],
+    },
+    /**
+     * Velocidad horizontal más alta que puede tener un golpe (m/s de simulación). Fija el margen mínimo que se
+     * puede pedir desde una bola alta (la trayectoria con gravedad nunca baja de la cuerda): sin este suelo el
+     * solver no tendría solución.
+     */
+    maxPace: 20,
   },
 
   /** Saque normal simplificado [§9.1] 🟡. */

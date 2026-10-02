@@ -183,18 +183,18 @@ describe('cruzar no cuesta posición si estabas colocado (playtest 2)', () => {
     const sim = settleThenFlick();
     const moved = sim.state.paddles[0].pos.x;
     expect(moved).toBeGreaterThan(0.01);
-    const pos = sim.clickPaddlePos(0, sim.now, 3, sim.aimFactor(0, sim.now));
+    const pos = sim.clickPaddlePos(0, sim.now, { vx: 3, vy: 0 }, sim.aimFactor(0, sim.now));
     expect(Math.abs(pos.x)).toBeLessThan(1e-6);
   });
 
   it('un movimiento lento (por debajo de la zona muerta) sí recoloca', () => {
     const sim = settleThenFlick();
-    const pos = sim.clickPaddlePos(0, sim.now, 0.3, sim.aimFactor(0, sim.now));
+    const pos = sim.clickPaddlePos(0, sim.now, { vx: 0.3, vy: 0 }, sim.aimFactor(0, sim.now));
     expect(pos.x).toBeCloseTo(sim.state.paddles[0].pos.x, 9);
   });
 
   it('persiguiendo la bola se usa la posición real', () => {
     const sim = settleThenFlick();
-    expect(sim.clickPaddlePos(0, sim.now, 3, 0).x).toBeCloseTo(sim.state.paddles[0].pos.x, 9);
+    expect(sim.clickPaddlePos(0, sim.now, { vx: 3, vy: 0 }, 0).x).toBeCloseTo(sim.state.paddles[0].pos.x, 9);
   });
 });
