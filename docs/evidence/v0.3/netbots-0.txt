@@ -1,0 +1,9 @@
+medium vs medium (bot remoto), 30 partidos por la red, ping 0 ms ±10 %, gameSpeed 0.75
+golpes/punto: media 6.40 (mediana 4, p90 15), 556 puntos
+motivos: OUT 58 (10 %), MISSED 253 (46 %), TOSS_MISSED 36 (6 %), NET 182 (33 %), OWN_SIDE 22 (4 %), DOUBLE_BOUNCE 5 (1 %)
+causas ("¿por qué fallé?"): 519/519 con nombre {"NET:EARLY":156,"MISSED:WHIFF_LATE":93,"MISSED:WHIFF_EARLY":84,"MISSED:WHIFF_POSITION":63,"OUT:POWER_LATE":35,"OWN_SIDE:EARLY":19,"OUT:SLICE_EARLY":17,"NET:SMASH_LOW":14,"MISSED:NO_CLICK":13,"NET:SMASH_EARLY":7,"DOUBLE_BOUNCE:NO_CLICK":5,"NET:BLOCK_FAST_LOW":3,"OUT:EDGE_WIDE":3,"OWN_SIDE:SMASH_LOW":2,"OUT:CROSS_EARLY":2,"OWN_SIDE:SMASH_EARLY":1,"NET:TOPSPIN_LOW":1,"OUT:SLICE_ANGLE":1}
+discrepancias: 0 correcciones de los clientes, 0 rechazos del servidor
+CPU del servidor por golpe: p50 0.104 ms, p99 0.522 ms, máx 1.791 ms (3559 golpes)
+bytes/s por jugador: subida media 780 (máx 815), bajada media 880 (máx 944)
+frenado de la bola que se aleja: medio 4.2 %, máximo 18.8 %
+ping medido: media 7.6 ms; duración media del game 146 s
