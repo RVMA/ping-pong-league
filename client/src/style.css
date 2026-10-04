@@ -599,3 +599,48 @@ body {
 .panel > .lead + .diff {
   margin-top: 18px;
 }
+
+/* ——— Red (V0.3): ping de cada jugador [§15.1], siempre con su número ——— */
+.ping {
+  margin-left: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ping::before {
+  content: '● ';
+}
+
+.ping-good {
+  color: var(--win);
+}
+
+.ping-fair {
+  color: var(--gold);
+}
+
+.ping-bad {
+  color: var(--lose);
+}
+
+.ping-unknown {
+  color: var(--muted);
+}
+
+.net-warn {
+  position: absolute;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(14, 26, 46, 0.78);
+  color: var(--lose);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.online-info {
+  color: var(--gold);
+}

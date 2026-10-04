@@ -3,7 +3,7 @@
  * aviso de fin de punto, barra de teclas de golpe (V0.2b), pantallas de inicio / pausa / fin y panel de datos
  * de precisión.
  */
-import type { BotDifficulty, ShotType } from '@ppp/shared';
+import type { BotDifficulty, PingLevel, ShotType } from '@ppp/shared';
 import { assetUrl, CHARACTERS, type CharacterId, UI_ASSETS } from '../assets/manifest.ts';
 
 export type FeedbackKind = 'good' | 'perfect-1' | 'perfect-2' | 'perfect-3' | 'perfect-4' | 'label';
@@ -57,6 +57,10 @@ export class Hud {
   private readonly keyChips = new Map<ShotType, HTMLElement>();
   private keyActive: ShotType | null = null;
   private toastTimer = 0;
+  /** Ping de cada jugador junto a su nombre (solo online) y aviso de conexión inestable [§15.1]. */
+  private readonly pings: [HTMLElement, HTMLElement] = [el('span', 'ping'), el('span', 'ping')];
+  private readonly netWarn = el('div', 'net-warn', 'Conexión inestable, el timing puede verse afectado');
+  private pingText: [string, string] = ['', ''];
 
   constructor(root: HTMLElement, characters: [CharacterId, CharacterId]) {
     this.root = root;
@@ -71,6 +75,8 @@ export class Hud {
       const label = el('div', 'name');
       label.append(el('span', '', name));
       if (i === 1) label.append(this.botLabel);
+      this.pings[i].hidden = true;
+      label.append(this.pings[i]);
       const dot = el('span', 'serve-dot');
       dot.title = 'Saca';
       wrap.append(img, label, dot);
@@ -99,7 +105,45 @@ export class Hud {
     }
     this.keybar.append(el('span', 'kb-tab', 'Tab: ocultar'));
     this.keybar.hidden = true;
-    root.append(board, this.toast, this.hint, this.keybar, this.debug, this.overlay);
+    this.netWarn.hidden = true;
+    root.append(board, this.netWarn, this.toast, this.hint, this.keybar, this.debug, this.overlay);
+  }
+
+  /**
+   * Ping de los dos jugadores [§15.1] (media de las últimas 5 medidas), con su color y siempre con el número [§19]:
+   * < 60 ms verde, 60–120 amarillo, > 120 rojo y aviso. null = modo local (se oculta).
+   */
+  setPings(values: [number | null, number | null] | null, levels: [PingLevel, PingLevel]): void {
+    let warn = false;
+    for (const i of [0, 1] as const) {
+      const node = this.pings[i];
+      if (!values) {
+        node.hidden = true;
+        continue;
+      }
+      const v = values[i];
+      const text = v === null ? '… ms' : `${Math.round(v)} ms`;
+      const cls = `ping ping-${levels[i]}`;
+      if (text !== this.pingText[i] || node.className !== cls) {
+        node.textContent = text;
+        node.className = cls;
+        node.title = levels[i] === 'bad' ? 'Ping alto' : levels[i] === 'fair' ? 'Ping medio' : levels[i] === 'good' ? 'Ping bajo' : 'Midiendo';
+        this.pingText[i] = text;
+      }
+      node.hidden = false;
+      if (levels[i] === 'bad') warn = true;
+    }
+    this.netWarn.hidden = !warn;
+  }
+
+  /** Pantalla de conexión (conectando, error, conexión perdida) con un botón opcional para volver al menú. */
+  showConnection(title: string, text: string, onMenu?: () => void): void {
+    const panel = el('div', 'panel compact');
+    panel.append(el('h2', '', title));
+    if (text) panel.append(el('p', 'lead', text));
+    if (onMenu) panel.append(this.button('Volver al menú', true, onMenu, 'menu'));
+    this.overlay.replaceChildren(panel);
+    this.overlay.className = 'overlay show';
   }
 
   /** Muestra u oculta la barra de teclas (solo durante la partida). */
@@ -301,6 +345,7 @@ export class Hud {
     onPick: (d: BotDifficulty) => void,
     latency?: { offsetMs: number | null; onCalibrate: () => void },
     explain?: { on: boolean; onToggle: (on: boolean) => void },
+    online?: string,
   ): void {
     const panel = el('div', 'panel');
     const logoUrl = assetUrl(UI_ASSETS.logo);
@@ -312,7 +357,8 @@ export class Hud {
     } else {
       panel.append(el('h1', '', 'Ping Pong PvP'));
     }
-    panel.append(el('p', 'lead', 'Un game a 11 contra el bot. Prototipo V0.2b: golpes con teclas, spin y bloqueo.'));
+    panel.append(el('p', 'lead', online ? 'Un game a 11 contra el bot remoto, por la red. Prototipo V0.3: cada uno golpea en su tiempo.' : 'Un game a 11 contra el bot. Prototipo V0.3 (en local).'));
+    if (online) panel.append(el('p', 'latency-text online-info', online));
     panel.append(el('h2', '', 'Elige rival'));
     panel.append(this.difficultyButtons(current, labels, onPick));
     if (latency) {

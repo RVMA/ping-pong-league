@@ -11,8 +11,11 @@
  *  - why: 0 / 1 desactiva o activa "¿por qué fallé?" (sustituye a lo guardado)
  *  - reduce: 1 reduce el temblor de cámara y los destellos (sin ráfagas de chispas) [§19]; por defecto sigue la
  *    preferencia «reducir movimiento» del sistema (reduce=0 la ignora)
+ *  - online: 1 juega en red contra el bot remoto (V0.3), con latencia simulada:
+ *    ping (tu ping en ms, por defecto 0), botping (el del bot, por defecto el mismo que ping) y jitter (variación,
+ *    fracción; por defecto 0.1 = ±10 %)
  */
-import type { BotDifficulty, ConfigOverrides } from '@ppp/shared';
+import { type BotDifficulty, type ConfigOverrides, DEFAULT_CONFIG } from '@ppp/shared';
 
 export interface Settings {
   overrides: ConfigOverrides;
@@ -24,6 +27,8 @@ export interface Settings {
   latencyOffset: number | null;
   /** "¿Por qué fallé?" forzado por URL; si no hay, lo guardado o el valor de la config. */
   explain: boolean | null;
+  /** Modo en red contra el bot remoto (V0.3) con su latencia simulada, o null para jugar en local. */
+  online: { ping: number; botping: number; jitter: number } | null;
 }
 
 const EXPLAIN_KEY = 'ppp.explainErrors';
@@ -97,5 +102,14 @@ export function readSettings(search = window.location.search): Settings {
     seed: num('seed') ?? Math.floor(Math.random() * 1e9),
     latencyOffset: offset ?? null,
     explain: q.get('why') === '0' ? false : q.get('why') === '1' ? true : null,
+    online: q.get('online') === '1' ? onlineParams(num) : null,
   };
+}
+
+/** Latencia simulada del modo online, dentro de los límites que acepta el servidor (config.net.latency). */
+function onlineParams(num: (k: string) => number | undefined): { ping: number; botping: number; jitter: number } {
+  const lat = DEFAULT_CONFIG.net.latency;
+  const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
+  const ping = clamp(num('ping') ?? 0, lat.maxPingMs);
+  return { ping, botping: clamp(num('botping') ?? ping, lat.maxPingMs), jitter: clamp(num('jitter') ?? lat.defaultJitter, lat.maxJitter) };
 }

@@ -4,7 +4,6 @@
  * La lógica del juego vive en @ppp/shared; aquí solo hay presentación y entrada.
  */
 import {
-  Bot,
   type BotDifficulty,
   describeStroke,
   diagnose,
@@ -19,12 +18,13 @@ import {
   shotFromKeys,
   type ShotTargets,
   type ShotType,
+  pingLevel,
   type Side,
-  Simulation,
   type SimEvent,
   sideSign,
   spinKind,
   type BallContact,
+  type Vec3,
 } from '@ppp/shared';
 import { AudioManager } from '../audio/audio.ts';
 import type { CharacterId } from '../assets/manifest.ts';
@@ -33,7 +33,9 @@ import { type PaddleFrame, type RenderFrame, World } from '../render/world.ts';
 import { type FeedbackKind, Hud } from '../ui/hud.ts';
 import { PrecisionStats } from '../ui/precision-stats.ts';
 import { keyMissText, pointText, powerLevelText, SHOT_LABEL, strokeText } from '../ui/texts.ts';
+import { type NetStatus, OnlineSession } from '../net/online-session.ts';
 import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration.ts';
+import { type GameSession, LocalSession, type SessionView } from './session.ts';
 import { loadExplain, loadKeyBar, saveExplain, saveKeyBar, type Settings } from './settings.ts';
 
 const CHARACTERS: [CharacterId, CharacterId] = ['power', 'defender'];
@@ -82,12 +84,15 @@ export interface EventLogEntry {
 
 export class Game {
   readonly cfg: GameConfig;
-  readonly sim: Simulation;
+  /** De dónde sale la partida: simulación local o vista en red contra el bot remoto (V0.3). */
+  readonly session: GameSession;
   readonly world: World;
   readonly hud: Hud;
   readonly audio = new AudioManager();
   readonly input: MouseTranslator;
-  private bot: Bot;
+  /** La sesión en red (null en local). */
+  private readonly online: OnlineSession | null;
+  private readonly onlineParams: Settings['online'];
   private difficulty: BotDifficulty;
   private readonly clock = { epoch: 0 };
   private running = false;
@@ -124,23 +129,33 @@ export class Game {
   private lastStrokeText: string | null = null;
   /** Registro de eventos recientes (para depurar y para las pruebas automáticas). */
   readonly log: EventLogEntry[] = [];
+  /** Mayor desplazamiento de la bola dibujada entre dos frames durante el juego (m): para medir saltos. */
+  private ballStep = { max: 0, prev: { x: 0, y: 0, z: 0 }, ok: false };
 
   constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement, settings: Settings) {
     this.cfg = makeConfig(settings.overrides);
     this.difficulty = settings.difficulty;
-    this.sim = new Simulation(this.cfg, { firstServer: HUMAN });
-    this.bot = new Bot(BOT, this.cfg.bot.difficulties[this.difficulty], this.cfg, settings.seed);
+    this.onlineParams = settings.online;
+    if (settings.online) {
+      this.online = new OnlineSession(this.cfg, { ...settings.online, seed: settings.seed }, this.clock);
+      this.online.onStatus = (s, d) => this.onNetStatus(s, d);
+      this.session = this.online;
+    } else {
+      this.online = null;
+      this.session = new LocalSession(this.cfg, this.difficulty, settings.seed);
+    }
     this.world = new World(canvas, this.cfg, CHARACTERS);
     this.hud = new Hud(hudRoot, CHARACTERS);
     this.input = new MouseTranslator(canvas, this.world.camera, this.cfg.world.tableHeight + this.cfg.presentation.cursorPlaneHeight, this.clock, HUMAN);
-    this.curr = this.snapshot();
-    this.prev = this.snapshot();
+    this.curr = this.snapshot(this.emptySnapshot());
+    this.prev = this.snapshot(this.emptySnapshot());
     const rest = this.cfg.world.tableHeight + this.cfg.paddle.restHeight;
     const mkFx = (): PaddleFx => ({ height: rest, swingStart: Number.NEGATIVE_INFINITY, reach: { x: 0, y: 0, z: 0 }, flash: 0 });
     this.fx = [mkFx(), mkFx()];
     this.hud.setDebug(settings.debug ? [] : null);
     this.hud.setBotDifficulty(this.cfg.bot.difficulties[this.difficulty].label);
     this.hud.setScore(this.sim.state.score, this.sim.state.server);
+    this.hud.setPings(this.online ? [null, null] : null, ['unknown', 'unknown']);
 
     const resize = () => this.world.resize(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', resize);
@@ -151,7 +166,8 @@ export class Game {
       void this.audio.unlock();
       if (this.calibration && e.button === 0) this.onCalibrationClick(e.timeStamp);
     });
-    window.addEventListener('blur', () => this.running && !this.paused && this.pause());
+    // En red no hay pausa: el servidor y el rival siguen.
+    window.addEventListener('blur', () => this.running && !this.paused && !this.online && this.pause());
 
     this.explain = settings.explain ?? loadExplain() ?? this.cfg.presentation.explainErrors;
 
@@ -159,6 +175,7 @@ export class Game {
     const { latencyOffsetMin, latencyOffsetMax } = this.cfg.input;
     this.latencyOffset = stored === null ? null : Math.max(latencyOffsetMin, Math.min(latencyOffsetMax, stored));
     this.input.latencyOffsetMs = this.latencyOffset ?? 0;
+    this.online?.setLatencyOffset(this.latencyOffset ?? 0);
     this.input.onShotKeyDown = (key, perf) => this.onShotKeyDown(key, perf);
 
     if (settings.autostart) this.start(this.difficulty);
@@ -184,7 +201,28 @@ export class Game {
           saveExplain(on);
         },
       },
+      this.onlineInfo(),
     );
+  }
+
+  /** Línea del menú en el modo online (undefined en local). */
+  private onlineInfo(): string | undefined {
+    const o = this.onlineParams;
+    if (!o) return undefined;
+    return `Online contra el bot remoto · tu ping simulado ${o.ping} ms · el del bot ${o.botping} ms · variación ±${Math.round(o.jitter * 100)} %`;
+  }
+
+  /** Cambios de la conexión (modo online). */
+  private onNetStatus(status: NetStatus, detail: string): void {
+    if (status === 'waiting') this.hud.showConnection('Conectando…', 'Esperando al bot remoto.');
+    else if (status === 'playing') this.beginPlay();
+    else if (status === 'lost' || status === 'error') {
+      this.running = false;
+      this.input.captureKeys = false;
+      this.hud.showKeyBar(false);
+      this.hud.setHint('');
+      this.hud.showConnection(status === 'lost' ? 'Conexión perdida' : 'No se pudo jugar online', detail, () => this.showMenu());
+    }
   }
 
   // ——— Calibración de latencia (P7) ———
@@ -229,6 +267,7 @@ export class Game {
       () => {
         this.latencyOffset = r.offsetMs;
         this.input.latencyOffsetMs = r.offsetMs;
+        this.online?.setLatencyOffset(r.offsetMs);
         saveLatencyOffset(r.offsetMs);
         this.showMenu();
       },
@@ -251,9 +290,18 @@ export class Game {
   start(difficulty: BotDifficulty): void {
     void this.audio.unlock();
     this.difficulty = difficulty;
-    this.bot.setDifficulty(this.cfg.bot.difficulties[difficulty]);
     this.hud.setBotDifficulty(this.cfg.bot.difficulties[difficulty].label);
-    this.sim.restart(HUMAN);
+    this.session.begin(difficulty);
+    if (this.online && !this.online.ready) {
+      this.running = false;
+      this.hud.showConnection('Conectando…', 'Preparando la partida contra el bot remoto.');
+      return;
+    }
+    this.beginPlay();
+  }
+
+  /** Empieza a jugar con la sesión lista (en red, tras el `start` del servidor). */
+  private beginPlay(): void {
     this.hud.setScore(this.sim.state.score, this.sim.state.server);
     this.hud.hideOverlay();
     this.input.clearFires();
@@ -261,8 +309,14 @@ export class Game {
     this.paused = false;
     this.input.captureKeys = true;
     this.hud.showKeyBar(this.keyBarOn);
-    this.clock.epoch = performance.now() - this.sim.now;
+    // En local el reloj sigue a la simulación; en red lo fija el `start` del servidor (OnlineSession).
+    if (!this.online) this.clock.epoch = performance.now() - this.sim.now;
     this.onServeReady(this.sim.state.server);
+  }
+
+  /** La partida que se dibuja (Simulation en local, ClientMatch en red). */
+  get sim(): SessionView {
+    return this.session.sim;
   }
 
   private pause(): void {
@@ -284,7 +338,7 @@ export class Game {
   private onKey(e: KeyboardEvent): void {
     if (e.key === 'Escape' && this.calibration) {
       this.cancelCalibration();
-    } else if (e.key === 'Escape' && this.running) {
+    } else if (e.key === 'Escape' && this.running && !this.online) {
       if (this.paused) this.resume();
       else this.pause();
     } else if (e.key === 'd' || e.key === 'D') {
@@ -330,11 +384,14 @@ export class Game {
       return;
     }
     let alpha = 1;
-    if (this.running && !this.paused) {
+    // En red la partida avanza siempre que la sesión esté lista (también con el fin del game en pantalla).
+    const live = this.online ? this.online.ready : this.running && !this.paused;
+    if (live) {
       const tick = this.sim.tickMs;
       let gameNow = now - this.clock.epoch;
-      // Tirón (pestaña oculta, GC largo): se descarta el tiempo en lugar de acelerar.
-      if (gameNow - this.sim.now > 250) {
+      // Tirón (pestaña oculta, GC largo): en local se descarta el tiempo en lugar de acelerar; en red no se puede
+      // (el servidor y el rival siguen), así que se recupera.
+      if (!this.online && gameNow - this.sim.now > 250) {
         this.clock.epoch += gameNow - this.sim.now - tick;
         gameNow = now - this.clock.epoch;
       }
@@ -347,19 +404,26 @@ export class Game {
   private tick(): void {
     const tickEnd = this.sim.now + this.sim.tickMs;
     const human = this.input.intentFor(tickEnd);
-    const bot = this.bot.think(this.sim);
+    const events = this.session.tick(human);
+    // Instantáneas reutilizadas (sin asignar memoria por tick): la anterior pasa a ser la actual.
+    const old = this.prev;
     this.prev = this.curr;
-    const events = this.sim.step([human, bot]);
-    this.curr = this.snapshot();
+    this.curr = this.snapshot(old);
     for (const e of events) this.onEvent(e);
   }
 
-  private snapshot(): Snapshot {
+  private emptySnapshot(): Snapshot {
+    return { ball: { x: 0, y: 0, z: 0 }, paddles: [{ x: 0, z: 0 }, { x: 0, z: 0 }] };
+  }
+
+  private snapshot(out: Snapshot): Snapshot {
     const s = this.sim.state;
-    return {
-      ball: { ...s.ball.pos },
-      paddles: [{ ...s.paddles[0].pos }, { ...s.paddles[1].pos }],
-    };
+    this.session.renderBall(out.ball as Vec3);
+    for (const i of [0, 1] as const) {
+      out.paddles[i].x = s.paddles[i].pos.x;
+      out.paddles[i].z = s.paddles[i].pos.z;
+    }
+    return out;
   }
 
   // ——— Eventos de la simulación ———
@@ -690,6 +754,19 @@ export class Game {
       heldOutline: held ? { color: this.shotColor(held) } : null,
     };
     this.world.render(frame);
+    if (this.online) {
+      const st = this.online.stats;
+      this.hud.setPings([st.myPing, st.rivalPing], [pingLevel(st.myPing, this.cfg), pingLevel(st.rivalPing, this.cfg)]);
+    }
+    // Salto de la bola: mayor desplazamiento entre dos frames mientras está en juego.
+    const bs = this.ballStep;
+    if (s.phase === 'rally' || s.phase === 'serveToss') {
+      if (bs.ok) bs.max = Math.max(bs.max, Math.hypot(frame.ball.x - bs.prev.x, frame.ball.y - bs.prev.y, frame.ball.z - bs.prev.z));
+      bs.prev.x = frame.ball.x;
+      bs.prev.y = frame.ball.y;
+      bs.prev.z = frame.ball.z;
+      bs.ok = true;
+    } else bs.ok = false;
     if (this.hud.debugVisible) this.updateDebug();
   }
 
@@ -736,8 +813,22 @@ export class Game {
       ['Calibración', this.latencyOffset === null ? 'sin calibrar' : `${this.latencyOffset > 0 ? '+' : ''}${this.latencyOffset} ms`],
       ...this.precision.rows(),
       ['gameSpeed', String(this.cfg.sim.gameSpeed)],
+      ...this.netRows(),
       ['FPS', this.fps.toFixed(0)],
     ]);
+  }
+
+  /** Filas del panel D en red: ping de los dos, frenado de la bola que se aleja y correcciones del servidor. */
+  private netRows(): [string, string][] {
+    const o = this.online;
+    if (!o) return [];
+    const st = o.stats;
+    const ms = (v: number | null) => (v === null ? '…' : `${Math.round(v)} ms`);
+    return [
+      ['Ping (tú / bot)', `${ms(st.myPing)} / ${ms(st.rivalPing)}`],
+      ['Frenado bola que se aleja', st.brakes.flights ? `media ${Math.round(st.brakes.meanSlowdown * 100)} % · máx ${Math.round(st.brakes.maxSlowdown * 100)} %` : '—'],
+      ['Correcciones del servidor', String(st.corrections)],
+    ];
   }
 
   /** Estado legible para pruebas automáticas (Playwright). */
@@ -763,6 +854,27 @@ export class Game {
       rally: { ...s.rally, bounces: [...s.rally.bounces] },
       stats: s.stats.map((x) => ({ ...x })),
       difficulty: this.difficulty,
+      fps: this.fps,
+      maxBallStep: this.ballStep.max,
+      net: this.online
+        ? {
+            status: this.online.status,
+            detail: this.online.detail,
+            pings: [this.online.stats.myPing, this.online.stats.rivalPing],
+            corrections: this.online.stats.corrections,
+            correctionKinds: [...this.online.stats.correctionKinds],
+            brakes: { ...this.online.stats.brakes },
+            maxRenderJump: this.online.stats.maxRenderJump,
+            bytesIn: this.online.bytesIn,
+            bytesOut: this.online.bytesOut,
+            seconds: this.online.startedAt ? (performance.now() - this.online.startedAt) / 1000 : 0,
+          }
+        : null,
     };
+  }
+
+  /** Reinicia las medidas de red y de saltos (pruebas automáticas). */
+  resetMetrics(): void {
+    this.ballStep.max = 0;
   }
 }

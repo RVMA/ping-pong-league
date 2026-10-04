@@ -61,6 +61,8 @@ export class BotClient {
   }
 
   private send(msg: C2S): void {
+    // El ping sale con la hora real de envío (los ticks se ponen al día por tandas).
+    if (msg.k === 'ping') msg.t = performance.now() - this.epoch;
     this.sendRaw(encode(msg));
   }
 

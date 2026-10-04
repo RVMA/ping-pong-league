@@ -842,6 +842,7 @@ export class ClientMatch {
     this.predicted = null;
     this.future.length = 0;
     this.attachBall();
+    this.events.push({ type: 'serveReady', server: fs });
   }
 
   private attachBall(): void {
