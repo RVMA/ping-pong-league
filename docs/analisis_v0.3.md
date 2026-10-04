@@ -74,14 +74,14 @@
 
 | Qué | Resultado |
 |---|---|
-| `npm test` | **258** en `shared/` (179 de antes, sin tocar sus expectativas, + 79 nuevos) y **5** en `server/` con sockets reales |
+| `npm test` | **259** en `shared/` (179 de antes, sin tocar sus expectativas, + 80 nuevos) y **6** en `server/` con sockets reales |
 | Vuelo bit a bit con la simulación local | Más de 150 vuelos de golpe y 20 lanzamientos de saque: los 9 números del estado coinciden en cada paso (`Object.is`), y también los contactos y el desenlace (`flight.test.ts`) |
 | Evaluación del click sobre el vuelo | 150+ clicks reales del partido local: misma calidad, causas, y Δt/posición a < 1e-9 (`flight.test.ts`) |
 | Resolución del golpe | 80+ golpes: mismo tipo, potencia, «colocado», índice de contacto y estado de salida a < 1e-9 que `Simulation` (`resolve.test.ts`) |
 | Protocolo | Ida y vuelta de cada mensaje; 20 casos malformados rechazados (`1e400`, arrays de 65, tipos cambiados…); fuzz de 2 000 mutaciones sin excepciones |
 | Reloj de la bola que se aleja | Identidad sin ping; llega a tiempo; monótono; velocidad entre el límite (0.25) y 1; real cerca de ti; tras el contacto esperado, velocidad real con el retraso acumulado; `retarget` y `resume` sin saltos |
 | Red en memoria (bots, tiempo virtual, codec real) | **Ping 0 = local** golpe a golpe en 3 partidos; **0 correcciones y 0 rechazos** con ping 100 y 150 (±10 %); en una búsqueda más amplia, **120 partidas** (40 semillas × ping 50/100/150) sin discrepancias; determinismo (mismos mensajes en dos ejecuciones) |
-| Servidor (sockets reales) | Rechaza versión, config y parámetros; se juegan puntos sin rechazos ni correcciones; un mensaje basura se descarta y la partida sigue; si se va el jugador se cierra la sala y el bot; si se cae el bot, el jugador recibe `bye`; sin conexiones, el bucle se duerme |
+| Servidor (sockets reales) | Rechaza versión, config y parámetros; se juegan puntos sin rechazos ni correcciones; un mensaje basura se descarta y la partida sigue; si se va el jugador se cierra la sala y el bot; si se cae el bot, el jugador recibe `bye`; sin conexiones, el bucle se duerme; por defecto solo escucha en 127.0.0.1 y corta los mensajes de más de 16 KB |
 | Typecheck (`shared/` sin DOM ni Node, `client/`, `server/`) y build | Limpios |
 
 ### 2.2 Partidos de bots por la red (sockets reales, sin navegador)
@@ -178,6 +178,7 @@ Sus capturas están en `docs/screenshots/v0.3/regresion/` (`keys-*`, `rally-*`);
 | 12 | Hash de la config (§17.6) | «se envía un hash de la config» | FNV-1a sobre la config sin `presentation` ni `feedback`; con `speed=`, `radius=`… el servidor rechaza la conexión con un mensaje claro | `reduce=1` o los textos no cambian el juego |
 | 13 | Quién saca primero | El jugador | El jugador; `hello` admite `fs` opcional (lo usa `net-bots` para repetir las semillas y el primer saque de `shot-stats`) | Comparación limpia con local |
 | 14 | Otra partida online | — | «Jugar otra vez» con la misma dificultad reinicia contra el mismo bot (`again`); con otra dificultad se reconecta con un bot nuevo | El bot remoto se crea con su dificultad |
+| 15 | Servidor | — | Escucha por defecto solo en **127.0.0.1** (`PPP_HOST` para otra interfaz), mensajes de **16 KB** como máximo; un `hit` de quien no es el receptor se descarta sin cerrar el punto | Revisión final: un servidor sin autenticación no debe quedar expuesto en la red local ni aceptar mensajes de 100 MB |
 
 ### 3.2 Valores 🟡 elegidos (`shared/src/config.ts`, sección `net`)
 
