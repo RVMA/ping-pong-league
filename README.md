@@ -30,7 +30,8 @@ npm run dev          # cliente en http://localhost:5173 y servidor de juego en w
 
 `npm run dev` arranca **en un solo proceso** el cliente (Vite) y el servidor de juego; al pararlo (Ctrl+C, o si muere
 la terminal que lo lanzó) se cierran los dos. El cliente habla con el servidor por el mismo origen (`/ws`, proxy
-WebSocket de Vite). Puerto del servidor: variable `PPP_PORT` (por defecto 5180).
+WebSocket de Vite). Puerto del servidor: variable `PPP_PORT` (por defecto 5180); por defecto solo escucha en esta
+máquina (127.0.0.1); `PPP_HOST` cambia la interfaz.
 
 ### Jugar online contra el bot remoto (V0.3)
 

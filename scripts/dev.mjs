@@ -6,11 +6,11 @@ import { createServer } from 'vite';
 
 const gamePort = Number(process.env.PPP_PORT ?? 5180);
 const { startServer } = await import('../server/src/server.ts');
-const game = await startServer({ port: gamePort });
+const game = await startServer({ port: gamePort, host: process.env.PPP_HOST });
 const vite = await createServer({ root: fileURLToPath(new URL('../client/', import.meta.url)), configFile: fileURLToPath(new URL('../client/vite.config.ts', import.meta.url)) });
 await vite.listen();
 vite.printUrls();
-console.log(`  ➜  Servidor de juego: ws://localhost:${game.port}/ws (el cliente lo usa por el mismo origen: /ws)`);
+console.log(`  ➜  Servidor de juego: ws://${game.host}:${game.port}/ws (el cliente lo usa por el mismo origen: /ws)`);
 console.log('  ➜  Online contra el bot remoto: añade ?online=1 (y ping=100, botping, jitter) a la URL');
 
 let closing = false;

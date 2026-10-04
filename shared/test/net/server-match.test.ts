@@ -144,6 +144,20 @@ describe('ServerMatch: autoridad por eventos [§17.2, §17.3]', () => {
     expect(take().some((o) => o.msg.k === 'fl')).toBe(true);
   });
 
+  it('un golpe de quien no debe golpear se descarta sin cerrar el punto del otro', () => {
+    const { server, take } = setup();
+    server.start(0);
+    server.receive(0, tossMsg(0, 0.1, 0), 1000);
+    take();
+    const input = serveInput(tossFlight(0, 0.1), 0, 0.1, 0);
+    server.receive(1, hitMsg(0, 0, input), 1000 + input.t + 20);
+    expect(take()).toEqual([]);
+    expect(server.record.rejected.at(-1)).toMatchObject({ from: 1, why: 'turn' });
+    // El que saca sigue pudiendo golpear su lanzamiento.
+    server.receive(0, hitMsg(0, 0, input), 1000 + input.t + 25);
+    expect(take().some((o) => o.msg.k === 'fl')).toBe(true);
+  });
+
   it('rechaza un click «en el futuro»', () => {
     const { server, take } = setup();
     server.start(0);

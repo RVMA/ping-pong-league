@@ -7,7 +7,8 @@ const gamePort = env.PPP_PORT ?? '5180';
 export default defineConfig({
   server: {
     port: 5173,
-    proxy: { '/ws': { target: `ws://localhost:${gamePort}`, ws: true } },
+    // 127.0.0.1 y no «localhost»: en Node, localhost puede resolverse a ::1 y el servidor escucha en IPv4.
+    proxy: { '/ws': { target: `ws://127.0.0.1:${gamePort}`, ws: true } },
   },
   build: { target: 'es2022' },
 });

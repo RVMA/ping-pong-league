@@ -217,12 +217,16 @@ export class ServerMatch {
       this.reject(from, 'hit', 'stale');
       return;
     }
+    // Un golpe de quien no debe golpear este vuelo no es del receptor: se descarta sin tocar su punto.
+    if (fl.receiver !== from) {
+      this.reject(from, 'hit', 'turn');
+      return;
+    }
     // A partir de aquí el golpe es del vuelo actual: si no vale, el punto acaba como si no lo hubiera devuelto.
     const fail = (why: string) => {
       this.reject(from, 'hit', why);
       this.closePoint(this.f, fl.end.i, fl.end.outcome);
     };
-    if (fl.receiver !== from) return fail('turn');
     const input = hitFromWire(msg);
     if (!validClickTime(input.t, fl.end.i, now - this.sentAt, this.cfg)) return fail('time');
     const w = this.whiffs[from];

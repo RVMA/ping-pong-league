@@ -60,6 +60,13 @@ describe('servidor de juego (sockets reales)', () => {
     expect(d.msgs[0]).toMatchObject({ k: 'err', m: 'proto' });
   });
 
+  it('por defecto solo escucha en esta máquina y corta los mensajes enormes', async () => {
+    server = await startServer({ port: 0, cfg, log: () => {} });
+    expect(server.host).toBe('127.0.0.1');
+    const big = await exchange(server.port, 'x'.repeat(20000));
+    expect(big.closed).toBe(true);
+  });
+
   it('un jugador contra el bot que arranca el servidor: se juegan puntos sin rechazos ni correcciones', async () => {
     server = await startServer({ port: 0, cfg, log: () => {} });
     const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, role: 'player', difficulty: 'medium', seed: 7, ping: 0, botping: 0, jitter: 0, cfg });

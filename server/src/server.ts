@@ -15,6 +15,8 @@ import { ticker } from './ticker.ts';
 
 export interface GameServer {
   port: number;
+  /** Interfaz en la que escucha (por defecto 127.0.0.1: el cliente llega por el proxy de Vite). */
+  host: string;
   rooms: Map<string, Room>;
   close(): Promise<void>;
 }
@@ -30,7 +32,10 @@ const ERR_TEXT: Record<ErrCode, string> = {
 export async function startServer(opts: { port: number; cfg?: GameConfig; log?: (line: string) => void; host?: string }): Promise<GameServer> {
   const cfg = opts.cfg ?? makeConfig();
   const log = opts.log ?? ((line: string) => console.log(line));
-  const wss = new WebSocketServer({ port: opts.port, host: opts.host, path: '/ws' });
+  // Solo en esta máquina salvo que se pida otra interfaz (PPP_HOST); mensajes de como mucho 16 KB (el mayor, un
+  // golpe, ocupa < 1 KB): un cliente no puede llenar la memoria del servidor con uno enorme.
+  const host = opts.host ?? '127.0.0.1';
+  const wss = new WebSocketServer({ port: opts.port, host, path: '/ws', maxPayload: 16 * 1024 });
   await once(wss, 'listening');
   const port = (wss.address() as AddressInfo).port;
   const rooms = new Map<string, Room>();
@@ -95,6 +100,7 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
 
   return {
     port,
+    host,
     rooms,
     close: async () => {
       ticker.remove(task);
