@@ -23,7 +23,7 @@ export type Side = 0 | 1;
  *  - modifiers: teclas de tipo de golpe mantenidas EN EL INSTANTE DEL CLICK (V0.2b).
  */
 /**
- * Teclas de tipo de golpe mantenidas (V0.2b): W topspin, S slice, E smash. Las traduce cada dispositivo
+ * Teclas de tipo de golpe mantenidas (V0.2b): Q slice, W topspin, E smash. Las traduce cada dispositivo
  * (ratón + teclado; en V0.7, botones táctiles). Con ninguna, el golpe es normal.
  */
 export interface ShotKeys {

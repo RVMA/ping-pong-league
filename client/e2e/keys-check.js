@@ -1,5 +1,5 @@
 // Prueba E2E (V0.2b): golpes elegidos con TECLAS y potencia por calidad, con entrada humana en un navegador real.
-//  - Teclado real (page.keyboard.down/up: W, S, E, Space, Tab) y clicks reales (page.mouse.move/down/up).
+//  - Teclado real (page.keyboard.down/up: Q, W, E, Space, Tab) y clicks reales (page.mouse.move/down/up).
 //  - SIN gestos sintéticos dentro de la página: nada de PointerEvents despachados con page.evaluate.
 //  - Cada click lleva un error de timing aleatorio de ±30 ms (PRNG con semilla, reproducible) además de la latencia
 //    propia de Playwright: así se comprueba que los golpes salen con precisión humana, no con la perfecta.
@@ -106,13 +106,15 @@ async (page) => {
     await page.mouse.down();
     await page.mouse.up();
   };
-  const lastHuman = () =>
-    page.evaluate(() => {
+  // Último golpe o fallo del humano POSTERIOR a `tMin` (ms de juego): si el click no produjo nada (p. ej. el punto ya
+  // había terminado), devuelve { type: 'NONE' } en lugar del golpe anterior.
+  const lastHuman = (tMin = 0) =>
+    page.evaluate((tMin) => {
       const g = window.__ppp;
-      const ev = [...g.log].reverse().find(({ e }) => (e.type === 'hit' || e.type === 'whiff') && e.player === 0);
-      const sw = [...g.log].reverse().find(({ e }) => e.type === 'swing' && e.player === 0);
+      const ev = [...g.log].reverse().find(({ t, e }) => t >= tMin && (e.type === 'hit' || e.type === 'whiff') && e.player === 0);
+      const sw = [...g.log].reverse().find(({ t, e }) => t >= tMin && e.type === 'swing' && e.player === 0);
       const d = g.debugState();
-      if (!ev) return null;
+      if (!ev) return { type: 'NONE' };
       const e = ev.e;
       if (e.type === 'whiff') return { type: 'WHIFF', dtMs: e.evaluation ? Math.round(e.evaluation.dtMs) : null };
       const b = g.sim.state.ball;
@@ -129,7 +131,7 @@ async (page) => {
         text: d.lastStrokeText,
         sparks: d.sparks.alive,
       };
-    });
+    }, tMin);
   const pointText = async () => {
     for (let i = 0; i < 40; i++) {
       await page.waitForTimeout(60);
@@ -138,7 +140,7 @@ async (page) => {
     await page.waitForTimeout(100);
     return page.evaluate(() => document.querySelector('.toast')?.textContent ?? '');
   };
-  const KEY = { TOPSPIN: 'KeyW', SLICE: 'KeyS', SMASH: 'KeyE', BLOCK: 'Space' };
+  const KEY = { TOPSPIN: 'KeyW', SLICE: 'KeyQ', SMASH: 'KeyE', BLOCK: 'Space' };
 
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(base + '?debug=1');
@@ -149,27 +151,29 @@ async (page) => {
   await page.goto(base + '?autostart=1&bot=medium&seed=23&offset=0');
   await page.waitForTimeout(600);
 
-  // ——— Tecla mantenida: barra iluminada y chispas alrededor de la raqueta (antes de golpear) ———
+  // ——— Tecla mantenida: barra iluminada y raqueta iluminada con el color del golpe (antes de golpear) ———
   const held = [];
   await page.mouse.move(640, 560);
   await page.waitForTimeout(300);
   for (const [name, code] of Object.entries(KEY)) {
     await page.keyboard.down(code);
     await page.waitForTimeout(220);
-    const s = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, sparks: window.__ppp.debugState().sparks.held }));
-    held.push({ key: code, bar: s.kb, sparks: s.sparks });
+    const s = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, sparks: window.__ppp.debugState().sparks.glow }));
+    held.push({ key: code, bar: s.kb, glow: s.sparks });
     await page.screenshot({ path: `${SHOT_DIR}/held-${name.toLowerCase()}.png` });
     await page.keyboard.up(code);
   }
   await page.waitForTimeout(150);
-  const heldOff = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, sparks: window.__ppp.debugState().sparks.held }));
+  const heldOff = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, sparks: window.__ppp.debugState().sparks.glow }));
 
   // ——— Fase A: golpes pedidos con tecla; fase B: casos explicados ———
   const rotation = ['TOPSPIN', 'SLICE', 'NORMAL', 'SMASH', 'BLOCK'];
   // Casos que deben explicarse; LATE_TOPSPIN y EARLY_SLICE llevan un error de timing deliberado (sin jitter): golpe
   // débil (chispas grises) con su riesgo legible (topspin tarde → larga; slice pronto → fuera por la banda).
   const scenarios = ['LATE_KEY', 'EARLY_RELEASE', 'CHASE', 'SMASH_LOW', 'LATE_TOPSPIN', 'EARLY_SLICE'];
-  const caseOffset = { LATE_TOPSPIN: 85, EARLY_SLICE: -58 };
+  // Slice: sale por la banda desde cualquier sitio entre ~−61 y ~−72 ms medidos (antes, red). Playwright llega unos
+  // 4–6 ms tarde, así que se pide −68 para medir ~−63.
+  const caseOffset = { LATE_TOPSPIN: 85, EARLY_SLICE: -68 };
   const results = [];
   const special = [];
   const shots = new Map();
@@ -227,7 +231,7 @@ async (page) => {
     const clickAt = point.click + err;
     const key = {
       TOPSPIN: 'KeyW',
-      SLICE: 'KeyS',
+      SLICE: 'KeyQ',
       SMASH: 'KeyE',
       SMASH_LOW: 'KeyE',
       BLOCK: 'Space',
@@ -235,7 +239,7 @@ async (page) => {
       LATE_KEY: 'KeyW',
       EARLY_RELEASE: 'KeyW',
       LATE_TOPSPIN: 'KeyW',
-      EARLY_SLICE: 'KeyS',
+      EARLY_SLICE: 'KeyQ',
     }[want];
 
     if (want === 'CHASE') {
@@ -257,6 +261,7 @@ async (page) => {
       }
     }
     await waitUntil(clickAt - 3);
+    const tClick = await page.evaluate(() => window.__ppp.sim.now);
     await click();
     if (want === 'LATE_KEY') {
       await page.waitForTimeout(60);
@@ -266,10 +271,10 @@ async (page) => {
     if (key) await page.keyboard.up(key);
     // Captura con la ráfaga de chispas aún viva (dura ~0.3 s desde el contacto).
     await page.waitForTimeout(40);
-    const hit = await lastHuman();
+    const hit = await lastHuman(tClick);
     const n = (shots.get(want) ?? 0) + 1;
     shots.set(want, n);
-    if (hit && hit.type !== 'WHIFF' && n <= 2) await page.screenshot({ path: `${SHOT_DIR}/${phase === 'A' ? 'shot' : 'case'}-${want.toLowerCase()}-${n}.png` });
+    if (hit && hit.type !== 'WHIFF' && hit.type !== 'NONE' && n <= 2) await page.screenshot({ path: `${SHOT_DIR}/${phase === 'A' ? 'shot' : 'case'}-${want.toLowerCase()}-${n}.png` });
     const row = { want, jitterMs: err, timeLeft: Math.round(timeLeft), ...hit };
     if (phase === 'A') results.push(row);
     else if (isCase) {
@@ -337,10 +342,10 @@ async (page) => {
   // ——— Resumen ———
   const summary = {};
   for (const r of results) {
-    const s = (summary[r.want] ??= { n: 0, asked: 0, PERFECT: 0, GOOD: 0, WEAK: 0, WHIFF: 0, texts: {} });
+    const s = (summary[r.want] ??= { n: 0, asked: 0, PERFECT: 0, GOOD: 0, WEAK: 0, WHIFF: 0, NONE: 0, texts: {} });
     s.n++;
-    if (r.type === r.want || (r.want === 'BLOCK' && r.type === 'BLOCK')) s.asked++;
-    s[r.type === 'WHIFF' ? 'WHIFF' : r.tier]++;
+    if (r.type === r.want) s.asked++;
+    s[r.type === 'WHIFF' || r.type === 'NONE' ? r.type : r.tier]++;
     if (r.text) s.texts[r.text] = (s.texts[r.text] ?? 0) + 1;
   }
   const absDt = results.filter((r) => r.dtMs !== undefined && r.dtMs !== null).map((r) => Math.abs(r.dtMs));

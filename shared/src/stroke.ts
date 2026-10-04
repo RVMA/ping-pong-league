@@ -2,7 +2,7 @@
  * Teclas → tipo de golpe y calidad → potencia (V0.2b, decisión del autor 2026-10-02; cambia §3.3 ✅ y §4.6–§4.7).
  *
  * El tipo de golpe se elige con teclas mantenidas en el instante del click (`InputIntent.modifiers`, §3.1):
- * W = topspin, S = slice, E = smash; click sin tecla = golpe normal; Space = bloqueo (§8, sin cambios). El ratón
+ * Q = slice, W = topspin, E = smash; click sin tecla = golpe normal; Space = bloqueo (§8, sin cambios). El ratón
  * solo mueve la raqueta, hace click y cruza la bola con el gesto lateral de V0.1 (§4.5 ✅).
  * La potencia ya no sale de la velocidad de un gesto: sale de la CALIDAD del golpe (se premia el PERFECT) y se
  * reduce a la mitad si llegas persiguiendo la bola (regla de «colocado», que ya no decide el tipo).

@@ -669,8 +669,8 @@ export class Game {
     }
 
     const inPlay = s.phase === 'rally' || s.phase === 'serveToss' || s.phase === 'pointOver';
-    // Tecla de golpe mantenida (V0.2b): se ilumina en la barra y unas chispas giran alrededor de TU raqueta. Solo el
-    // jugador local la ve: en multijugador el rival no debe recibir esta señal antes del golpe (§13).
+    // Tecla de golpe mantenida (V0.2b): se ilumina en la barra y TU raqueta se ilumina con el color del golpe. Solo
+    // el jugador local la ve: en multijugador el rival no debe recibir esta señal antes del golpe (§13).
     const held = this.running && !this.paused ? this.heldShot() : null;
     this.hud.setKeyBarActive(held);
     const frame: RenderFrame = {
@@ -687,7 +687,7 @@ export class Game {
       target,
       bounceMarker: this.bounceMarker,
       shake,
-      heldSparks: held ? { color: this.shotColor(held) } : null,
+      heldGlow: held ? { color: this.shotColor(held) } : null,
     };
     this.world.render(frame);
     if (this.hud.debugVisible) this.updateDebug();
@@ -757,7 +757,7 @@ export class Game {
       lastBotShot: this.lastBotShot,
       lastStrokeText: this.lastStrokeText,
       keyBar: { visible: this.hud.keyBarVisible, active: this.hud.keyBarActive, saved: this.keyBarOn },
-      sparks: { held: this.world.heldSparksVisible, alive: this.world.sparkCount },
+      sparks: { glow: this.world.heldGlowVisible, alive: this.world.sparkCount },
       explain: this.explain,
       paddles: s.paddles.map((p) => ({ ...p.pos })),
       rally: { ...s.rally, bounces: [...s.rally.bounces] },

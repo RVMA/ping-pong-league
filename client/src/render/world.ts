@@ -47,22 +47,26 @@ export interface RenderFrame {
   bounceMarker: { x: number; z: number; alpha: number } | null;
   shake: { x: number; y: number };
   /**
-   * Chispas de la tecla de golpe mantenida (V0.2b): color del golpe o null. Solo para la raqueta del jugador local:
-   * las teclas del rival no se dibujan nunca (§13).
+   * Tecla de golpe mantenida (V0.2b): la raqueta del jugador local se ilumina con el color del golpe, o null. Las
+   * teclas del rival no se dibujan nunca (§13).
    */
-  heldSparks?: { color: string } | null;
+  heldGlow?: { color: string } | null;
 }
 
 class PaddleView {
   readonly group = new THREE.Group();
   private readonly pivot = new THREE.Group();
   private readonly faceMat: THREE.MeshStandardMaterial;
+  private readonly rimMat: THREE.MeshStandardMaterial;
+  private readonly accent: THREE.Color;
+  private readonly glowColor = new THREE.Color();
   private readonly side: Side;
 
   constructor(side: Side, character: CharacterId, radius: number, perfectFrac: number, goodFrac: number, translucent: boolean, loader: THREE.TextureLoader) {
     this.side = side;
     const ch = CHARACTERS[character];
     const accent = new THREE.Color(ch.color);
+    this.accent = accent;
     const url = assetUrl(ch.paddle);
     const tex = url ? loader.load(url) : null;
     if (tex) {
@@ -74,7 +78,8 @@ class PaddleView {
     const opacity = translucent ? 0.62 : 1;
     this.faceMat = new THREE.MeshStandardMaterial({ map: tex, color: tex ? 0xffffff : accent, roughness: 0.7, transparent: translucent, opacity, emissive: accent, emissiveIntensity: 0 });
     const backMat = new THREE.MeshStandardMaterial({ color: accent.clone().multiplyScalar(0.45), roughness: 0.8, transparent: translucent, opacity });
-    const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.6, transparent: translucent, opacity });
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.6, transparent: translucent, opacity, emissive: 0x000000 });
+    this.rimMat = rimMat;
 
     // Cilindro con el eje en z: la cara circular mira a la red / a la cámara.
     const face = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.012, 48), [rimMat, this.faceMat, backMat]);
@@ -98,7 +103,11 @@ class PaddleView {
     this.group.add(this.pivot);
   }
 
-  update(f: PaddleFrame): void {
+  /**
+   * Brillo de la tecla mantenida (V0.2b): la cara y el canto se iluminan con el color del golpe. El destello del golpe
+   * (`flash`) manda sobre él cuando es más intenso.
+   */
+  update(f: PaddleFrame, glow: { color: string; intensity: number } | null = null): void {
     this.group.position.set(f.x + f.reach.x, f.y + f.reach.y, f.z + f.reach.z);
     const sgn = sideSign(this.side);
     if (f.swing !== null) {
@@ -112,7 +121,22 @@ class PaddleView {
       this.pivot.rotation.set(0, 0, 0);
       this.pivot.position.set(0, 0, 0);
     }
-    this.faceMat.emissiveIntensity = f.flash * 0.9;
+    const flash = f.flash * 0.9;
+    if (glow && glow.intensity >= flash) {
+      this.faceMat.emissive.copy(this.glowColor.set(glow.color));
+      this.faceMat.emissiveIntensity = glow.intensity;
+      this.rimMat.emissive.copy(this.glowColor);
+      this.rimMat.emissiveIntensity = glow.intensity * 1.2;
+    } else {
+      this.faceMat.emissive.copy(this.accent);
+      this.faceMat.emissiveIntensity = flash;
+      this.rimMat.emissiveIntensity = 0;
+    }
+  }
+
+  /** ¿Está iluminada por una tecla mantenida? (para pruebas automáticas). */
+  get glowing(): boolean {
+    return this.rimMat.emissiveIntensity > 0;
   }
 }
 
@@ -251,25 +275,18 @@ interface Spark {
 }
 
 /**
- * Chispas del golpe (V0.2b): una órbita suave alrededor del borde de la raqueta del jugador mientras mantiene una
- * tecla de golpe, y ráfagas que salen de la raqueta al golpear y se abren hacia fuera (en el plano de la cara, algo
- * hacia atrás: no tapan la bola que sale ni la que vuelve).
+ * Chispas del golpe (V0.2b): ráfagas que salen de la raqueta al golpear y se abren hacia fuera (en el plano de la
+ * cara, algo hacia atrás: no tapan la bola que sale ni la que vuelve).
  */
 class Sparks {
   readonly burstPoints: THREE.Points;
-  readonly orbitPoints: THREE.Points;
   private readonly sparks: Spark[] = [];
   private readonly bPos: Float32Array;
   private readonly bCol: Float32Array;
-  private readonly oPos: Float32Array;
-  private readonly oCol: Float32Array;
   private readonly maxBurst = 96;
-  private readonly orbitN: number;
-  private orbitPhase = 0;
   private readonly tmp = new THREE.Color();
 
-  constructor(orbitN: number) {
-    this.orbitN = orbitN;
+  constructor() {
     const map = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)');
     // Mezcla normal (no aditiva): sobre la mesa azul el magenta y el naranja aditivos salían azulados o blanquecinos.
     const mat = (size: number) =>
@@ -281,14 +298,6 @@ class Sparks {
     bg.setAttribute('color', new THREE.BufferAttribute(this.bCol, 4));
     this.burstPoints = new THREE.Points(bg, mat(0.07));
     this.burstPoints.frustumCulled = false;
-    this.oPos = new Float32Array(orbitN * 3);
-    this.oCol = new Float32Array(orbitN * 4);
-    const og = new THREE.BufferGeometry();
-    og.setAttribute('position', new THREE.BufferAttribute(this.oPos, 3));
-    og.setAttribute('color', new THREE.BufferAttribute(this.oCol, 4));
-    this.orbitPoints = new THREE.Points(og, mat(0.075));
-    this.orbitPoints.frustumCulled = false;
-    this.orbitPoints.visible = false;
   }
 
   /** Ráfaga desde el borde de una raqueta. `back`: signo z hacia el fondo de su campo (lejos de la red). */
@@ -319,7 +328,7 @@ class Sparks {
     return this.sparks.length;
   }
 
-  update(dt: number, held: { center: THREE.Vector3; radius: number; color: string; spin: boolean; rps: number } | null): void {
+  update(dt: number): void {
     // Ráfagas: se abren hacia fuera, frenan y se desvanecen.
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const p = this.sparks[i];
@@ -356,27 +365,6 @@ class Sparks {
     this.burstPoints.geometry.attributes.position.needsUpdate = true;
     this.burstPoints.geometry.attributes.color.needsUpdate = true;
     this.burstPoints.visible = this.sparks.length > 0;
-
-    // Órbita de la tecla mantenida: pocas chispas suaves alrededor del borde de la raqueta.
-    this.orbitPoints.visible = held !== null;
-    if (!held) return;
-    if (held.spin) this.orbitPhase += dt * held.rps * Math.PI * 2;
-    const c = this.tmp.set(held.color);
-    const r = held.radius + 0.018;
-    for (let i = 0; i < this.orbitN; i++) {
-      const a = this.orbitPhase + (i / this.orbitN) * Math.PI * 2;
-      const o = i * 3;
-      this.oPos[o] = held.center.x + Math.cos(a) * r;
-      this.oPos[o + 1] = held.center.y + Math.sin(a) * r;
-      this.oPos[o + 2] = held.center.z;
-      const oc = i * 4;
-      this.oCol[oc] = c.r;
-      this.oCol[oc + 1] = c.g;
-      this.oCol[oc + 2] = c.b;
-      this.oCol[oc + 3] = held.spin ? 0.75 + 0.25 * Math.sin(this.orbitPhase * 1.7 + i * 2.1) : 0.9;
-    }
-    this.orbitPoints.geometry.attributes.position.needsUpdate = true;
-    this.orbitPoints.geometry.attributes.color.needsUpdate = true;
   }
 }
 
@@ -423,7 +411,6 @@ export class World {
   private readonly basePos: THREE.Vector3;
   private readonly lookAt: THREE.Vector3;
   private readonly sparks: Sparks;
-  private readonly sparkCenter = new THREE.Vector3();
 
   constructor(canvas: HTMLCanvasElement, cfg: GameConfig, characters: [CharacterId, CharacterId]) {
     this.cfg = cfg;
@@ -485,8 +472,8 @@ export class World {
       new PaddleView(1, characters[1], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, false, loader),
     ];
     this.scene.add(this.paddles[0].group, this.paddles[1].group);
-    this.sparks = new Sparks(pres.sparks.orbit);
-    this.scene.add(this.sparks.burstPoints, this.sparks.orbitPoints);
+    this.sparks = new Sparks();
+    this.scene.add(this.sparks.burstPoints);
 
     this.target = new THREE.Mesh(
       new THREE.RingGeometry(0.03, 0.042, 32),
@@ -588,9 +575,9 @@ export class World {
     return this.sparks.alive;
   }
 
-  /** ¿Se dibujan las chispas de la tecla mantenida? (para pruebas automáticas). */
-  get heldSparksVisible(): boolean {
-    return this.sparks.orbitPoints.visible;
+  /** ¿Está iluminada la raqueta del jugador por una tecla mantenida? (para pruebas automáticas). */
+  get heldGlowVisible(): boolean {
+    return this.paddles[0].glowing;
   }
 
   /** Proyecta un punto del mundo a píxeles CSS del canvas. */
@@ -627,12 +614,10 @@ export class World {
     this.shadow.scale.setScalar(r * (1.6 + height * 1.4));
     this.shadowMat.opacity = Math.max(0.45, 0.95 - height * 0.7);
 
-    this.paddles[0].update(f.paddles[0]);
+    const glow = f.heldGlow ? { color: f.heldGlow.color, intensity: this.cfg.presentation.sparks.heldGlow } : null;
+    this.paddles[0].update(f.paddles[0], glow);
     this.paddles[1].update(f.paddles[1]);
-
-    const sp = this.cfg.presentation;
-    const held = f.heldSparks ? { center: this.sparkCenter.copy(this.paddles[0].group.position), radius: this.cfg.paddle.radius, color: f.heldSparks.color, spin: !sp.reduceShakeAndFlash, rps: sp.sparks.orbitRps } : null;
-    this.sparks.update(f.dt ?? 1 / 60, held);
+    this.sparks.update(f.dt ?? 1 / 60);
 
     this.target.visible = f.target !== null;
     if (f.target) this.target.position.set(f.target.x, H + 0.003, f.target.z);

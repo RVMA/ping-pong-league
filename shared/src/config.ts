@@ -223,7 +223,7 @@ export const DEFAULT_CONFIG = {
 
   /**
    * Tipos de golpe [§4.6, §4.7] — V0.2b (decisión del autor, 2026-10-02): el tipo se elige con TECLAS mantenidas en
-   * el instante del click (W topspin, S slice, E smash; sin tecla, normal; Space, bloqueo) y la potencia sale de la
+   * el instante del click (Q slice, W topspin, E smash; sin tecla, normal; Space, bloqueo) y la potencia sale de la
    * CALIDAD del golpe, no de la velocidad de un gesto (se premia el PERFECT). El ratón solo mueve, hace click y cruza
    * la bola (gesto lateral de V0.1, §4.5 ✅). Lógica en stroke.ts y shot.ts.
    *
@@ -497,18 +497,18 @@ export const DEFAULT_CONFIG = {
      */
     trailColors: { top: '#ff7a1a', back: '#6ad8ff', side: '#ff4fd8', none: '#ffffff' },
     /**
-     * Chispas del golpe (V0.2b), con los colores del trail: naranja topspin, magenta slice, blanco smash, cian bloqueo
+     * Señales del golpe (V0.2b), con los colores del trail: naranja topspin, magenta slice, blanco smash, cian bloqueo
      * (el golpe normal, dorado). Solo presentación; el color siempre va acompañado de texto (barra de teclas,
      * mensaje junto a la raqueta) [§19].
-     *  - Tecla mantenida (solo el jugador local; el rival nunca las ve, §13): `orbit` chispas suaves giran alrededor
-     *    del borde de la raqueta a `orbitRps` vueltas por segundo.
-     *  - Al golpear: ráfaga que sale de la raqueta y se abre hacia fuera durante `burstMs`; más chispas cuanto mejor
-     *    el golpe (`burst`), las del débil en gris, el fallo sin chispas. La ve también el rival (es tras el golpe,
-     *    como sus mensajes, §5.2). Con reduceShakeAndFlash no hay ráfaga y las chispas de la tecla no giran.
+     *  - Tecla mantenida (solo el jugador local; el rival nunca la ve, §13): la cara de TU raqueta se ilumina con el
+     *    color del golpe (`heldGlow`: intensidad del brillo). Decisión del autor (2026-10-03): sin partículas
+     *    alrededor, basta con iluminar la raqueta.
+     *  - Al golpear: ráfaga de chispas que sale de la raqueta y se abre hacia fuera durante `burstMs`; más chispas
+     *    cuanto mejor el golpe (`burst`), las del débil en gris, el fallo sin chispas. La ve también el rival (es tras
+     *    el golpe, como sus mensajes, §5.2). Con reduceShakeAndFlash no hay ráfaga.
      */
     sparks: {
-      orbit: 6,
-      orbitRps: 1.1,
+      heldGlow: 0.6,
       burst: { PERFECT: 22, GOOD: 10, WEAK: 4 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
       burstMs: 300,
       normalColor: '#ffd23f',

@@ -1,7 +1,7 @@
 // Prueba E2E (V0.2, actualizada en V0.2b): los cuatro golpes (normal, topspin, slice, smash) y el bloqueo contra el
 // bot, en un navegador real, y después errores provocados para ver "¿por qué fallé?".
 //  - La raqueta se coloca con eventos de ratón REALES de Playwright (page.mouse.move) bastante antes del golpe.
-//  - V0.2b: el golpe se elige con TECLAS reales mantenidas en el click (page.keyboard.down: W topspin, S slice,
+//  - V0.2b: el golpe se elige con TECLAS reales mantenidas en el click (page.keyboard.down: Q slice, W topspin,
 //    E smash; Space bloqueo) y click real (page.mouse.down/up). Ya no hay gestos sintéticos dentro de la página:
 //    en V0.2 el gesto seco se despachaba como PointerEvents porque Playwright no puede moverse a <10 ms.
 //  - Solo LEE el estado (window.__ppp, window.__pppShared) para saber dónde y cuándo llega la bola, como un jugador
@@ -195,7 +195,7 @@ async (page) => {
     await page.mouse.move(usePoint.x, usePoint.y, { steps: 3 });
     let dtOffset = 0;
     // Slice algo pronto: se abre de ángulo y sale por la banda (muy pronto ya sería red).
-    if (want === 'SLICE_EARLY') dtOffset = -58;
+    if (want === 'SLICE_EARLY') dtOffset = -64;
     if (want === 'TOPSPIN_EARLY') dtOffset = -95;
     const clickAt = usePoint.click + dtOffset;
     if (want === 'BLOCK' || want === 'BLOCK_TOPSPIN') {
@@ -212,7 +212,7 @@ async (page) => {
       await page.mouse.up();
     } else {
       // Tecla del golpe mantenida desde 250 ms antes del click hasta después (teclado y click reales).
-      const key = { TOPSPIN: 'KeyW', TOPSPIN_EARLY: 'KeyW', SLICE: 'KeyS', SLICE_EARLY: 'KeyS', SMASH: 'KeyE', SMASH_LOW: 'KeyE' }[want];
+      const key = { TOPSPIN: 'KeyW', TOPSPIN_EARLY: 'KeyW', SLICE: 'KeyQ', SLICE_EARLY: 'KeyQ', SMASH: 'KeyE', SMASH_LOW: 'KeyE' }[want];
       await waitUntil(clickAt - 250);
       await page.keyboard.down(key);
       await waitUntil(clickAt - 4);

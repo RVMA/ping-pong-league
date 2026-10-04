@@ -7,7 +7,7 @@
  *  - swing: velocidad del cursor en los últimos ~150 ms, en alturas de pantalla por segundo. Desde V0.2b solo
  *    cuenta el gesto lateral: cruzar la bola (§4.5).
  *  - fire: instante del click en ms de tiempo de juego (timestamp del propio evento, no del frame).
- *  - modifiers: teclas de golpe (V0.2b: W topspin, S slice, E smash) mantenidas EN EL INSTANTE DEL CLICK: se
+ *  - modifiers: teclas de golpe (V0.2b: Q slice, W topspin, E smash) mantenidas EN EL INSTANTE DEL CLICK: se
  *    fotografían en el propio evento del click, así una tecla pulsada justo después no cuenta.
  *  - block: Space mantenido.
  */
@@ -16,8 +16,8 @@ import * as THREE from 'three';
 
 const SWING_WINDOW_MS = 150;
 /** Teclas de golpe (código físico: en un teclado AZERTY son las mismas posiciones). */
-const SHOT_KEYS: Record<string, keyof ShotKeys> = { KeyW: 'topspin', KeyS: 'slice', KeyE: 'smash' };
-export const SHOT_KEY_LABEL: Record<keyof ShotKeys, string> = { topspin: 'W', slice: 'S', smash: 'E' };
+const SHOT_KEYS: Record<string, keyof ShotKeys> = { KeyQ: 'slice', KeyW: 'topspin', KeyE: 'smash' };
+export const SHOT_KEY_LABEL: Record<keyof ShotKeys, string> = { slice: 'Q', topspin: 'W', smash: 'E' };
 /** Ventana para avisar de que la tecla se soltó justo antes del click o se pulsó justo después. */
 export const KEY_NOTE_MS = 200;
 
@@ -56,7 +56,7 @@ export class MouseTranslator {
   lastFire: FireRecord | null = null;
   /** Último click recibido (aún sin entregar o ya entregado). */
   private lastClick: FireRecord | null = null;
-  /** Aviso al pulsar una tecla de golpe (etiqueta W/S/E y performance.now()). */
+  /** Aviso al pulsar una tecla de golpe (etiqueta Q/W/E y performance.now()). */
   onShotKeyDown: ((key: string, perf: number) => void) | null = null;
   private target = { x: 0, z: 1.7 };
   private readonly raycaster = new THREE.Raycaster();

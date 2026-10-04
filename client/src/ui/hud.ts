@@ -87,8 +87,8 @@ export class Hud {
     // Barra de teclas de golpe (V0.2b): esquina inferior izquierda, nunca sobre la mesa [§5.2]. Cada tecla lleva
     // su letra y su nombre; el color de la tecla mantenida es un extra, no la única señal [§19].
     for (const [key, name, type] of [
+      ['Q', 'Slice', 'SLICE'],
       ['W', 'Topspin', 'TOPSPIN'],
-      ['S', 'Slice', 'SLICE'],
       ['E', 'Smash', 'SMASH'],
       ['Espacio', 'Bloqueo', 'BLOCK'],
     ] as [string, string, ShotType][]) {
@@ -324,7 +324,7 @@ export class Hud {
     for (const line of [
       'Mueve el ratón: la raqueta te sigue con algo de inercia. Click justo cuando la bola llega al centro: ¡Perfecto!',
       'Pronto: la bola sale baja y puede ir a la red. Tarde: sale alta y lenta.',
-      'Tipo de golpe: mantén una tecla y haz click. W topspin (más rápido, cae antes). S slice (curva y va a la banda). E smash (solo con la bola alta). Sin tecla: golpe normal.',
+      'Tipo de golpe: mantén una tecla y haz click. Q slice (curva y va a la banda). W topspin (más rápido, cae antes). E smash (solo con la bola alta). Sin tecla: golpe normal.',
       'La fuerza sale de tu golpe: ¡Perfecto! = golpe completo; Bien = reducido; pronto, tarde o con el borde = flojo y más arriesgado. Si llegas corriendo, la mitad.',
       'Cruzar la bola: con la raqueta ya colocada, un gesto lateral seco del ratón al hacer click.',
       'Bloqueo: mantén Espacio y haz click. Devuelve con la fuerza de la bola que llega; mientras lo mantienes, la raqueta va más lenta.',
