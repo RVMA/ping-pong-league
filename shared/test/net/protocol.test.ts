@@ -24,6 +24,7 @@ const hitWire = { t: 812.125, x: -123.456, z: 1601.5, vx: 2.5, q: 1, b: 0 as con
 const c2s: C2S[] = [
   { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'player', p: 100, bp: 100, j: 0.1, d: 'medium', s: 7, o: 0 },
   { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'bot', room: 'r-12', p: 150, bp: 150, j: 0, d: 'hard', s: 3, o: -20 },
+  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'player', p: 0, bp: 0, j: 0, d: 'medium', s: 3, o: 0, fs: 1 },
   { k: 'p', n: 3, r: 1234, x: -123, z: 1650 },
   { k: 'p', n: 0, r: -1, x: 0, z: 1700 },
   { k: 'toss', n: 4, x: 12.345, z: 1600, a: 0 },
@@ -133,6 +134,7 @@ describe('mensajes malformados: se descartan, nunca lanzan', () => {
     '{"k":"hello","v":"1","h":"0a1b2c3d","r":"player","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0}',
     '{"k":"hello","v":1,"h":"zz","r":"player","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0}',
     '{"k":"hello","v":1,"h":"0a1b2c3d","r":"admin","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0}',
+    '{"k":"hello","v":1,"h":"0a1b2c3d","r":"player","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0,"fs":2}',
     '[1,2,3,"4"]',
     '[1.5,2,3,4]',
   ];

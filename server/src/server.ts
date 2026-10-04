@@ -63,7 +63,7 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
       if (msg.r === 'player') {
         counter += 1;
         const id = `r-${counter}`;
-        const room = new Room(id, cfg, log, () => rooms.delete(id));
+        const room = new Room(id, cfg, log, () => rooms.delete(id), msg.fs ?? 0);
         rooms.set(id, room);
         peer.setLatency(msg.p, msg.j, msg.s);
         peer.send({ k: 'welcome', v: PROTOCOL_VERSION, side: 0, room: id });

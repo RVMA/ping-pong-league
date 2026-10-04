@@ -128,6 +128,22 @@ describe('ServerMatch: autoridad por eventos [§17.2, §17.3]', () => {
     expect(server.record.rejected.at(-1)?.why).toBe('reach');
   });
 
+  it('la raqueta del golpe es la del tick en que se procesa el click: no se rechaza por ese tick', () => {
+    const { server, take } = setup();
+    server.start(0);
+    server.receive(0, tossMsg(0, 0.1, 0), 1000);
+    const toss = tossFlight(0, 0.1);
+    // Click justo después de un tick: la raqueta del evento es la de ese tick siguiente (8.3 ms después).
+    const k = Math.ceil(idealServeMs(toss) / tick);
+    const input = quantizeHit({ t: k * tick + 0.3, pad: { x: 0.14, z: TOSS_Z }, swingVx: 0, keys: {}, block: false, speeds: [], ref: null }, cfg);
+    // Su última muestra, en el tick anterior (r redondeado), 4 cm atrás: a 6 m/s da tiempo en 8.3 ms.
+    server.receive(0, { k: 'p', n: 0, r: Math.floor(input.t), x: 100, z: 1600 }, 1000 + input.t);
+    take();
+    server.receive(0, hitMsg(0, 0, input), 1000 + input.t + 20);
+    expect(server.record.rejected).toEqual([]);
+    expect(take().some((o) => o.msg.k === 'fl')).toBe(true);
+  });
+
   it('rechaza un click «en el futuro»', () => {
     const { server, take } = setup();
     server.start(0);

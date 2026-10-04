@@ -17,12 +17,13 @@ export class Room {
   private readonly onClosed: () => void;
   private readonly log: (line: string) => void;
 
-  constructor(id: string, cfg: GameConfig, log: (line: string) => void, onClosed: () => void) {
+  constructor(id: string, cfg: GameConfig, log: (line: string) => void, onClosed: () => void, firstServer: Side = 0) {
     this.id = id;
     this.log = log;
     this.onClosed = onClosed;
     this.match = new ServerMatch(cfg, {
       send: (to, msg) => this.peers[to]?.send(msg),
+      firstServer,
       log: (line) => log(`[${id}] ${line}`),
     });
   }

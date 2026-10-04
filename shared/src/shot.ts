@@ -358,6 +358,9 @@ interface TrialResult {
 }
 
 const MAX_TRIAL_STEPS = 2400;
+/** Opciones de paso de las pruebas del solver (constantes: sin crear un objeto por paso). */
+const TRIAL_WITH_TABLE = { net: false, table: true, infiniteTable: false } as const;
+const TRIAL_NO_TABLE = { net: false, table: false, infiniteTable: false } as const;
 
 /**
  * Simula un tiro candidato con la física real (Magnus incluido) pero sin red: la velocidad inicial es
@@ -389,7 +392,7 @@ function runTrial(
     const px = b.pos.x;
     const py = b.pos.y;
     const pz = b.pos.z;
-    stepBall(b, dt, env, undefined, { net: false, table: serve && !crossed, infiniteTable: false });
+    stepBall(b, dt, env, undefined, serve && !crossed ? TRIAL_WITH_TABLE : TRIAL_NO_TABLE);
     if (!crossed && b.pos.z * s0 <= 0) {
       const f = pz / (pz - b.pos.z);
       const yAt = py + (b.pos.y - py) * f;

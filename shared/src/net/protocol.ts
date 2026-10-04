@@ -36,6 +36,8 @@ export interface HelloMsg {
   s: number;
   /** Desfase de latencia calibrado que el cliente resta a sus clicks [§3.7]. */
   o: number;
+  /** Quién saca primero (opcional, por defecto el jugador): lo usan los partidos de bots para alternarlo. */
+  fs?: Side;
 }
 
 /** Raqueta (30 Hz): rally `n`, tiempo de rally `r` (ms enteros; −1 sin vuelo), posición del mundo en mm enteros. */
@@ -290,8 +292,10 @@ export function decodeC2S(text: string): C2S | null {
       if (o.room !== undefined && !str(o.room, ROOM_RE)) return null;
       if (!num(o.p, 0, 10000) || !num(o.bp, 0, 10000) || !num(o.j, 0, 1) || typeof o.d !== 'string' || !DIFFICULTIES.includes(o.d)) return null;
       if (!int(o.s, -4294967296, 4294967296) || !num(o.o, -1000, 1000)) return null;
+      if (o.fs !== undefined && !side(o.fs)) return null;
       const m: HelloMsg = { k: 'hello', v: o.v, h: o.h, r: o.r, p: o.p, bp: o.bp, j: o.j, d: o.d as BotDifficulty, s: o.s, o: o.o };
       if (o.room !== undefined) m.room = o.room;
+      if (o.fs !== undefined) m.fs = o.fs;
       return m;
     }
     case 'toss':

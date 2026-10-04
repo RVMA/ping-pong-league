@@ -70,6 +70,17 @@ describe('red en memoria: bots por la red', () => {
     });
   }
 
+  it('regresión: casos que dieron discrepancias (vuelo seguro propio y raqueta medida un tick después del click)', () => {
+    for (const [seeds, ping] of [
+      [[815, 25266], 150],
+      [[3845, 119196], 100],
+    ] as [[number, number], number][]) {
+      const net = runNetworkMatch({ cfg, seeds, ping: [ping, ping], jitter: 0.1, maxTicks: MAX * 2 });
+      expect(net.server.record.rejected).toEqual([]);
+      for (const c of net.clients) expect(c.stats.correctionKinds).toEqual([]);
+    }
+  });
+
   it('las teclas de golpe solo viajan dentro del golpe (§13)', () => {
     const net = runNetworkMatch({ cfg, seeds: [7, 8], ping: [100, 100], jitter: 0.1, maxTicks: 120 * 60 });
     let pads = 0;

@@ -189,8 +189,13 @@ export class ClientMatch {
     const t = this.now;
     this.movePaddle(intent);
     const p = s.paddles[this.side];
-    this.hist.push({ t, v: Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z), x: p.pos.x, z: p.pos.z });
-    if (this.hist.length > HIST) this.hist.shift();
+    // Historial de la raqueta (regla de «colocado»): las muestras se reutilizan (sin memoria nueva por tick).
+    const h = this.hist.length >= HIST ? this.hist.shift()! : { t: 0, v: 0, x: 0, z: 0 };
+    h.t = t;
+    h.v = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
+    h.x = p.pos.x;
+    h.z = p.pos.z;
+    this.hist.push(h);
     const fire = intent.fire;
     if (fire !== undefined && fire > p.lastFire) {
       p.lastFire = fire;
@@ -439,13 +444,12 @@ export class ClientMatch {
     if (msg.n !== this.n) return;
     const s = this.state;
     if (msg.p === this.side) {
+      // Estado oficial de mi golpe: se compara con lo predicho (aunque mi vista ya haya cerrado el punto: un vuelo
+      // seguro puede acabar antes de que llegue la confirmación).
       const mh = this.myHit;
-      if (mh && mh.f === msg.f - 1) {
-        if (!mh.applied) mh.official = msg.s;
-        else if (this.f === msg.f) this.compareOfficial(msg.s, t);
-      } else {
-        this.correction('orphan');
-      }
+      if (mh && mh.f === msg.f - 1 && !mh.applied) mh.official = msg.s;
+      else if (this.flight && this.f === msg.f && this.flight.hitter === this.side) this.compareOfficial(msg.s, t);
+      else this.correction('orphan');
       return;
     }
     const prev = this.f === msg.f - 1 ? this.flight : null;
@@ -537,8 +541,10 @@ export class ClientMatch {
     const s = this.state;
     const pad = s.paddles[this.side];
     const pm = this.pointMsg;
-    if (pad.pending && pm && pm.f === this.f && this.myHit && this.myHit.hit.j < pm.i) {
-      // El servidor cerró este vuelo sin contar mi golpe: rechazado.
+    const mh = this.myHit;
+    // El servidor cerró este vuelo antes de mi contacto sin contar mi golpe: rechazado. (Si mi golpe es una falta, el
+    // servidor también cierra el vuelo, justo en mi contacto: eso no es un rechazo, lo aplica applyMyHit.)
+    if (pad.pending && pm && pm.f === this.f && mh && mh.hit.j < pm.i && !(mh.hit.foul && pm.i === mh.hit.j + 1)) {
       pad.pending = null;
       this.myHit = null;
       this.correction('rejected');

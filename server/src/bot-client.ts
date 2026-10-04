@@ -19,6 +19,10 @@ export interface BotClientOptions {
   botping: number;
   jitter: number;
   cfg: GameConfig;
+  /** Semilla que se pide para el bot remoto (rol `player`); por defecto, la propia. */
+  botSeed?: number;
+  /** Quién saca primero (rol `player`); por defecto el jugador. */
+  firstServer?: 0 | 1;
 }
 
 export class BotClient {
@@ -48,7 +52,7 @@ export class BotClient {
     this.ws = ws;
     ws.on('open', () => {
       const o = this.opts;
-      this.send({ k: 'hello', v: PROTOCOL_VERSION, h: configHash(o.cfg), r: o.role, ...(o.room ? { room: o.room } : {}), p: o.ping, bp: o.botping, j: o.jitter, d: o.difficulty, s: o.seed, o: 0 });
+      this.send({ k: 'hello', v: PROTOCOL_VERSION, h: configHash(o.cfg), r: o.role, ...(o.room ? { room: o.room } : {}), p: o.ping, bp: o.botping, j: o.jitter, d: o.difficulty, s: o.botSeed ?? o.seed, o: 0, ...(o.firstServer !== undefined ? { fs: o.firstServer } : {}) });
     });
     ws.on('message', (data) => {
       const text = String(data);

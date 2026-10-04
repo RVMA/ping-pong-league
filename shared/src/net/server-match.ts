@@ -13,7 +13,7 @@ import { type BallState, makeEnv, type PhysicsEnv } from '../physics.ts';
 import { isGameOver, newRally, type PointReason, type RallyState, serverFor } from '../rules.ts';
 import type { ShotType } from '../stroke.ts';
 import type { Side } from '../types.ts';
-import { Flight, type FlightOutcome, strikeRally } from './flight.ts';
+import { evalTick, Flight, type FlightOutcome, strikeRally } from './flight.ts';
 import { type C2S, exitFromWire, exitToWire, type HitMsg, type HitWire, hitFromWire, type S2C } from './protocol.ts';
 import { resolveHit } from './resolve.ts';
 import { validClickTime, validPaddleBounds, validReach } from './validate.ts';
@@ -229,7 +229,8 @@ export class ServerMatch {
     if (w && w.n === this.n && w.f === this.f && input.t < w.t + this.cfg.hit.whiffLockoutMs) return fail('lockout');
     const serve = fl.mode === 'toss';
     if (!validPaddleBounds(input.pad, from, serve, this.cfg)) return fail('bounds');
-    const r = this.R + input.t;
+    // La raqueta del evento es la del tick en que se procesó el click (hasta un tick después del click).
+    const r = this.R + evalTick(input.t, this.tick) * this.tick;
     if (!validReach(this.lastPad(from, this.n, r), { r, x: input.pad.x, z: input.pad.z }, this.cfg)) return fail('reach');
 
     const t0 = cpuNow();
