@@ -1,9 +1,9 @@
 /**
- * Configuración única del juego (V0.2).
+ * Configuración única del juego (V0.3).
  *
  * TODOS los valores ajustables viven aquí: ventanas de timing, gameSpeed, radios,
  * velocidades de la raqueta, curvas de tiro, spin, tipos de golpe, bloqueo, bot, feedback,
- * Momentum (preparado) y presentación. El cliente puede sobrescribir valores para playtest (parámetros de URL),
+ * red (V0.3), Momentum (preparado) y presentación. El cliente puede sobrescribir valores para playtest (parámetros de URL),
  * pero cliente y servidor deben compartir exactamente la misma config en partida.
  *
  * Unidades:
@@ -452,6 +452,46 @@ export const DEFAULT_CONFIG = {
     calibrationRejectMs: 250,
     /** Velocidad de la bola de calibración (m/s reales) ≈ la de llegada en partida con gameSpeed 0.75. */
     calibrationBallSpeed: 3.4,
+  },
+
+  /**
+   * Red (V0.3) [§15.1, §17.2, §17.3] 🟡. Modelo «cada uno golpea en su tiempo» ✅: cada bola entre dos golpes es un
+   * vuelo que cada jugador mide con su propio reloj; la bola que se aleja se frena en tu pantalla para llegar a la
+   * raqueta rival cuando se espera su golpe (tu ping + el suyo). Lógica en shared/src/net/.
+   */
+  net: {
+    /** Posición de la raqueta que se envía al rival: 30 veces por segundo, interpolada al dibujarla [§17.2]. */
+    paddleHz: 30,
+    /**
+     * Ping [§15.1]: cada `everyMs`, media de las últimas `average` medidas. Al conectar se hacen `warmup` medidas
+     * seguidas (cada `warmupEveryMs`) para frenar bien desde la primera bola. Colores: < goodBelowMs verde,
+     * hasta warnAboveMs amarillo, por encima rojo con aviso.
+     */
+    ping: { everyMs: 2000, average: 5, warmup: 3, warmupEveryMs: 250, goodBelowMs: 60, warnAboveMs: 120 },
+    /**
+     * Bola que se aleja (reloj de visualización, brake.ts): velocidad real hasta `startFrac` del contacto esperado
+     * («normal cerca de ti») y después frenada lineal para llegar a ese contacto con tu ping + el del rival de
+     * retraso, sin bajar nunca de `minSpeed` (el límite del freno). Si el golpe rival llega antes, la bola se
+     * adelanta en al menos `catchUpMs`; si el rival no la devuelve, vuelve a velocidad real en `rampBackMs`.
+     * `defaultDepth`: profundidad (m desde la red) del contacto esperado si aún no se conoce la raqueta rival.
+     */
+    brake: { startFrac: 0.25, minSpeed: 0.25, catchUpMs: 80, rampBackMs: 150, defaultDepth: 1.6 },
+    /** Una corrección o un cambio de vuelo con desfase se funde en pantalla en este tiempo (sin saltos). */
+    blendMs: 80,
+    /**
+     * Validación del servidor [§17.3]: tolerancias del alcance de la raqueta (desde su última posición enviada, a su
+     * velocidad máxima), de sus límites y de un click «en el futuro» (más tarde de lo que el jugador pudo verlo).
+     */
+    validation: { reachToleranceM: 0.03, boundsToleranceM: 0.02, futureToleranceMs: 60 },
+    /** Respaldo: si el jugador que debe golpear calla este tiempo tras el fin del vuelo, el punto se cierra solo. */
+    timers: { fallbackMs: 3000 },
+    /** Latencia simulada (parámetros ping, botping y jitter de la URL): límites aceptados y variación por defecto. */
+    latency: { defaultJitter: 0.1, maxPingMs: 500, maxJitter: 0.5 },
+    /**
+     * Cuantización del evento de golpe (mm, ms, mm/s, alturas de pantalla/s): quien golpea predice su vuelo con el
+     * evento ya cuantizado, así su predicción y la del servidor coinciden bit a bit.
+     */
+    quantize: { mmDecimals: 3, msDecimals: 3, speedDecimals: 1, swingDecimals: 4 },
   },
 
   /** Momentum [§11] — NO se usa en V0.1; los valores viven aquí para que el config sea único. */
