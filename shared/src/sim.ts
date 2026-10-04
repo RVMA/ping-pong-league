@@ -340,6 +340,11 @@ export class Simulation {
     events.push({ type: 'toss', server: s.server });
   }
 
+  /** Historial de la raqueta de un lado (velocidad y posición por tick), en orden. Solo lectura. */
+  paddleHistory(side: Side): readonly PaddleSample[] {
+    return this.paddleSpeedHist[side];
+  }
+
   /** Muestras alrededor del click: historial + predicción sin intervención. */
   sampleWindow(): PathSample[] {
     const pred = predictPath(this.state.ball, this.env, this.dt, this.tickMs, this.now, this.cfg.hit.searchWindowMs);
