@@ -3,6 +3,7 @@ export * from './types.ts';
 export * from './physics.ts';
 export * from './spin.ts';
 export * from './hit.ts';
+export * from './click.ts';
 export * from './stroke.ts';
 export * from './shot.ts';
 export * from './paddle.ts';

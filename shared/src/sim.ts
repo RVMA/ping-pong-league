@@ -10,7 +10,8 @@
  */
 import { type GameConfig, simDt, tickMs } from './config.ts';
 import { type ShotType, shotFromKeys, type StrokeType, strokePower } from './stroke.ts';
-import { classifyHit, type HitEvaluation, measureClosestApproach, type QualityTier } from './hit.ts';
+import { aimFactorFromSpeeds, evaluateClickSamples, fixedHitPos, type PaddleSample, settleRef, settleSpeeds } from './click.ts';
+import type { HitEvaluation, QualityTier } from './hit.ts';
 import { stepPaddle } from './paddle.ts';
 import { type BallContact, type BallState, makeEnv, type PathSample, type PhysicsEnv, predictPath, stepBall } from './physics.ts';
 import {
@@ -26,13 +27,6 @@ import {
 } from './rules.ts';
 import { planShot, type ShotTargets, solveShot } from './shot.ts';
 import { type InputIntent, type ShotKeys, type Side, sideSign, type Vec3 } from './types.ts';
-
-interface PaddleSample {
-  t: number;
-  v: number;
-  x: number;
-  z: number;
-}
 
 export type SimPhase = 'serveHold' | 'serveToss' | 'rally' | 'pointOver' | 'gameOver';
 
@@ -355,22 +349,7 @@ export class Simulation {
 
   /** Evalúa un click hipotético sin cambiar el estado (usado por el bot y por tests). */
   evaluateClick(side: Side, fire: number, paddlePos: { x: number; z: number } = this.state.paddles[side].pos): HitEvaluation | null {
-    const s = this.state;
-    const serve = s.phase === 'serveToss';
-    const samples = this.sampleWindow().filter((p) => Math.abs(p.t - fire) <= this.cfg.hit.searchWindowMs);
-    const m = measureClosestApproach({
-      samples,
-      sweet: { x: paddlePos.x, y: serve ? this.env.tableTop + this.cfg.serve.idealContactHeight : 0, z: paddlePos.z },
-      weightY: serve ? 1 : 0,
-      side,
-      tClick: fire,
-      paddleRadius: this.cfg.paddle.radius,
-      reachMinY: this.env.tableTop + this.cfg.paddle.minReachHeight,
-      reachMaxY: this.env.tableTop + this.cfg.paddle.maxReachHeight,
-      ownSideOnly: !serve,
-      descendingOnly: serve,
-    });
-    return m ? classifyHit(m, this.cfg.hit) : null;
+    return evaluateClickSamples(this.sampleWindow(), side, fire, paddlePos, this.state.phase === 'serveToss', this.cfg, this.env);
   }
 
   private handleClick(side: Side, fire: number, intent: InputIntent, events: SimEvent[]): void {
@@ -411,35 +390,19 @@ export class Simulation {
   }
 
   /**
-   * Puntería solo si estás colocado: velocidad máxima de la raqueta antes de la ventana del gesto.
+   * Puntería solo si estás colocado: velocidad máxima de la raqueta antes de la ventana del gesto (click.ts).
    * Persiguiendo la bola → 0 (sale recta); quieta → 1 (el gesto lateral apunta).
    */
   aimFactor(side: Side, fire: number): number {
-    const sc = this.cfg.shot;
-    let vmax = 0;
-    for (const h of this.paddleSpeedHist[side]) {
-      if (h.t >= fire - sc.aimSettleFromMs && h.t <= fire - sc.aimSettleToMs && h.v > vmax) vmax = h.v;
-    }
-    const f = (sc.aimChasingSpeed - vmax) / (sc.aimChasingSpeed - sc.aimSettledSpeed);
-    return f <= 0 ? 0 : f >= 1 ? 1 : f;
+    return aimFactorFromSpeeds(settleSpeeds(this.paddleSpeedHist[side], fire, this.cfg), this.cfg);
   }
 
   /**
-   * Posición de la raqueta con la que se mide el golpe. Si estabas colocado y el gesto LATERAL es un golpe seco
-   * (por encima de la zona muerta), el gesto es swing, no recolocación: se usa la raqueta de antes del gesto
-   * (click − aimSettleToMs), mezclada según lo colocado que estuvieras. Así cruzar no cuesta posición; su riesgo
-   * está en el ángulo (shot.ts). Desde V0.2b el tipo de golpe va con teclas: un movimiento vertical vuelve a ser
-   * solo recolocación (como en V0.1). `swing` es el gesto efectivo (ya × aimFactor).
+   * Posición de la raqueta con la que se mide el golpe (click.ts): la de antes del gesto si estabas colocado y el
+   * gesto LATERAL es seco. `swing` es el gesto efectivo (ya × aimFactor).
    */
   clickPaddlePos(side: Side, fire: number, swing: { vx: number; vy: number }, aimFactor: number): { x: number; z: number } {
-    const pad = this.state.paddles[side].pos;
-    const mag = swing.vx < 0 ? -swing.vx : swing.vx;
-    if (aimFactor <= 0 || mag <= this.cfg.shot.aimSwingDeadZone) return { x: pad.x, z: pad.z };
-    const tRef = fire - this.cfg.shot.aimSettleToMs;
-    let ref: { x: number; z: number } | null = null;
-    for (const h of this.paddleSpeedHist[side]) if (h.t <= tRef) ref = { x: h.x, z: h.z };
-    if (!ref) return { x: pad.x, z: pad.z };
-    return { x: pad.x + (ref.x - pad.x) * aimFactor, z: pad.z + (ref.z - pad.z) * aimFactor };
+    return fixedHitPos(this.state.paddles[side].pos, settleRef(this.paddleSpeedHist[side], fire, this.cfg), swing.vx, aimFactor, this.cfg);
   }
 
   private applyHit(side: Side, events: SimEvent[]): void {

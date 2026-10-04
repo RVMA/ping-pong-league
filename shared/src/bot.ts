@@ -8,8 +8,8 @@
  */
 import type { BotDifficultyConfig, GameConfig } from './config.ts';
 import type { ShotType } from './stroke.ts';
-import { cloneBall, stepBall, type BallContact } from './physics.ts';
-import type { Simulation } from './sim.ts';
+import { type BallContact, type BallState, cloneBall, type PhysicsEnv, stepBall } from './physics.ts';
+import type { SimPhase } from './sim.ts';
 import { relativeSpin } from './spin.ts';
 import { type InputIntent, neutralIntent, type ShotKeys, type Side, sideSign } from './types.ts';
 
@@ -26,6 +26,24 @@ export function makeRng(seed: number): () => number {
 }
 
 type Tier = 'perfect' | 'good' | 'weak' | 'whiff';
+
+/**
+ * Lo único que el bot lee de la partida: así juega igual contra la simulación local (Simulation) y en red, donde
+ * lee la vista de su cliente (ClientMatch), que muestra los vuelos con su propio reloj [§17.2, §17.5].
+ */
+export interface BotView {
+  readonly now: number;
+  readonly tickMs: number;
+  readonly dt: number;
+  readonly env: PhysicsEnv;
+  readonly state: {
+    readonly phase: SimPhase;
+    readonly server: Side;
+    readonly ball: BallState;
+    readonly paddles: readonly [{ readonly pos: { x: number; z: number } }, { readonly pos: { x: number; z: number } }];
+    readonly rally: { readonly lastHitter: Side | null; readonly hits: number; readonly isServe: boolean; readonly bounces: readonly Side[] };
+  };
+}
 
 interface Plan {
   shotId: number;
@@ -148,7 +166,7 @@ export class Bot {
     return 'NORMAL';
   }
 
-  think(sim: Simulation): InputIntent {
+  think(sim: BotView): InputIntent {
     const s = sim.state;
     const sgn = sideSign(this.side);
     const now = sim.now;
@@ -212,7 +230,7 @@ export class Bot {
     return intent;
   }
 
-  private planServe(sim: Simulation): Plan {
+  private planServe(sim: BotView): Plan {
     const s = sim.state;
     const sgn = sideSign(this.side);
     const yIdeal = sim.env.tableTop + this.cfg.serve.idealContactHeight;
@@ -245,7 +263,7 @@ export class Bot {
     };
   }
 
-  private planReturn(sim: Simulation): Plan {
+  private planReturn(sim: BotView): Plan {
     const s = sim.state;
     const sgn = sideSign(this.side);
     const env = sim.env;
