@@ -39,6 +39,13 @@ describe('reloj de la bola que se aleja [§17.2]', () => {
     expect(Math.abs(c.at(1090) - 790)).toBeLessThan(1e-9);
   });
 
+  it('tras el contacto esperado vuelve a velocidad real, P ms por detrás', () => {
+    const c = new DisplayClock();
+    c.planBrake(790, 200, cfg);
+    expect(c.speedAt(1000)).toBeCloseTo(1, 12);
+    expect(c.at(1500)).toBeCloseTo(1300, 9);
+  });
+
   it('es monótona, con la velocidad entre el límite del freno y 1, y normal cerca de ti', () => {
     const c = new DisplayClock();
     for (const extra of [100, 200, 300]) {
@@ -64,9 +71,9 @@ describe('reloj de la bola que se aleja [§17.2]', () => {
     c.planBrake(790, 300, cfg);
     const u = 800;
     const before = c.at(u);
-    c.retarget(u, 720, 900);
+    c.retarget(u, before + 60, 900);
     expect(Math.abs(c.at(u) - before)).toBeLessThan(1e-9);
-    expect(Math.abs(c.at(900) - 720)).toBeLessThan(1e-9);
+    expect(Math.abs(c.at(900) - (before + 60))).toBeLessThan(1e-9);
     sweep(c, u, 900);
     // Adelantarse: mucho camino en poco tiempo.
     c.planBrake(790, 300, cfg);

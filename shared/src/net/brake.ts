@@ -101,31 +101,64 @@ export class DisplayClock {
     return { d, s };
   }
 
+  /** Añade un tramo de `dur` ms desde el final del último, con la velocidad cambiando linealmente hasta `sEnd`. */
+  private push(dur: number, sEnd: number): void {
+    const o = (this.n - 1) * F;
+    const u0 = this.seg[o + 4];
+    const du = u0 - this.seg[o];
+    const d0 = this.seg[o + 1] + this.seg[o + 2] * du + this.seg[o + 3] * du * du * 0.5;
+    const s0 = this.seg[o + 2] + this.seg[o + 3] * du;
+    if (!(dur > 0)) return;
+    this.add(u0, d0, s0, (sEnd - s0) / dur, u0 + dur);
+  }
+
+  /** Cierra el plan con un tramo sin fin a velocidad constante (la que haya al final). */
+  private tail(): void {
+    const o = (this.n - 1) * F;
+    const u0 = this.seg[o + 4];
+    const du = u0 - this.seg[o];
+    const d0 = this.seg[o + 1] + this.seg[o + 2] * du + this.seg[o + 3] * du * du * 0.5;
+    const s0 = this.seg[o + 2] + this.seg[o + 3] * du;
+    this.add(u0, d0, s0, 0, Number.POSITIVE_INFINITY);
+  }
+
   /**
-   * Plan de frenado desde el inicio del vuelo: llegar a `tExpMs` (contacto esperado del rival) en `tExpMs + extraMs`.
-   * Velocidad 1 hasta startFrac·tExp; después baja linealmente. Si haría falta bajar de minSpeed, baja hasta
-   * minSpeed (a mitad del camino que queda) y la mantiene: llega antes. Tras el contacto esperado, sostiene la
-   * velocidad final hasta que llegue el golpe o el punto.
+   * Plan de frenado desde el inicio del vuelo: la pantalla acumula `extraMs` de retraso (tu ping + el del rival) entre
+   * startFrac·tExp y el contacto esperado, y llega a `tExpMs` justo en `tExpMs + extraMs`. Velocidad 1 cerca de ti;
+   * después un «valle» lineal (baja y vuelve a 1 al llegar al contacto esperado) sin bajar de minSpeed: si hace falta,
+   * el valle se aplana en minSpeed. Tras el contacto esperado sigue a velocidad real con el retraso ya acumulado, así
+   * que el golpe del rival (llegue cuando llegue) se ve a velocidad real. Si el freno no da para tanto retraso, llega
+   * antes y mantiene minSpeed hasta acumularlo.
    */
   planBrake(tExpMs: number, extraMs: number, cfg: BrakeConfig): void {
     this.reset();
     if (!(extraMs > 0) || !(tExpMs > 0)) return;
     this.identity = false;
+    const m = cfg.minSpeed;
     const u1 = cfg.startFrac * tExpMs;
-    const U = tExpMs + extraMs;
-    const dist = tExpMs - u1;
-    const sEnd = (2 * dist) / (U - u1) - 1;
+    const span = tExpMs + extraMs - u1;
     this.n = 0;
     this.add(0, 0, 1, 0, u1);
-    if (sEnd >= cfg.minSpeed) {
-      this.add(u1, u1, 1, (sEnd - 1) / (U - u1), U);
-      this.add(U, tExpMs, sEnd, 0, Number.POSITIVE_INFINITY);
-      return;
+    const sMid = 1 - (2 * extraMs) / span;
+    if (sMid >= m) {
+      this.push(span / 2, sMid);
+      this.push(span / 2, 1);
+    } else {
+      // Valle aplanado: rampas de `a` ms y `h` ms a minSpeed, con déficit (1 − m)·(a + h) = extra en 2a + h = span.
+      const Lm = extraMs / (1 - m);
+      const a = span - Lm;
+      if (a > 0) {
+        this.push(a, m);
+        this.push(2 * Lm - span, m);
+        this.push(a, 1);
+      } else {
+        const r = Math.min(40, span / 4);
+        this.push(r, m);
+        this.push(Lm - r, m);
+        this.push(r, 1);
+      }
     }
-    const m = cfg.minSpeed;
-    const R = dist / (1 + m);
-    this.add(u1, u1, 1, (m - 1) / R, u1 + R);
-    this.add(u1 + R, u1 + ((1 + m) / 2) * R, m, 0, Number.POSITIVE_INFINITY);
+    this.tail();
   }
 
   /**
