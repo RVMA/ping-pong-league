@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { BotClient } from '../src/bot-client.ts';
 import { type GameServer, startServer } from '../src/server.ts';
+import { ticker } from '../src/ticker.ts';
 
 // Partidas algo más cortas (pausa entre puntos de 0.3 s) para que la prueba con sockets reales dure poco.
 const cfg = makeConfig({ rules: { pointDelayMs: 300 } });
@@ -90,6 +91,16 @@ describe('servidor de juego (sockets reales)', () => {
     expect(await until(() => server!.rooms.size === 0, 3000)).toBe(true);
     expect(room.bot?.stopped).toBe(true);
   }, 15000);
+
+  it('sin conexiones el servidor no deja su bucle en marcha', async () => {
+    server = await startServer({ port: 0, cfg, log: () => {} });
+    expect(ticker.taskCount).toBe(0);
+    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, role: 'player', difficulty: 'medium', seed: 9, ping: 0, botping: 0, jitter: 0, cfg });
+    player.start();
+    expect(await until(() => ticker.taskCount > 0, 3000)).toBe(true);
+    player.stop();
+    expect(await until(() => server!.rooms.size === 0 && ticker.taskCount === 0, 3000)).toBe(true);
+  }, 10000);
 
   it('si el bot se cae, el jugador recibe bye', async () => {
     server = await startServer({ port: 0, cfg, log: () => {} });

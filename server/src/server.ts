@@ -37,15 +37,26 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
   const pending = new Set<Peer>();
   let counter = 0;
 
+  // El bucle solo corre mientras hay conexiones: un servidor sin nadie no ocupa la CPU.
+  let looping = false;
   const task = (now: number) => {
     for (const p of pending) p.pump(now);
     for (const r of rooms.values()) r.pump(now);
+    if (!pending.size && !rooms.size) {
+      ticker.remove(task);
+      looping = false;
+    }
   };
-  ticker.add(task);
+  const wake = () => {
+    if (looping) return;
+    looping = true;
+    ticker.add(task);
+  };
 
   wss.on('connection', (ws) => {
     const peer = new Peer(ws, log);
     pending.add(peer);
+    wake();
     const reject = (m: ErrCode) => {
       log(`[servidor] conexión rechazada: ${m}`);
       peer.sendNow({ k: 'err', m, d: ERR_TEXT[m] });
@@ -87,6 +98,7 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
     rooms,
     close: async () => {
       ticker.remove(task);
+      looping = false;
       for (const r of [...rooms.values()]) r.close();
       for (const p of pending) p.close();
       for (const c of wss.clients) c.terminate();

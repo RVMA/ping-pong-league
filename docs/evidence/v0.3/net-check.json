@@ -1,0 +1,13 @@
+{
+  "prueba": "client/e2e/net-check.js — Chromium, ratón y teclado reales de Playwright, ±30 ms de error de timing (misma secuencia en cada ping), 20 golpes por ping contra el bot remoto Normal (seed 11), npm run dev",
+  "fecha": "2026-10-04",
+  "criterio": { "meanDt0": 2.2, "meanDt100": -1.1, "diferenciaMs": -3.3, "limiteMs": 10, "cumple": true },
+  "porPing": {
+    "0": { "meanDtMs": 2.2, "meanAbsDtMs": 17.6, "tiers": { "PERFECT": 14, "GOOD": 6, "WEAK": 0, "WHIFF": 0 }, "pedidoIgualSalido": "16/16", "bloqueos": "4/4", "correcciones": 0, "frenado": { "vuelos": 21, "medio": 0.054, "max": 0.178 }, "pingMedido": [18, 10], "saltoRenderMaxM": 0.0116, "pasoBolaMaxPorFrameM": 0.208, "fps": 60, "subidaBps": 767, "bajadaBps": 859 },
+    "50": { "meanDtMs": -2.2, "meanAbsDtMs": 19.1, "tiers": { "PERFECT": 14, "GOOD": 6, "WEAK": 0, "WHIFF": 0 }, "pedidoIgualSalido": "16/16", "bloqueos": "4/4", "correcciones": 0, "frenado": { "vuelos": 20, "medio": 0.173, "max": 0.575 }, "pingMedido": [66, 60], "saltoRenderMaxM": 0.0181, "pasoBolaMaxPorFrameM": 0.236, "fps": 60, "subidaBps": 819, "bajadaBps": 1007 },
+    "100": { "meanDtMs": -1.1, "meanAbsDtMs": 17.9, "tiers": { "PERFECT": 14, "GOOD": 6, "WEAK": 0, "WHIFF": 0 }, "pedidoIgualSalido": "16/16", "bloqueos": "4/4", "correcciones": 0, "frenado": { "vuelos": 20, "medio": 0.272, "max": 0.75 }, "pingMedido": [120, 117], "saltoRenderMaxM": 0.0188, "pasoBolaMaxPorFrameM": 0.231, "fps": 60, "subidaBps": 815, "bajadaBps": 979 },
+    "150": { "meanDtMs": -2.8, "meanAbsDtMs": 14.2, "tiers": { "PERFECT": 17, "GOOD": 3, "WEAK": 0, "WHIFF": 0 }, "pedidoIgualSalido": "16/16", "bloqueos": "4/4", "correcciones": 0, "frenado": { "vuelos": 20, "medio": 0.34, "max": 0.75 }, "pingMedido": [160, 162], "saltoRenderMaxM": 0.0176, "pasoBolaMaxPorFrameM": 0.229, "fps": 60, "subidaBps": 815, "bajadaBps": 966 }
+  },
+  "mensajeDelGolpePropio": "En los 80 golpes, el evento del golpe propio sale en el tick de su contacto (0–9 ms después del contacto, como en local): no espera a la red",
+  "erroresDeConsola": []
+}

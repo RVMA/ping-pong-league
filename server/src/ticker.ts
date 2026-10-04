@@ -14,6 +14,11 @@ export class Ticker {
     if (!this.timer) this.timer = setInterval(this.loop, 1);
   }
 
+  /** Tareas registradas (sin tareas, el intervalo está parado). */
+  get taskCount(): number {
+    return this.tasks.size;
+  }
+
   remove(task: TickTask): void {
     this.tasks.delete(task);
     if (!this.tasks.size && this.timer) {
