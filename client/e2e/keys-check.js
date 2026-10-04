@@ -151,20 +151,20 @@ async (page) => {
   await page.goto(base + '?autostart=1&bot=medium&seed=23&offset=0');
   await page.waitForTimeout(600);
 
-  // ——— Tecla mantenida: barra iluminada y raqueta iluminada con el color del golpe (antes de golpear) ———
+  // ——— Tecla mantenida: barra iluminada y contorno de la raqueta del color del golpe (antes de golpear) ———
   const held = [];
   await page.mouse.move(640, 560);
   await page.waitForTimeout(300);
   for (const [name, code] of Object.entries(KEY)) {
     await page.keyboard.down(code);
     await page.waitForTimeout(220);
-    const s = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, sparks: window.__ppp.debugState().sparks.glow }));
-    held.push({ key: code, bar: s.kb, glow: s.sparks });
+    const s = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, outline: window.__ppp.debugState().sparks.outline }));
+    held.push({ key: code, bar: s.kb, outline: s.outline });
     await page.screenshot({ path: `${SHOT_DIR}/held-${name.toLowerCase()}.png` });
     await page.keyboard.up(code);
   }
   await page.waitForTimeout(150);
-  const heldOff = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, sparks: window.__ppp.debugState().sparks.glow }));
+  const heldOff = await page.evaluate(() => ({ kb: window.__ppp.debugState().keyBar.active, outline: window.__ppp.debugState().sparks.outline }));
 
   // ——— Fase A: golpes pedidos con tecla; fase B: casos explicados ———
   const rotation = ['TOPSPIN', 'SLICE', 'NORMAL', 'SMASH', 'BLOCK'];

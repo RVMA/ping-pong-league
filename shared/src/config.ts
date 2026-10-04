@@ -500,15 +500,18 @@ export const DEFAULT_CONFIG = {
      * Señales del golpe (V0.2b), con los colores del trail: naranja topspin, magenta slice, blanco smash, cian bloqueo
      * (el golpe normal, dorado). Solo presentación; el color siempre va acompañado de texto (barra de teclas,
      * mensaje junto a la raqueta) [§19].
-     *  - Tecla mantenida (solo el jugador local; el rival nunca la ve, §13): la cara de TU raqueta se ilumina con el
-     *    color del golpe (`heldGlow`: intensidad del brillo). Decisión del autor (2026-10-03): sin partículas
-     *    alrededor, basta con iluminar la raqueta.
+     *  - Tecla mantenida (solo el jugador local; el rival nunca la ve, §13): se ilumina solo el CONTORNO de tu
+     *    raqueta con el color del golpe: un aro de `outlineWidth` m en el borde y un halo suave de `haloWidth` m por
+     *    fuera (opacidad `haloOpacity`). Decisiones del autor (2026-10-03): sin partículas alrededor; solo el
+     *    contorno, no toda la raqueta.
      *  - Al golpear: ráfaga de chispas que sale de la raqueta y se abre hacia fuera durante `burstMs`; más chispas
      *    cuanto mejor el golpe (`burst`), las del débil en gris, el fallo sin chispas. La ve también el rival (es tras
      *    el golpe, como sus mensajes, §5.2). Con reduceShakeAndFlash no hay ráfaga.
      */
     sparks: {
-      heldGlow: 0.6,
+      outlineWidth: 0.012,
+      haloWidth: 0.025,
+      haloOpacity: 0.35,
       burst: { PERFECT: 22, GOOD: 10, WEAK: 4 } as Record<'PERFECT' | 'GOOD' | 'WEAK', number>,
       burstMs: 300,
       normalColor: '#ffd23f',

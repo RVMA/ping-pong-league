@@ -46,7 +46,7 @@ Otros comandos:
 | Fuerza del golpe | Sale de la **calidad**: ¡Perfecto! = golpe completo; Bien = reducido; pronto, tarde o con el borde = flojo y más arriesgado. Si llegas persiguiendo la bola, la mitad |
 | Cruzar la bola | Con la raqueta **ya colocada**, un gesto lateral seco del ratón al hacer click (vale con cualquier golpe). Pronto te pasas de ángulo; tarde no llegas a cruzar. Persiguiendo, la bola sale recta |
 | Bloqueo | Mantén **Espacio** y haz click. Devuelve con la fuerza de la bola que llega; mientras mantienes Espacio, la raqueta va al 50 % |
-| Barra de teclas | Abajo a la izquierda durante la partida; la tecla mantenida se ilumina y tu raqueta se ilumina con el color del golpe. **Tab** la muestra u oculta (se guarda en este navegador) |
+| Barra de teclas | Abajo a la izquierda durante la partida; la tecla mantenida se ilumina y el contorno de tu raqueta toma el color del golpe. **Tab** la muestra u oculta (se guarda en este navegador) |
 | Calibrar la latencia | Botón «Calibrar latencia» en la pantalla de inicio: 12 bolas, click cuando lleguen al centro de la raqueta. Se guarda en este navegador |
 | «¿Por qué fallé?» | Activado por defecto; se apaga en la pantalla de inicio («Explicar mis errores») |
 | Sacar | Click para lanzar la bola (o esperar 1 s) y click cuando baje |

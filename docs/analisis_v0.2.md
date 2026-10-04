@@ -305,7 +305,7 @@ Arrancar con `npm run dev` (ver README). En todos los puntos sirve el panel `D`:
   - El cruce sigue siendo el gesto lateral de V0.1.
   - Feedback nuevo:
     - barra de teclas (Tab);
-    - la raqueta se ilumina con el color del golpe mientras mantienes la tecla (al principio eran chispas alrededor; B.10);
+    - el contorno de la raqueta toma el color del golpe mientras mantienes la tecla (al principio eran chispas alrededor; B.10);
     - ráfaga de chispas al golpear, según la calidad;
     - un texto que dice qué salió, con qué fuerza y por qué salió distinto de lo pedido.
 - **Evidencia.**
@@ -372,7 +372,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
   - Visible por defecto.
   - **Tab** la muestra u oculta sin mover el foco, y la preferencia se guarda en el navegador (`ppp.keyBar`).
   - La tecla mantenida se ilumina con el color del golpe; la letra y el nombre siguen ahí (§19).
-- **Tecla mantenida**: la cara y el canto de **tu** raqueta se iluminan con el color del golpe (naranja topspin, magenta slice, blanco smash, cian bloqueo); la del rival no se ilumina nunca.
+- **Tecla mantenida**: solo el **contorno** de **tu** raqueta se ilumina con el color del golpe (naranja topspin, magenta slice, blanco smash, cian bloqueo): un aro en el borde y un halo suave por fuera. La del rival no se ilumina nunca.
 - **Chispas** (`world.ts`, colores del trail; el normal, dorado):
   - al golpear, una ráfaga de 0.3 s se abre hacia fuera en el plano de la cara: 22 en PERFECT, 10 en GOOD, 4 grises en débil y ninguna en el fallo;
   - mezcla normal, no aditiva: con mezcla aditiva el magenta salía azulado sobre la mesa, lo mismo que pasó con el trail en V0.2.
@@ -397,7 +397,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
 | Topspin | spin 100–340 rad/s · techo de ritmo 10 + 1.2·p · tarde → larga 0.5 | Débil: ~136 rad/s, poco más que un normal («flojo»). Completo: 340, como el máximo de V0.2 |
 | Slice | objetivo a 0.62 m del centro · se abre pronto 0.9 · lateral 100–350 rad/s · backspin 80 | «Más ángulo» desde cualquier sitio; riesgo «pronto → fuera» legible entre −50 y −72 ms |
 | Smash | ritmo 10.5 + 4.5·p (débil ~11.2, GOOD ~12.8, completo 15 m/s de simulación) | El completo, ~2 veces un normal. En V0.2 iba de 13 a 16 por la velocidad del gesto; ahora un smash débil es más lento de verdad |
-| Señales `presentation.sparks` | tecla mantenida: brillo de la raqueta 0.6 · ráfaga: 22 / 10 / 4 chispas, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
+| Señales `presentation.sparks` | tecla mantenida: contorno de 1.2 cm + halo de 2.5 cm (opacidad 0.35) · ráfaga: 22 / 10 / 4 chispas, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
 
 **Desaparecen**:
 - los umbrales y la potencia del gesto (`topspinThreshold`, `sliceThreshold`, `smashThreshold`, `…FullPower`);
@@ -442,7 +442,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
 | Otras dificultades (20 partidas) | Fácil–Fácil 3.23 golpes/punto (V0.2: 3.20) · Difícil–Difícil 9.62 (V0.2: 9.36) · Normal–Difícil 6.47 |
 | **E2E con entrada humana** `client/e2e/keys-check.js` (Chromium, bot Normal) | Teclado real (`page.keyboard.down/up`) y clicks reales (`page.mouse`), sin gestos sintéticos, ±30 ms de error aleatorio con semilla. **30/30 golpes salieron del tipo pedido** (9 topspin, 5 slice, 3 smash con la bola a 18–22 cm, 8 normales, 5 bloqueos). 24 PERFECT y 6 GOOD, \|Δt\| medio 16.6 ms. Ráfaga: 22 chispas en PERFECT, 10 en GOOD |
 | E2E: casos explicados | Tecla 60 ms después del click → «NORMAL · pulsaste W después del click». Soltada 90 ms antes → «NORMAL · soltaste W antes del click». Persiguiendo → «TOPSPIN flojo · persiguiendo». Smash con la bola baja → «SMASH completo · bola baja para el smash» y «Red. Smash con la bola por debajo de la cinta (hacen falta 15 cm por encima).». Topspin +91 ms → «TOPSPIN flojo», 4 chispas grises y «Fuera. Topspin tarde (+91 ms): se te fue largo.». Slice −58 ms → «Fuera. Slice pronto (−58 ms): te pasaste de ángulo.» |
-| E2E: barra y accesibilidad | Las 4 teclas iluminan la barra y muestran chispas; al soltar, se apagan. Tab oculta y muestra la barra con el foco en `BODY`, guarda `ppp.keyBar` y la preferencia sobrevive a recargar. Con `?reduce=1`: 0 chispas tras 3 golpes |
+| E2E: barra y accesibilidad | Las 4 teclas iluminan la barra y el contorno de la raqueta; al soltar, se apagan. Tab oculta y muestra la barra con el foco en `BODY`, guarda `ppp.keyBar` y la preferencia sobrevive a recargar. Con `?reduce=1`: 0 chispas tras 3 golpes |
 | `shots-check.js` (V0.2, actualizado a teclas reales) | Topspin, slice, normal y bloqueo pedidos con su tecla. Bloquear un topspin de 160–220 rad/s → **−86 a −116** (backspin, trail cian). Avisos: smash bajo, slice pronto (−68 ms) → fuera, topspin −94 ms → red. En esa pasada el bot no dio ninguna bola alta (≥ 17 cm) para el smash; ese caso está en `keys-check` (3/3) |
 | Regresión E2E de V0.1 | `autoplay-rally`: rallies de 8 y 46 golpes, Δt iguales a los provocados (±13 ms). `aim-check`: colocado → cruza 22–67 cm; persiguiendo → recta (factor 0). `autoplay-errors`: game 2-11 con los errores provocados. `calibration-check`: +45 ms y luego 11/11 PERFECT con Δt medio de 0 ms |
 | Consola del navegador | 0 errores. El aviso conocido del AudioContext con `?autostart=1` |
@@ -452,7 +452,7 @@ Capturas en `docs/screenshots/v0.2b/`:
 | Archivo | Contenido |
 |---|---|
 | `01-menu.png` | Menú con las instrucciones de V0.2b |
-| `held-topspin.png`, `held-slice.png`, `held-smash.png`, `held-block.png` | Tecla mantenida: barra iluminada y raqueta iluminada con el color del golpe |
+| `held-topspin.png`, `held-slice.png`, `held-smash.png`, `held-block.png` | Tecla mantenida: barra iluminada y contorno de la raqueta del color del golpe |
 | `shot-*.png` | Cada golpe pedido con su tecla: ráfaga, mensaje («TOPSPIN completo»…) y trail |
 | `case-*.png` | Tecla a destiempo, persiguiendo, smash bajo, topspin tarde (chispas grises), slice pronto |
 | `keybar-hidden.png` | Barra oculta con Tab |
@@ -509,7 +509,7 @@ El resto de los 164 tests pasa sin cambios. `block.test.ts` también: el bloqueo
 Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «Teclas en el click», «Tipo · potencia» y «Puntería».
 
 1. **Teclas y barra** — `http://localhost:5173/?bot=easy&debug=1`. Durante la partida, sin hacer click, mantén Q, luego W, luego E y luego Espacio.
-   - Mirar: la tecla se ilumina abajo a la izquierda y tu raqueta se ilumina: magenta (Q), naranja (W), blanca (E), cian (Espacio).
+   - Mirar: la tecla se ilumina abajo a la izquierda y el contorno de tu raqueta toma su color: magenta (Q), naranja (W), blanco (E), cian (Espacio).
    - Pulsa Tab: la barra desaparece; Tab otra vez: vuelve. Recarga la página: se queda como la dejaste.
 2. **Topspin** — misma URL. Colócate donde va a llegar la bola un momento antes, mantén W y haz click cuando la bola llegue al centro.
    - Mirar: «¡Perfecto!» y debajo «TOPSPIN completo», muchas chispas naranjas y trail naranja. Con un «Bien»: «TOPSPIN reducido» y menos chispas.
@@ -540,7 +540,7 @@ Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «T
 | Cambio | Antes | Ahora | Verificación |
 |---|---|---|---|
 | **Teclas de golpe** | W topspin · S slice · E smash | **Q slice · W topspin · E smash** (solo cambia S por Q). La barra va en el orden del teclado: `Q Slice · W Topspin · E Smash · Espacio Bloqueo` | E2E `keys-check` con teclado real: 30/30 golpes del tipo pedido (5 slices con Q); S ya no hace nada |
-| **Tecla mantenida** | 6 chispas suaves girando alrededor de la raqueta | **La raqueta se ilumina** (cara y canto) con el color del golpe: «sin partículas alrededor, basta con iluminar la raqueta». La ráfaga de chispas al golpear no cambia | `held-*.png`: magenta (Q), naranja (W), blanco (E), cian (Espacio); al soltar, se apaga. El destello del PERFECT manda sobre el brillo mientras es más intenso |
+| **Tecla mantenida** | 6 chispas suaves girando alrededor de la raqueta | **Solo se ilumina el contorno** de la raqueta, con el color del golpe: un aro en el borde (1.2 cm) y un halo suave por fuera (2.5 cm, opacidad 0.35). La cara y el mango no cambian. Primero se probó iluminar toda la raqueta; el autor pidió «que solo se ilumine el contorno, no toda la raqueta». La ráfaga de chispas al golpear no cambia | `held-*.png`: aro magenta (Q), naranja (W), blanco (E), cian (Espacio); al soltar, desaparece |
 
 **Especial (§3.3 ✅: Q).** La Q pasa a ser el slice, así que el Especial de V0.5 necesita otra tecla. El autor eligió **R**, al lado de Q W E (P48). No cambia nada ahora: el Especial aún no existe.
 

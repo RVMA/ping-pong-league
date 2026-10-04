@@ -47,26 +47,35 @@ export interface RenderFrame {
   bounceMarker: { x: number; z: number; alpha: number } | null;
   shake: { x: number; y: number };
   /**
-   * Tecla de golpe mantenida (V0.2b): la raqueta del jugador local se ilumina con el color del golpe, o null. Las
-   * teclas del rival no se dibujan nunca (§13).
+   * Tecla de golpe mantenida (V0.2b): el contorno de la raqueta del jugador local se ilumina con el color del golpe,
+   * o null. Las teclas del rival no se dibujan nunca (§13).
    */
-  heldGlow?: { color: string } | null;
+  heldOutline?: { color: string } | null;
 }
 
 class PaddleView {
   readonly group = new THREE.Group();
   private readonly pivot = new THREE.Group();
   private readonly faceMat: THREE.MeshStandardMaterial;
-  private readonly rimMat: THREE.MeshStandardMaterial;
-  private readonly accent: THREE.Color;
-  private readonly glowColor = new THREE.Color();
+  /** Contorno de la tecla mantenida (V0.2b): aro en el borde y halo suave por fuera. */
+  private readonly outline = new THREE.Group();
+  private readonly outlineMat: THREE.MeshBasicMaterial;
+  private readonly haloMat: THREE.MeshBasicMaterial;
   private readonly side: Side;
 
-  constructor(side: Side, character: CharacterId, radius: number, perfectFrac: number, goodFrac: number, translucent: boolean, loader: THREE.TextureLoader) {
+  constructor(
+    side: Side,
+    character: CharacterId,
+    radius: number,
+    perfectFrac: number,
+    goodFrac: number,
+    translucent: boolean,
+    loader: THREE.TextureLoader,
+    outline: { width: number; halo: number; haloOpacity: number },
+  ) {
     this.side = side;
     const ch = CHARACTERS[character];
     const accent = new THREE.Color(ch.color);
-    this.accent = accent;
     const url = assetUrl(ch.paddle);
     const tex = url ? loader.load(url) : null;
     if (tex) {
@@ -78,8 +87,7 @@ class PaddleView {
     const opacity = translucent ? 0.62 : 1;
     this.faceMat = new THREE.MeshStandardMaterial({ map: tex, color: tex ? 0xffffff : accent, roughness: 0.7, transparent: translucent, opacity, emissive: accent, emissiveIntensity: 0 });
     const backMat = new THREE.MeshStandardMaterial({ color: accent.clone().multiplyScalar(0.45), roughness: 0.8, transparent: translucent, opacity });
-    const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.6, transparent: translucent, opacity, emissive: 0x000000 });
-    this.rimMat = rimMat;
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.6, transparent: translucent, opacity });
 
     // Cilindro con el eje en z: la cara circular mira a la red / a la cámara.
     const face = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.012, 48), [rimMat, this.faceMat, backMat]);
@@ -97,17 +105,25 @@ class PaddleView {
     r2.position.z = ringZ;
     this.pivot.add(r1, r2);
 
+    // Contorno de la tecla mantenida: solo el borde de la cara, por delante de ella (el resto de la raqueta no cambia).
+    this.outlineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
+    this.haloMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: outline.haloOpacity, depthWrite: false, side: THREE.DoubleSide });
+    const edge = new THREE.Mesh(new THREE.RingGeometry(radius - outline.width * 0.5, radius + outline.width * 0.5, 64), this.outlineMat);
+    const halo = new THREE.Mesh(new THREE.RingGeometry(radius + outline.width * 0.5, radius + outline.width * 0.5 + outline.halo, 64), this.haloMat);
+    edge.position.z = ringZ * 1.1;
+    halo.position.z = ringZ * 1.1;
+    this.outline.add(edge, halo);
+    this.outline.visible = false;
+    this.pivot.add(this.outline);
+
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.12, 0.024), rimMat);
     handle.position.y = -radius - 0.055;
     this.pivot.add(handle);
     this.group.add(this.pivot);
   }
 
-  /**
-   * Brillo de la tecla mantenida (V0.2b): la cara y el canto se iluminan con el color del golpe. El destello del golpe
-   * (`flash`) manda sobre él cuando es más intenso.
-   */
-  update(f: PaddleFrame, glow: { color: string; intensity: number } | null = null): void {
+  /** `outline`: color del contorno de la tecla mantenida (V0.2b), o null. */
+  update(f: PaddleFrame, outline: string | null = null): void {
     this.group.position.set(f.x + f.reach.x, f.y + f.reach.y, f.z + f.reach.z);
     const sgn = sideSign(this.side);
     if (f.swing !== null) {
@@ -121,22 +137,17 @@ class PaddleView {
       this.pivot.rotation.set(0, 0, 0);
       this.pivot.position.set(0, 0, 0);
     }
-    const flash = f.flash * 0.9;
-    if (glow && glow.intensity >= flash) {
-      this.faceMat.emissive.copy(this.glowColor.set(glow.color));
-      this.faceMat.emissiveIntensity = glow.intensity;
-      this.rimMat.emissive.copy(this.glowColor);
-      this.rimMat.emissiveIntensity = glow.intensity * 1.2;
-    } else {
-      this.faceMat.emissive.copy(this.accent);
-      this.faceMat.emissiveIntensity = flash;
-      this.rimMat.emissiveIntensity = 0;
+    this.faceMat.emissiveIntensity = f.flash * 0.9;
+    this.outline.visible = outline !== null;
+    if (outline) {
+      this.outlineMat.color.set(outline);
+      this.haloMat.color.set(outline);
     }
   }
 
-  /** ¿Está iluminada por una tecla mantenida? (para pruebas automáticas). */
-  get glowing(): boolean {
-    return this.rimMat.emissiveIntensity > 0;
+  /** ¿Se ve el contorno de la tecla mantenida? (para pruebas automáticas). */
+  get outlined(): boolean {
+    return this.outline.visible;
   }
 }
 
@@ -467,9 +478,11 @@ export class World {
     this.scene.add(this.shadow);
 
     const pc = cfg.paddle;
+    const sp = pres.sparks;
+    const outline = { width: sp.outlineWidth, halo: sp.haloWidth, haloOpacity: sp.haloOpacity };
     this.paddles = [
-      new PaddleView(0, characters[0], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, true, loader),
-      new PaddleView(1, characters[1], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, false, loader),
+      new PaddleView(0, characters[0], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, true, loader, outline),
+      new PaddleView(1, characters[1], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, false, loader, outline),
     ];
     this.scene.add(this.paddles[0].group, this.paddles[1].group);
     this.sparks = new Sparks();
@@ -575,9 +588,9 @@ export class World {
     return this.sparks.alive;
   }
 
-  /** ¿Está iluminada la raqueta del jugador por una tecla mantenida? (para pruebas automáticas). */
-  get heldGlowVisible(): boolean {
-    return this.paddles[0].glowing;
+  /** ¿Se ve el contorno de la tecla mantenida en la raqueta del jugador? (para pruebas automáticas). */
+  get heldOutlineVisible(): boolean {
+    return this.paddles[0].outlined;
   }
 
   /** Proyecta un punto del mundo a píxeles CSS del canvas. */
@@ -614,8 +627,7 @@ export class World {
     this.shadow.scale.setScalar(r * (1.6 + height * 1.4));
     this.shadowMat.opacity = Math.max(0.45, 0.95 - height * 0.7);
 
-    const glow = f.heldGlow ? { color: f.heldGlow.color, intensity: this.cfg.presentation.sparks.heldGlow } : null;
-    this.paddles[0].update(f.paddles[0], glow);
+    this.paddles[0].update(f.paddles[0], f.heldOutline ? f.heldOutline.color : null);
     this.paddles[1].update(f.paddles[1]);
     this.sparks.update(f.dt ?? 1 / 60);
 
