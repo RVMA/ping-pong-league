@@ -299,13 +299,13 @@ Arrancar con `npm run dev` (ver README). En todos los puntos sirve el panel `D`:
 
   El E2E de V0.2 pasaba porque despachaba gestos sintéticos perfectos: probaba el código, no que una persona pudiera hacerlo.
 - **Qué cambia.**
-  - El tipo de golpe se elige con **teclas mantenidas en el instante del click**: W topspin, S slice, E smash; sin tecla, golpe normal; Espacio, bloqueo.
+  - El tipo de golpe se elige con **teclas mantenidas en el instante del click**: Q slice, W topspin, E smash (al principio S era el slice; el autor lo cambió a Q el 2026-10-03, B.10); sin tecla, golpe normal; Espacio, bloqueo.
   - La **potencia sale de la calidad**: PERFECT = golpe completo, GOOD = reducido, débil = flojo y más arriesgado.
   - Llegar persiguiendo la bola ya no anula el tipo: **reduce la potencia a la mitad**.
   - El cruce sigue siendo el gesto lateral de V0.1.
   - Feedback nuevo:
     - barra de teclas (Tab);
-    - chispas alrededor de la raqueta con la tecla mantenida;
+    - la raqueta se ilumina con el color del golpe mientras mantienes la tecla (al principio eran chispas alrededor; B.10);
     - ráfaga de chispas al golpear, según la calidad;
     - un texto que dice qué salió, con qué fuerza y por qué salió distinto de lo pedido.
 - **Evidencia.**
@@ -324,7 +324,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
 
 | # | Decisión (2026-10-02) | Cómo se ha implementado |
 |---|---|---|
-| 1 | Tipo de golpe con **teclas mantenidas en el click**: W topspin, S slice, E smash; sin tecla, normal; Espacio, bloqueo; el ratón solo mueve y hace click | `InputIntent.modifiers = { topspin, slice, smash }` (§3.1). Las teclas se **fotografían en el propio evento del click**: una tecla pulsada 5 ms después ya no cuenta. Con varias a la vez, prioridad fija smash > topspin > slice (`shotFromKeys`, `shared/src/stroke.ts`). Espacio + tecla = bloqueo |
+| 1 | Tipo de golpe con **teclas mantenidas en el click**: W topspin, S slice, E smash (el 2026-10-03 el autor cambió S por Q, B.10); sin tecla, normal; Espacio, bloqueo; el ratón solo mueve y hace click | `InputIntent.modifiers = { topspin, slice, smash }` (§3.1). Las teclas se **fotografían en el propio evento del click**: una tecla pulsada 5 ms después ya no cuenta. Con varias a la vez, prioridad fija smash > topspin > slice (`shotFromKeys`, `shared/src/stroke.ts`). Espacio + tecla = bloqueo |
 | 2 | **Se premia el PERFECT**: la potencia y el spin salen de la calidad, no del gesto; ningún error de timing más rápido que un PERFECT | `strokePower`: PERFECT 1, GOOD 0.5, débil 0.15 (B.3). El spin del topspin y del slice y el ritmo del smash salen de esa potencia. Test por tipo: «ningún error de timing sale más rápido que un PERFECT» |
 | 3 | Se mantienen los riesgos legibles | Smash con la bola baja → red. Topspin desde una bola muy baja → red. Slice pronto → fuera por la banda (se rediseñó tras el E2E, B.2). Topspin fuerte y tarde → larga. Los cuatro tienen test y su texto de «¿por qué fallé?» |
 | 4 | «Colocado» ya no decide el tipo; persiguiendo, la potencia a la mitad | `potencia = calidad × (0.5 + 0.5 · factor de colocado)`. El cruce sigue necesitando estar colocado (§4.5 ✅) |
@@ -365,15 +365,15 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
 **`client/` (solo traduce teclas y presenta)**
 
 - **Traductor**:
-  - W/S/E por código físico;
+  - Q/W/E por código físico;
   - teclas fotografiadas en el evento del click;
   - recuerda una tecla soltada justo antes del click o pulsada justo después (200 ms), para explicarlo.
-- **Barra de teclas** (abajo a la izquierda, fuera de la mesa): `W Topspin · S Slice · E Smash · Espacio Bloqueo`.
+- **Barra de teclas** (abajo a la izquierda, fuera de la mesa): `Q Slice · W Topspin · E Smash · Espacio Bloqueo`.
   - Visible por defecto.
   - **Tab** la muestra u oculta sin mover el foco, y la preferencia se guarda en el navegador (`ppp.keyBar`).
   - La tecla mantenida se ilumina con el color del golpe; la letra y el nombre siguen ahí (§19).
+- **Tecla mantenida**: la cara y el canto de **tu** raqueta se iluminan con el color del golpe (naranja topspin, magenta slice, blanco smash, cian bloqueo); la del rival no se ilumina nunca.
 - **Chispas** (`world.ts`, colores del trail; el normal, dorado):
-  - con la tecla mantenida, 6 chispas suaves giran alrededor del borde de **tu** raqueta; las del rival no se dibujan nunca;
   - al golpear, una ráfaga de 0.3 s se abre hacia fuera en el plano de la cara: 22 en PERFECT, 10 en GOOD, 4 grises en débil y ninguna en el fallo;
   - mezcla normal, no aditiva: con mezcla aditiva el magenta salía azulado sobre la mesa, lo mismo que pasó con el trail en V0.2.
 - **Texto junto a la raqueta**: «¡Perfecto! · TOPSPIN completo», «Bien · SLICE reducido · persiguiendo», «¡Perfecto! · SMASH completo · bola baja para el smash», «Bien · NORMAL · pulsaste W después del click», «soltaste W antes del click». Si la tecla llega después de que aparezca el mensaje, el mensaje se completa.
@@ -397,7 +397,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
 | Topspin | spin 100–340 rad/s · techo de ritmo 10 + 1.2·p · tarde → larga 0.5 | Débil: ~136 rad/s, poco más que un normal («flojo»). Completo: 340, como el máximo de V0.2 |
 | Slice | objetivo a 0.62 m del centro · se abre pronto 0.9 · lateral 100–350 rad/s · backspin 80 | «Más ángulo» desde cualquier sitio; riesgo «pronto → fuera» legible entre −50 y −72 ms |
 | Smash | ritmo 10.5 + 4.5·p (débil ~11.2, GOOD ~12.8, completo 15 m/s de simulación) | El completo, ~2 veces un normal. En V0.2 iba de 13 a 16 por la velocidad del gesto; ahora un smash débil es más lento de verdad |
-| Chispas `presentation.sparks` | órbita: 6 chispas a 1.1 vueltas/s · ráfaga: 22 / 10 / 4, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
+| Señales `presentation.sparks` | tecla mantenida: brillo de la raqueta 0.6 · ráfaga: 22 / 10 / 4 chispas, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
 
 **Desaparecen**:
 - los umbrales y la potencia del gesto (`topspinThreshold`, `sliceThreshold`, `smashThreshold`, `…FullPower`);
@@ -452,7 +452,7 @@ Capturas en `docs/screenshots/v0.2b/`:
 | Archivo | Contenido |
 |---|---|
 | `01-menu.png` | Menú con las instrucciones de V0.2b |
-| `held-topspin.png`, `held-slice.png`, `held-smash.png`, `held-block.png` | Tecla mantenida: barra iluminada y chispas alrededor de la raqueta |
+| `held-topspin.png`, `held-slice.png`, `held-smash.png`, `held-block.png` | Tecla mantenida: barra iluminada y raqueta iluminada con el color del golpe |
 | `shot-*.png` | Cada golpe pedido con su tecla: ráfaga, mensaje («TOPSPIN completo»…) y trail |
 | `case-*.png` | Tecla a destiempo, persiguiendo, smash bajo, topspin tarde (chispas grises), slice pronto |
 | `keybar-hidden.png` | Barra oculta con Tab |
@@ -492,7 +492,7 @@ El resto de los 164 tests pasa sin cambios. `block.test.ts` también: el bloqueo
 
 | # | Sección | Cambio propuesto | Motivo | Aprobación |
 |---|---|---|---|---|
-| P37 | §3.3 ✅ | Fila «Tipo de golpe»: **teclas mantenidas en el click: W topspin, S slice, E smash; sin tecla, normal**. Fila nueva «Barra de teclas: Tab (mostrar/ocultar)». «Cruzar la bola» sigue con el gesto lateral ✅ | Playtest de V0.2: el gesto no era factible para una persona | **Decisión del autor** (integrar como ✅) |
+| P37 | §3.3 ✅ | Fila «Tipo de golpe»: **teclas mantenidas en el click: Q slice, W topspin, E smash; sin tecla, normal**. Fila nueva «Barra de teclas: Tab (mostrar/ocultar)». «Cruzar la bola» sigue con el gesto lateral ✅ | Playtest de V0.2: el gesto no era factible para una persona | **Decisión del autor** (integrar como ✅) |
 | P38 | §3.1 | `modifiers?: { topspin?: boolean; slice?: boolean; smash?: boolean }` (sustituye a `forceTopspin` / `forceSlice`), leídas **en el instante del click**. `swing` solo se usa por `vx` (cruce). Con varias teclas, prioridad smash > topspin > slice | Lo implementado; el servidor debe resolverlo igual | 🟡 libre |
 | P39 | §4.6 | Reescribir la tabla: el tipo lo eligen las teclas. «Colocado» ya no decide el tipo: persiguiendo, la potencia a la mitad. Slice: va a la banda (≈ 0.62 m del centro); curva hacia el lado del cruce o, sin cruce, hacia fuera; su riesgo es el ángulo (pronto → fuera). Smash: umbral de 15 cm sin cambios | Decisiones 1, 3, 4 y 6 | **Decisión del autor** (+ valores 🟡) |
 | P40 | §4.7 | «La potencia sale de la **calidad** del golpe: PERFECT completo, GOOD reducido, débil flojo. El riesgo es del tipo de golpe (sensibilidad al timing), no de la potencia: un golpe de ataque mal dado es flojo y más arriesgado. Topspin tarde → largo». Quitar «sale de la velocidad del gesto» | Decisión 2; sin esto el riesgo desaparecería en los golpes débiles | **Decisión del autor** (+ valores 🟡) |
@@ -508,13 +508,13 @@ El resto de los 164 tests pasa sin cambios. `block.test.ts` también: el bloqueo
 
 Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «Teclas en el click», «Tipo · potencia» y «Puntería».
 
-1. **Teclas y barra** — `http://localhost:5173/?bot=easy&debug=1`. Durante la partida, sin hacer click, mantén W, luego S, luego E y luego Espacio.
-   - Mirar: la tecla se ilumina abajo a la izquierda y unas chispas giran alrededor de tu raqueta: naranja (W), magenta (S), blanca (E), cian (Espacio).
+1. **Teclas y barra** — `http://localhost:5173/?bot=easy&debug=1`. Durante la partida, sin hacer click, mantén Q, luego W, luego E y luego Espacio.
+   - Mirar: la tecla se ilumina abajo a la izquierda y tu raqueta se ilumina: magenta (Q), naranja (W), blanca (E), cian (Espacio).
    - Pulsa Tab: la barra desaparece; Tab otra vez: vuelve. Recarga la página: se queda como la dejaste.
 2. **Topspin** — misma URL. Colócate donde va a llegar la bola un momento antes, mantén W y haz click cuando la bola llegue al centro.
    - Mirar: «¡Perfecto!» y debajo «TOPSPIN completo», muchas chispas naranjas y trail naranja. Con un «Bien»: «TOPSPIN reducido» y menos chispas.
    - ¿Te salen 10 topspin seguidos sin pensar en la tecla? ¿Cuántos salen como querías?
-3. **Slice y cruce** — misma URL. Mantén S y golpea sin mover el ratón; luego mantén S y haz el gesto lateral al hacer click.
+3. **Slice y cruce** — misma URL. Mantén Q y golpea sin mover el ratón; luego mantén Q y haz el gesto lateral al hacer click.
    - Mirar: sin gesto, la bola curva hacia fuera del lado donde golpeas; con gesto, hacia el lado al que cruzas. Trail magenta, bote cerca de la banda.
    - Golpea un slice algo pronto: «Fuera. Slice pronto (−XX ms): te pasaste de ángulo.»
    - Prueba también W + gesto lateral (topspin cruzado).
@@ -534,3 +534,18 @@ Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «T
 8. **Un game entero** — `http://localhost:5173/?bot=medium`, sin panel.
    - ¿Hay un golpe que usarías siempre? ¿Las chispas o los mensajes te distraen de la bola?
    - Si molestan los destellos, compara con `http://localhost:5173/?bot=medium&reduce=1`.
+
+### B.10 Cambios pedidos por el autor tras la entrega (2026-10-03)
+
+| Cambio | Antes | Ahora | Verificación |
+|---|---|---|---|
+| **Teclas de golpe** | W topspin · S slice · E smash | **Q slice · W topspin · E smash** (solo cambia S por Q). La barra va en el orden del teclado: `Q Slice · W Topspin · E Smash · Espacio Bloqueo` | E2E `keys-check` con teclado real: 30/30 golpes del tipo pedido (5 slices con Q); S ya no hace nada |
+| **Tecla mantenida** | 6 chispas suaves girando alrededor de la raqueta | **La raqueta se ilumina** (cara y canto) con el color del golpe: «sin partículas alrededor, basta con iluminar la raqueta». La ráfaga de chispas al golpear no cambia | `held-*.png`: magenta (Q), naranja (W), blanco (E), cian (Espacio); al soltar, se apaga. El destello del PERFECT manda sobre el brillo mientras es más intenso |
+
+**Especial (§3.3 ✅: Q).** La Q pasa a ser el slice, así que el Especial de V0.5 necesita otra tecla. El autor eligió **R**, al lado de Q W E (P48). No cambia nada ahora: el Especial aún no existe.
+
+| # | Sección | Cambio propuesto | Motivo | Aprobación |
+|---|---|---|---|---|
+| P48 | §3.3 ✅ | Fila «Especial»: **R** (antes Q). Q es ahora el slice (P37) | Decisión del autor (2026-10-03) | **Decisión del autor** |
+
+Última pasada del E2E con las teclas nuevas: 23 PERFECT y 7 GOOD con ±30 ms de error (\|Δt\| medio 14.7 ms). Smash con la bola a 18–21 cm. Casos explicados: tecla después del click, tecla soltada antes, persiguiendo («TOPSPIN flojo · persiguiendo»), smash bajo (red), topspin +93 ms (largo) y slice −73 ms («Fuera. Slice pronto (−73 ms): te pasaste de ángulo.»). `shots-check` con Q también pasa: bloqueo de un topspin → −118, smash con la bola a 28 cm, slice pronto (−74 ms) fuera. La regresión `autoplay-rally` de V0.1 sigue pasando.

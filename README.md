@@ -4,7 +4,7 @@ Juego de ping pong para navegador contra un bot. V0.1 (cerrada, `v0.1.0`) probó
 ratón**: raqueta con inercia, golpe por click con medición de timing (ms) y posición (% del radio) y feedback
 estilo *Paper Mario TTYD*. V0.2 (§21 del diseño) añadió el **golpe completo**: tipos de golpe (normal, topspin,
 slice, smash), potencia, spin con efecto Magnus y bote con spin, spin visible, bloqueo con Espacio y «¿por qué
-fallé?» completo. **V0.2b** (tras el playtest de V0.2): el tipo de golpe se elige con **teclas** (W, S, E) en lugar de
+fallé?» completo. **V0.2b** (tras el playtest de V0.2): el tipo de golpe se elige con **teclas** (Q, W, E) en lugar de
 con gestos del ratón, la potencia sale de la **calidad del golpe** (se premia el PERFECT) y hay barra de teclas y
 chispas que dicen qué golpe tienes preparado y qué salió.
 
@@ -40,13 +40,13 @@ Otros comandos:
 | Mover la raqueta | Ratón (la raqueta persigue al cursor con inercia) |
 | Golpear | Click izquierdo cuando la bola llega a la raqueta |
 | Tipo de golpe | **Mantén una tecla y haz click**: cuenta la tecla que esté pulsada en el instante del click. Sin tecla, golpe normal. Con varias, manda smash > topspin > slice |
+| — **Q** Slice | Curva y va a la banda: hacia el lado al que cruzas o, sin cruce, hacia fuera del lado donde golpeas. Algo pronto, se pasa de ángulo y sale por la banda |
 | — **W** Topspin | Más rápido y cae antes. Desde una bola muy baja, a la red; claramente tarde, se va largo |
-| — **S** Slice | Curva y va a la banda: hacia el lado al que cruzas o, sin cruce, hacia fuera del lado donde golpeas. Algo pronto, se pasa de ángulo y sale por la banda |
 | — **E** Smash | Con la bola a más de 15 cm sobre la cinta: muy rápido. Con la bola baja, a la red |
 | Fuerza del golpe | Sale de la **calidad**: ¡Perfecto! = golpe completo; Bien = reducido; pronto, tarde o con el borde = flojo y más arriesgado. Si llegas persiguiendo la bola, la mitad |
 | Cruzar la bola | Con la raqueta **ya colocada**, un gesto lateral seco del ratón al hacer click (vale con cualquier golpe). Pronto te pasas de ángulo; tarde no llegas a cruzar. Persiguiendo, la bola sale recta |
 | Bloqueo | Mantén **Espacio** y haz click. Devuelve con la fuerza de la bola que llega; mientras mantienes Espacio, la raqueta va al 50 % |
-| Barra de teclas | Abajo a la izquierda durante la partida; la tecla mantenida se ilumina y unas chispas de su color giran alrededor de tu raqueta. **Tab** la muestra u oculta (se guarda en este navegador) |
+| Barra de teclas | Abajo a la izquierda durante la partida; la tecla mantenida se ilumina y tu raqueta se ilumina con el color del golpe. **Tab** la muestra u oculta (se guarda en este navegador) |
 | Calibrar la latencia | Botón «Calibrar latencia» en la pantalla de inicio: 12 bolas, click cuando lleguen al centro de la raqueta. Se guarda en este navegador |
 | «¿Por qué fallé?» | Activado por defecto; se apaga en la pantalla de inicio («Explicar mis errores») |
 | Sacar | Click para lanzar la bola (o esperar 1 s) y click cuando baje |
