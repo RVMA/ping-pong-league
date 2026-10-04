@@ -372,7 +372,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
   - Visible por defecto.
   - **Tab** la muestra u oculta sin mover el foco, y la preferencia se guarda en el navegador (`ppp.keyBar`).
   - La tecla mantenida se ilumina con el color del golpe; la letra y el nombre siguen ahí (§19).
-- **Tecla mantenida**: solo el **contorno** de **tu** raqueta se ilumina con el color del golpe (naranja topspin, magenta slice, blanco smash, cian bloqueo): un aro en el borde y un halo suave por fuera. La del rival no se ilumina nunca.
+- **Tecla mantenida**: solo el **contorno** de **tu** raqueta se ilumina con el color del golpe (naranja topspin, magenta slice, blanco smash, cian bloqueo): una franja transparente pegada al borde, por fuera. La del rival no se ilumina nunca.
 - **Chispas** (`world.ts`, colores del trail; el normal, dorado):
   - al golpear, una ráfaga de 0.3 s se abre hacia fuera en el plano de la cara: 22 en PERFECT, 10 en GOOD, 4 grises en débil y ninguna en el fallo;
   - mezcla normal, no aditiva: con mezcla aditiva el magenta salía azulado sobre la mesa, lo mismo que pasó con el trail en V0.2.
@@ -397,7 +397,7 @@ Cambian §3.3 ✅ y §4.6–§4.7. Se aplican como decisiones del autor; las pro
 | Topspin | spin 100–340 rad/s · techo de ritmo 10 + 1.2·p · tarde → larga 0.5 | Débil: ~136 rad/s, poco más que un normal («flojo»). Completo: 340, como el máximo de V0.2 |
 | Slice | objetivo a 0.62 m del centro · se abre pronto 0.9 · lateral 100–350 rad/s · backspin 80 | «Más ángulo» desde cualquier sitio; riesgo «pronto → fuera» legible entre −50 y −72 ms |
 | Smash | ritmo 10.5 + 4.5·p (débil ~11.2, GOOD ~12.8, completo 15 m/s de simulación) | El completo, ~2 veces un normal. En V0.2 iba de 13 a 16 por la velocidad del gesto; ahora un smash débil es más lento de verdad |
-| Señales `presentation.sparks` | tecla mantenida: contorno de 1.2 cm + halo de 2.5 cm (opacidad 0.35) · ráfaga: 22 / 10 / 4 chispas, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
+| Señales `presentation.sparks` | tecla mantenida: una franja de 2.5 cm por fuera del borde (opacidad 0.35) · ráfaga: 22 / 10 / 4 chispas, 300 ms | Se ven al mirar la raqueta sin tapar la bola. Medido en capturas a 1280×720 |
 
 **Desaparecen**:
 - los umbrales y la potencia del gesto (`topspinThreshold`, `sliceThreshold`, `smashThreshold`, `…FullPower`);
@@ -540,7 +540,7 @@ Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «T
 | Cambio | Antes | Ahora | Verificación |
 |---|---|---|---|
 | **Teclas de golpe** | W topspin · S slice · E smash | **Q slice · W topspin · E smash** (solo cambia S por Q). La barra va en el orden del teclado: `Q Slice · W Topspin · E Smash · Espacio Bloqueo` | E2E `keys-check` con teclado real: 30/30 golpes del tipo pedido (5 slices con Q); S ya no hace nada |
-| **Tecla mantenida** | 6 chispas suaves girando alrededor de la raqueta | **Solo se ilumina el contorno** de la raqueta, con el color del golpe: un aro en el borde (1.2 cm) y un halo suave por fuera (2.5 cm, opacidad 0.35). La cara y el mango no cambian. Primero se probó iluminar toda la raqueta; el autor pidió «que solo se ilumine el contorno, no toda la raqueta». La ráfaga de chispas al golpear no cambia | `held-*.png`: aro magenta (Q), naranja (W), blanco (E), cian (Espacio); al soltar, desaparece |
+| **Tecla mantenida** | 6 chispas suaves girando alrededor de la raqueta | **Solo el contorno**: una franja transparente del color del golpe, de 2.5 cm, pegada al borde por fuera (opacidad 0.35). La cara y el mango no cambian. Se probó primero iluminar toda la raqueta y después un aro sólido más la franja; el autor pidió «que solo se ilumine el contorno, no toda la raqueta» y luego «solamente la [franja] más transparente». La ráfaga de chispas al golpear no cambia | `held-*.png`: franja magenta (Q), naranja (W), blanca (E), cian (Espacio); al soltar, desaparece. Sobre la mesa azul el naranja se ve algo grisáceo: si cuesta leerlo, el mando es `haloOpacity` |
 
 **Especial (§3.3 ✅: Q).** La Q pasa a ser el slice, así que el Especial de V0.5 necesita otra tecla. El autor eligió **R**, al lado de Q W E (P48). No cambia nada ahora: el Especial aún no existe.
 

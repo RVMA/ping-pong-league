@@ -57,9 +57,8 @@ class PaddleView {
   readonly group = new THREE.Group();
   private readonly pivot = new THREE.Group();
   private readonly faceMat: THREE.MeshStandardMaterial;
-  /** Contorno de la tecla mantenida (V0.2b): aro en el borde y halo suave por fuera. */
-  private readonly outline = new THREE.Group();
-  private readonly outlineMat: THREE.MeshBasicMaterial;
+  /** Contorno de la tecla mantenida (V0.2b): una franja transparente pegada al borde, por fuera. */
+  private readonly outline: THREE.Mesh;
   private readonly haloMat: THREE.MeshBasicMaterial;
   private readonly side: Side;
 
@@ -71,7 +70,7 @@ class PaddleView {
     goodFrac: number,
     translucent: boolean,
     loader: THREE.TextureLoader,
-    outline: { width: number; halo: number; haloOpacity: number },
+    outline: { halo: number; haloOpacity: number },
   ) {
     this.side = side;
     const ch = CHARACTERS[character];
@@ -105,14 +104,10 @@ class PaddleView {
     r2.position.z = ringZ;
     this.pivot.add(r1, r2);
 
-    // Contorno de la tecla mantenida: solo el borde de la cara, por delante de ella (el resto de la raqueta no cambia).
-    this.outlineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
+    // Contorno de la tecla mantenida: una franja transparente pegada al borde, por fuera (la raqueta no cambia).
     this.haloMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: outline.haloOpacity, depthWrite: false, side: THREE.DoubleSide });
-    const edge = new THREE.Mesh(new THREE.RingGeometry(radius - outline.width * 0.5, radius + outline.width * 0.5, 64), this.outlineMat);
-    const halo = new THREE.Mesh(new THREE.RingGeometry(radius + outline.width * 0.5, radius + outline.width * 0.5 + outline.halo, 64), this.haloMat);
-    edge.position.z = ringZ * 1.1;
-    halo.position.z = ringZ * 1.1;
-    this.outline.add(edge, halo);
+    this.outline = new THREE.Mesh(new THREE.RingGeometry(radius, radius + outline.halo, 64), this.haloMat);
+    this.outline.position.z = ringZ * 1.1;
     this.outline.visible = false;
     this.pivot.add(this.outline);
 
@@ -139,10 +134,7 @@ class PaddleView {
     }
     this.faceMat.emissiveIntensity = f.flash * 0.9;
     this.outline.visible = outline !== null;
-    if (outline) {
-      this.outlineMat.color.set(outline);
-      this.haloMat.color.set(outline);
-    }
+    if (outline) this.haloMat.color.set(outline);
   }
 
   /** ¿Se ve el contorno de la tecla mantenida? (para pruebas automáticas). */
@@ -479,7 +471,7 @@ export class World {
 
     const pc = cfg.paddle;
     const sp = pres.sparks;
-    const outline = { width: sp.outlineWidth, halo: sp.haloWidth, haloOpacity: sp.haloOpacity };
+    const outline = { halo: sp.haloWidth, haloOpacity: sp.haloOpacity };
     this.paddles = [
       new PaddleView(0, characters[0], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, true, loader, outline),
       new PaddleView(1, characters[1], pc.radius, cfg.hit.perfectPos, cfg.hit.goodPos, false, loader, outline),
