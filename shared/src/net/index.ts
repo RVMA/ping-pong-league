@@ -6,3 +6,4 @@ export * from './brake.ts';
 export * from './ping.ts';
 export * from './latency.ts';
 export * from './validate.ts';
+export * from './server-match.ts';
