@@ -8,7 +8,7 @@ fallé?» completo. **V0.2b** (tras el playtest de V0.2): el tipo de golpe se el
 con gestos del ratón, la potencia sale de la **calidad del golpe** (se premia el PERFECT) y hay barra de teclas y
 chispas que dicen qué golpe tienes preparado y qué salió.
 
-- Diseño vigente (v3): [`ping_pong_pvp_gameplay_design_v3.md`](ping_pong_pvp_gameplay_design_v3.md). Versiones anteriores en [`docs/archive/`](docs/archive/)
+- Diseño vigente (v4): [`ping_pong_pvp_gameplay_design_v4.md`](ping_pong_pvp_gameplay_design_v4.md). Versiones anteriores en [`docs/archive/`](docs/archive/)
 - Análisis de V0.2 y propuestas: [`docs/analisis_v0.2.md`](docs/analisis_v0.2.md); V0.2b en su apartado final (V0.1: [`docs/analisis_v0.1.md`](docs/analisis_v0.1.md))
 
 ## Arrancar
