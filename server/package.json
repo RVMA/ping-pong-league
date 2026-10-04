@@ -1,0 +1,22 @@
+{
+  "name": "@ppp/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/server.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ppp/shared": "0.1.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

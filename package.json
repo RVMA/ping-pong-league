@@ -5,13 +5,15 @@
   "type": "module",
   "workspaces": [
     "shared",
-    "client"
+    "client",
+    "server"
   ],
   "scripts": {
     "dev": "npm run dev -w client",
     "build": "npm run build -w client",
-    "test": "npm run test -w shared",
-    "typecheck": "npm run typecheck -w shared && npm run typecheck -w client",
-    "sim": "node shared/scripts/headless-match.ts"
+    "test": "npm run test -w shared && npm run test -w server",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w client && npm run typecheck -w server",
+    "sim": "node shared/scripts/headless-match.ts",
+    "server": "node server/src/main.ts"
   }
 }
