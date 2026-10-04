@@ -1,6 +1,6 @@
 # Análisis retroactivo de V0.2 y propuesta de cambios
 
-> Documento de diseño analizado: v3 (`ping_pong_pvp_gameplay_design_v3.md`, 2026-10-01).
+> Documento de diseño analizado: v3 (`docs/archive/ping_pong_pvp_gameplay_design_v3.md`, 2026-10-01). Las decisiones de este análisis están integradas en la v4 (`ping_pong_pvp_gameplay_design_v4.md`, 2026-10-03).
 > Implementación: commits posteriores a `2d8ae72` en `master` (de `f6bc46b` en adelante). Sin etiqueta `v0.2.0`: la fase la cierra el autor.
 > Este documento **no modifica** el diseño: describe lo implementado y propone cambios.
 > Marcas: ✅ decidido por el autor · 🟡 propuesta base · ❓ abierto · ⚠️ cambio sobre ✅ pendiente de aprobación.
@@ -549,3 +549,35 @@ Arrancar con `npm run dev` (ver README). Con `debug=1`, el panel `D` muestra «T
 | P48 | §3.3 ✅ | Fila «Especial»: **R** (antes Q). Q es ahora el slice (P37) | Decisión del autor (2026-10-03) | **Decisión del autor** |
 
 Última pasada del E2E con las teclas nuevas: 23 PERFECT y 7 GOOD con ±30 ms de error (\|Δt\| medio 14.7 ms). Smash con la bola a 18–21 cm. Casos explicados: tecla después del click, tecla soltada antes, persiguiendo («TOPSPIN flojo · persiguiendo»), smash bajo (red), topspin +93 ms (largo) y slice −73 ms («Fuera. Slice pronto (−73 ms): te pasaste de ángulo.»). `shots-check` con Q también pasa: bloqueo de un topspin → −118, smash con la bola a 28 cm, slice pronto (−74 ms) fuera. La regresión `autoplay-rally` de V0.1 sigue pasando.
+
+### B.11 Cierre de V0.2 (2026-10-03)
+
+El autor da la fase por cerrada: «Creo que la base del juego está lista».
+
+**Criterio de aceptación de V0.2 (§21):**
+
+| Criterio | Estado |
+|---|---|
+| ¿Un golpe malo a la red se entiende? | Sí, de forma automática: el 100 % de los puntos perdidos por error tienen causa nombrada (533/533 en 30 partidas de bots), con su número (ms, cm) |
+| Los cuatro golpes se distinguen en juego | Con entrada humana (teclado y clicks reales, ±30 ms), 30/30 golpes salen del tipo pedido; trail, giro, sonido y ritmo distintos por tipo |
+| El jugador nombra el tipo de golpe del rival en ≥ 80 % de los casos | **No medido.** Por decisión del autor, se medirá en el primer playtest entre dos personas (V0.4), donde tiene más sentido que contra el bot |
+| La causa de su propio error en ≥ 80 % | No medido en playtest; ver la primera fila |
+
+**Decisiones del autor tomadas durante V0.2 y V0.2b:**
+- Tipo de golpe con teclas mantenidas en el click; desde el 2026-10-03, **Q slice · W topspin · E smash** (B.1, B.10).
+- Potencia por la calidad del golpe; persiguiendo, la mitad; riesgos legibles; curva del slice; sin golpe dominante (B.1).
+- El cruce sigue siendo el gesto lateral de V0.1 (preguntado al empezar V0.2b).
+- Señales: barra de teclas con Tab, **solo el contorno** de la raqueta con una franja transparente al mantener una tecla, ráfaga de chispas por calidad (B.10).
+- Especial en **R** (P48).
+
+**Aprobadas el 2026-10-03** (tocaban decisiones ✅): **P5** (pronto = más corto), **P6** (objetivos + solver + física), **P20** (bloqueo = Espacio + click) y **P24** (techo de ritmo por tipo).
+
+**Adoptadas como 🟡** en el diseño v4: P22, P25–P34, P38, P44–P46. **Obsoletas:** P21, P35 y P36b. **Abiertas** como preguntas de §24: P26b (bloqueo cerca de la mesa) y P36 (spin entrante en golpes activos).
+
+**Entrada a V0.3 (§21 del diseño v4: netcode):**
+- Servidor propio (Node + WebSocket) con la simulación compartida como autoridad.
+- Modelo **«cada uno golpea en su tiempo»** (§17.2, decisión del autor): nadie pierde tiempo de reacción ni precisión por el ping; la bola que se aleja se frena en pantalla.
+- El jugador contra un **bot remoto** conectado por la red, con latencia simulada de 50/100/150 ms. Dos personas y mundo espejado, en V0.4.
+- Requisitos que vienen de V0.2: las teclas solo viajan dentro del evento de golpe; las muestras de raqueta para «colocado» van con el golpe; el smash es el caso más exigente de tiempo de reacción.
+
+**Estado final:** 179 tests en verde, typecheck y build limpios, etiqueta `v0.2.0`.
