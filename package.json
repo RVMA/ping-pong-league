@@ -9,7 +9,7 @@
     "server"
   ],
   "scripts": {
-    "dev": "npm run dev -w client",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run build -w client",
     "test": "npm run test -w shared && npm run test -w server",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w client && npm run typecheck -w server",

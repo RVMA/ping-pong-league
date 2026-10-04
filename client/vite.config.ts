@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite';
 
+// Puerto del servidor de juego (V0.3): el cliente le habla por el mismo origen (/ws) gracias al proxy WebSocket.
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
+const gamePort = env.PPP_PORT ?? '5180';
+
 export default defineConfig({
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    proxy: { '/ws': { target: `ws://localhost:${gamePort}`, ws: true } },
+  },
   build: { target: 'es2022' },
 });
