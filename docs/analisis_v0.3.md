@@ -304,3 +304,59 @@ correcciones.
    al menú».
 8. **Config distinta.** `http://localhost:5173/?online=1&speed=0.7` → debe salir «No se pudo jugar online» con el motivo
    (configuración distinta de la del servidor).
+
+---
+
+## 8. Cierre de V0.3 (2026-10-06)
+
+El autor cierra la fase aceptando en bloque las recomendaciones de la sesión de planificación de V0.4 (2026-10-06),
+salvo dónde publicar el servidor (abajo).
+
+**Playtest de V0.3:** el autor **no envió resultados** de la checklist del §7. La fase se cierra con la evidencia medida.
+Los puntos de sensación pasan a la checklist del primer playtest PvP de V0.4, donde se verán con pings reales:
+ping 0 frente a local (1), los PERFECT con ping (2), la bola que se aleja frenada (3), la raqueta del rival golpeando
+la bola en pantalla (4) y el smash con ping alto (5). Los puntos 6–8 ya los cubren tests automáticos (pings distintos
+en el HUD, `bye` al caerse la conexión, rechazo por config distinta).
+
+**Criterio de aceptación de V0.3 (§21):**
+
+| Criterio | Estado |
+|---|---|
+| Δt medio con 100 ms ≤ ±10 ms del de 0 ms (E2E, entrada real, ±30 ms de error) | ✅ 3.3 ms (§2.3) |
+| 0 discrepancias entre clientes y servidor en partidos de bots por la red | ✅ 0 en 90 partidos por sockets y 120 en memoria (§2.2) |
+| Golpes por punto ±10 % de los de local | ✅ +3.4 / +4.7 / +3.4 % con ping 0 / 100 / 150 |
+| Servidor < 1 ms por golpe; < 2 KB/s por jugador; cliente a 60 fps | ✅ p99 0.52–0.56 ms; < 0.82 KB/s de subida y < 1.01 KB/s de bajada; 60 fps |
+
+**Decisiones del autor (2026-10-06):**
+- **P49 aprobada** (tocaba el ✅ «más lenta hacia el rival»): la bola que se aleja se frena en «valle».
+- **P54: corregir** en V0.4: profundidad mínima del bote y límite de velocidad del solver. Cambia el juego local solo
+  en ese caso límite, que ya era un fallo.
+- **P58 aprobada** (tocaba el ✅ «Esc pausa»): en red no hay pausa; la única es la de desconexión (§14.4).
+- **`net.brake.minSpeed` se mantiene en 0.25** (P57); se revisa en el playtest PvP.
+- **V0.3 cerrada y etiquetada `v0.3.0`.**
+
+**Estado de las propuestas:** aprobadas **P49** y **P58**; **P54** decidida (corregir) e implementada en V0.4; adoptadas
+como 🟡 en el diseño v5: **P50, P51, P52, P53, P55, P56** (reconexión, detallada abajo) y **P57** (0.25); **P59**
+(informativa) pasa a §2.1. Ninguna obsoleta.
+
+**Decisiones para V0.4 (2026-10-06):**
+- **Modo por defecto al crear sala: Estándar** (mejor de 3) (§24-7).
+- **Timeout del warm-up solo mientras uno espera** (§24-2): si uno da a Listo y el otro no lo da en 3 min (aviso a los
+  2:30), el que no está listo sale de la sala; el otro sigue con el código abierto. Si ninguno está listo, se puede
+  pelotear sin límite.
+- **Publicar directamente en Cloudflare, sin túnel al PC del autor** («lo voy a subir todo ahí»): Workers + Durable
+  Objects (un objeto por sala) y el mismo Worker sirve el cliente. El autor hace el despliegue.
+- **Lectura del rival medida con una «prueba de lectura»:** tu raqueta devuelve sola, el rival mezcla golpes y tú
+  nombras cada golpe suyo con 1–5; 30 golpes. Vale contra el bot y entre dos.
+- Aceptadas también las propuestas base de la sesión: servidor `ws` propio en desarrollo (Colyseus descartado); sin
+  selección de personaje hasta V0.5; código de sala de 4 letras sin caracteres ambiguos y nombre en el lobby; primer
+  saque del partido por sorteo; en una desconexión el punto en juego acaba solo y antes del siguiente saque hay una
+  pausa de hasta 30 s (si no vuelve, abandono); tras el partido, estadísticas y vuelta al warm-up (revancha = Listo
+  otra vez); mundo espejado solo de dibujo; bola de canto válida en la arista superior y muerta en el lateral; Listo =
+  mantener Shift 0.6 s o botón; en el warm-up saca quien perdió la bola; online contra el bot solo en el servidor de
+  desarrollo; borrar el archivo vacío `client/src/game/0`.
+
+**Entrada a V0.4 (§21 del diseño v5, «Partido PvP»):** prompt [`docs/prompts/fase_v0.4.md`](prompts/fase_v0.4.md) y plan
+[`docs/superpowers/plans/2026-10-06-v0.4-partido-pvp.md`](superpowers/plans/2026-10-06-v0.4-partido-pvp.md).
+
+**Estado final:** 259 tests en `shared/` y 6 en `server/` en verde, typecheck y build limpios, etiqueta `v0.3.0`.
