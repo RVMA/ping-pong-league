@@ -652,7 +652,7 @@ La sala vuelve al warm-up. Antes se ven las **estadísticas del partido** de los
 Detalle (P56, adoptada en V0.4) 🟡:
 - **El punto en juego acaba solo**, como si el ausente no devolviera la bola: el servidor lo cierra cuando el vuelo que le toca termina (sin el respaldo de 3 s). El modelo de vuelos no puede «devolver» un vuelo ya empezado, y así no se puede usar la desconexión para salvar un punto.
 - **La pausa empieza antes del siguiente saque**: los dos ven «Esperando a X… 0:27».
-- **Reconectar:** recargar la pestaña o abrir el enlace de la sala en el mismo navegador (un token de la sala, guardado por pestaña). El servidor manda el estado (marcador, games, quién saca, número de rally) y, tras **3, 2, 1**, se sigue con el siguiente saque. Si la conexión se corta sola, el cliente reintenta durante esos 30 s.
+- **Reconectar:** recargar la misma pestaña (el token de la sala se guarda **por pestaña**, para que dos pestañas del mismo navegador puedan ser dos jugadores). Si la conexión se corta sola, el cliente reintenta durante esos 30 s. El servidor manda el estado (marcador, games, quién saca, número de rally) y, tras **3, 2, 1**, se sigue con el siguiente saque. Si el mismo token se conecta dos veces (pestaña duplicada), la conexión nueva sustituye a la vieja.
 - En la espera o el warm-up, el hueco también se guarda 30 s; si no vuelve, sale de la sala.
 - Si se van los dos, la sala se cierra al acabar los 30 s.
 - **Pestaña oculta:** no es una desconexión (el socket sigue abierto) y no pausa; quien no está mirando simplemente no devuelve la bola.
