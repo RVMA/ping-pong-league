@@ -118,7 +118,8 @@ export type SimEvent =
       /** Bola que llegaba (velocidad y spin del mundo) justo antes del contacto. */
       incoming: { vel: Vec3; spin: Vec3 };
     }
-  | { type: 'bounce'; pos: Vec3; side: Side; speed: number }
+  | { type: 'bounce'; pos: Vec3; side: Side; speed: number; edge?: true }
+  | { type: 'tableSide'; pos: Vec3 }
   | { type: 'net'; pos: Vec3; cord: boolean }
   | { type: 'floor'; pos: Vec3 }
   | { type: 'point'; winner: Side; reason: PointReason; score: [number, number] }
@@ -459,7 +460,8 @@ export class Simulation {
   }
 
   private emitContact(c: BallContact, events: SimEvent[]): void {
-    if (c.kind === 'table') events.push({ type: 'bounce', pos: c.pos, side: c.side, speed: c.impactSpeed });
+    if (c.kind === 'table') events.push(c.edge ? { type: 'bounce', pos: c.pos, side: c.side, speed: c.impactSpeed, edge: true } : { type: 'bounce', pos: c.pos, side: c.side, speed: c.impactSpeed });
+    else if (c.kind === 'side') events.push({ type: 'tableSide', pos: c.pos });
     else if (c.kind === 'net') events.push({ type: 'net', pos: c.pos, cord: c.cord });
     else events.push({ type: 'floor', pos: c.pos });
   }

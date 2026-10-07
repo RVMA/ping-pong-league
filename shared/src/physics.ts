@@ -17,7 +17,9 @@ export interface BallState {
 }
 
 export type BallContact =
-  | { kind: 'table'; pos: Vec3; side: Side; impactSpeed: number }
+  | { kind: 'table'; pos: Vec3; side: Side; impactSpeed: number; edge?: true }
+  /** Lateral (o canto por debajo de la arista) de la mesa: bola muerta. */
+  | { kind: 'side'; pos: Vec3 }
   | { kind: 'net'; pos: Vec3; cord: boolean; fromSide: Side }
   | { kind: 'floor'; pos: Vec3 };
 
@@ -156,14 +158,98 @@ export function stepBall(b: BallState, dt: number, env: PhysicsEnv, contacts?: B
     p.y += (qy - p.y) * hit.f;
     p.z += (qz - p.z) * hit.f;
     remaining *= 1 - hit.f;
-    respond(b, hit.type, env, contacts);
+    respond(b, hit.type, env, contacts, hit);
     mx = v.x;
     my = v.y;
     mz = v.z;
   }
 }
 
-type ContactType = 'table' | 'floor' | 'netFace' | 'netCord';
+type ContactType = 'table' | 'floor' | 'netFace' | 'netCord' | 'edge';
+
+interface EarliestContact {
+  f: number;
+  type: ContactType;
+  /** Solo en 'edge': punto de la arista o esquina tocado. */
+  ex: number;
+  ey: number;
+  ez: number;
+}
+
+/**
+ * Esfera de radio r que se mueve desde a0 (posición relativa al punto o eje) con desplazamiento d: primer
+ * instante f ∈ [0, 1] en que la distancia vale r, o −1. Misma cuadrática que la cinta de la red.
+ */
+function sweepToPoint(a0x: number, a0y: number, a0z: number, dx: number, dy: number, dz: number, r: number): number {
+  const a = dx * dx + dy * dy + dz * dz;
+  if (a <= 1e-14) return -1;
+  const b = 2 * (a0x * dx + a0y * dy + a0z * dz);
+  const c = a0x * a0x + a0y * a0y + a0z * a0z - r * r;
+  if (!(c > 0 && b < 0)) return -1;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return -1;
+  const f = (-b - Math.sqrt(disc)) / (2 * a);
+  return f >= 0 && f <= 1 ? f : -1;
+}
+
+/**
+ * Aristas superiores y esquinas de la mesa: contacto más temprano (f y punto tocado) o null. Lateral x = ±hw
+ * (paralela a z), fondo z = ±hl (paralela a x) y las cuatro esquinas; el centro de la bola debe estar fuera del
+ * rectángulo de la mesa en el contacto (si no, es la superficie).
+ */
+function findEdgeContact(p: Vec3, qx: number, qy: number, qz: number, env: PhysicsEnv): { f: number; ex: number; ey: number; ez: number } | null {
+  const r = env.r;
+  const top = env.tableTop;
+  // Descarte barato: el contacto con una arista exige el centro entre top − r y top + r.
+  if ((p.y > top + r && qy > top + r) || (p.y < top - r && qy < top - r)) return null;
+  const hw = env.halfWidth;
+  const hl = env.halfLength;
+  const dx = qx - p.x;
+  const dy = qy - p.y;
+  const dz = qz - p.z;
+  const ay = p.y - top;
+  let bestF = 2;
+  let ex = 0;
+  let ez = 0;
+  for (let i = -1; i <= 1; i += 2) {
+    // Arista lateral x = i·hw.
+    let f = sweepToPoint(p.x - i * hw, ay, 0, dx, dy, 0, r);
+    if (f >= 0 && f < bestF) {
+      const x = p.x + dx * f;
+      const z = p.z + dz * f;
+      if (i * x > hw && Math.abs(z) <= hl) {
+        bestF = f;
+        ex = i * hw;
+        ez = z;
+      }
+    }
+    // Arista de fondo z = i·hl.
+    f = sweepToPoint(0, ay, p.z - i * hl, 0, dy, dz, r);
+    if (f >= 0 && f < bestF) {
+      const x = p.x + dx * f;
+      const z = p.z + dz * f;
+      if (i * z > hl && Math.abs(x) <= hw) {
+        bestF = f;
+        ex = x;
+        ez = i * hl;
+      }
+    }
+    // Esquinas (i·hw, top, j·hl).
+    for (let j = -1; j <= 1; j += 2) {
+      f = sweepToPoint(p.x - i * hw, ay, p.z - j * hl, dx, dy, dz, r);
+      if (f >= 0 && f < bestF) {
+        const x = p.x + dx * f;
+        const z = p.z + dz * f;
+        if (i * x > hw && j * z > hl) {
+          bestF = f;
+          ex = i * hw;
+          ez = j * hl;
+        }
+      }
+    }
+  }
+  return bestF <= 1 ? { f: bestF, ex, ey: top, ez } : null;
+}
 
 function findEarliestContact(
   p: Vec3,
@@ -172,9 +258,12 @@ function findEarliestContact(
   qz: number,
   env: PhysicsEnv,
   opts?: StepOptions,
-): { f: number; type: ContactType } | null {
+): EarliestContact | null {
   let bestF = 2;
   let bestType: ContactType | null = null;
+  let ex = 0;
+  let ey = 0;
+  let ez = 0;
   const EPS = 1e-9;
 
   // Mesa: plano y = tableContactY, bajando, con el centro sobre la superficie.
@@ -186,6 +275,18 @@ function findEarliestContact(
     if (onTable && f < bestF) {
       bestF = f;
       bestType = 'table';
+    }
+  }
+
+  // Aristas y esquinas de la mesa (canto válido o lateral muerto).
+  if (opts?.table !== false && !opts?.infiniteTable) {
+    const e = findEdgeContact(p, qx, qy, qz, env);
+    if (e && e.f < bestF) {
+      bestF = e.f;
+      bestType = 'edge';
+      ex = e.ex;
+      ey = e.ey;
+      ez = e.ez;
     }
   }
 
@@ -236,13 +337,34 @@ function findEarliestContact(
     }
   }
 
-  return bestType ? { f: bestF, type: bestType } : null;
+  return bestType ? { f: bestF, type: bestType, ex, ey, ez } : null;
 }
 
-function respond(b: BallState, type: ContactType, env: PhysicsEnv, contacts?: BallContact[]): void {
+function respond(b: BallState, type: ContactType, env: PhysicsEnv, contacts?: BallContact[], hit?: EarliestContact): void {
   const p = b.pos;
   const v = b.vel;
   switch (type) {
+    case 'edge': {
+      // Normal desde el punto tocado hacia el centro; reflexión con la restitución de la mesa; el spin no cambia.
+      const nx0 = p.x - hit!.ex;
+      const ny0 = p.y - hit!.ey;
+      const nz0 = p.z - hit!.ez;
+      const len = Math.sqrt(nx0 * nx0 + ny0 * ny0 + nz0 * nz0);
+      const nx = nx0 / len;
+      const ny = ny0 / len;
+      const nz = nz0 / len;
+      const vn = v.x * nx + v.y * ny + v.z * nz;
+      if (vn < 0) {
+        const k = (1 + env.tableE) * vn;
+        v.x -= k * nx;
+        v.y -= k * ny;
+        v.z -= k * nz;
+      }
+      const pos = { x: p.x, y: p.y, z: p.z };
+      if (ny > 0) contacts?.push({ kind: 'table', pos, side: sideOfZ(p.z), impactSpeed: -vn, edge: true });
+      else contacts?.push({ kind: 'side', pos });
+      break;
+    }
     case 'table': {
       const impactSpeed = -v.y;
       v.y = -v.y * env.tableE;

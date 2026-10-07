@@ -719,7 +719,8 @@ export class ClientMatch {
   }
 
   private emitContact(c: BallContact): void {
-    if (c.kind === 'table') this.events.push({ type: 'bounce', pos: c.pos, side: c.side, speed: c.impactSpeed });
+    if (c.kind === 'table') this.events.push(c.edge ? { type: 'bounce', pos: c.pos, side: c.side, speed: c.impactSpeed, edge: true } : { type: 'bounce', pos: c.pos, side: c.side, speed: c.impactSpeed });
+    else if (c.kind === 'side') this.events.push({ type: 'tableSide', pos: c.pos });
     else if (c.kind === 'net') this.events.push({ type: 'net', pos: c.pos, cord: c.cord });
     else this.events.push({ type: 'floor', pos: c.pos });
   }

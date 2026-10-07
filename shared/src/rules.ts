@@ -14,6 +14,7 @@ export type PointReason =
   | 'MISSED' // el receptor no la devolvió
   | 'VOLLEY' // golpeó antes de que botara en su campo
   | 'SERVE_FAULT' // saque que no bota primero en el campo propio
+  | 'SIDE' // la bola tocó el lateral de la mesa (bola muerta)
   | 'TOSS_MISSED'; // la bola del saque cayó sin golpearla
 
 export interface RallyState {
@@ -84,6 +85,12 @@ export function applyContact(r: RallyState, c: BallContact): RuleOutcome {
       return hitterFault('OWN_SIDE');
     }
     return { kind: 'point', winner: H, reason: 'DOUBLE_BOUNCE' };
+  }
+
+  // Lateral de la mesa: bola muerta, como el suelo pero con su propio motivo si la falta es de quien golpeó.
+  if (c.kind === 'side') {
+    if (r.bounces.length >= (r.isServe ? 2 : 1)) return { kind: 'point', winner: H, reason: 'MISSED' };
+    return hitterFault('SIDE');
   }
 
   // Suelo.

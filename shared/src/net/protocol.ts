@@ -237,7 +237,7 @@ const ROOM_RE = /^[A-Za-z0-9-]{1,32}$/;
 const HASH_RE = /^[0-9a-f]{8}$/;
 const TEXT_RE = /^[\s\S]{0,200}$/;
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
-const REASONS = ['NET', 'OUT', 'OWN_SIDE', 'DOUBLE_BOUNCE', 'MISSED', 'VOLLEY', 'SERVE_FAULT', 'TOSS_MISSED', 'LET'];
+const REASONS = ['NET', 'OUT', 'OWN_SIDE', 'DOUBLE_BOUNCE', 'MISSED', 'VOLLEY', 'SERVE_FAULT', 'TOSS_MISSED', 'SIDE', 'LET'];
 const ERR_CODES = ['version', 'config', 'params', 'room', 'proto'];
 
 function parse(text: string): unknown {

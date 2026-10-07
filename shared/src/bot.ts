@@ -289,7 +289,7 @@ export class Bot {
         } else if (c.kind === 'table' && !bounced) {
           if (c.side !== this.side) return this.skipPlan(s.rally.hits);
           bounced = true;
-        } else if (c.kind === 'table' || c.kind === 'floor') {
+        } else if (c.kind === 'table' || c.kind === 'floor' || c.kind === 'side') {
           i = 600;
         }
       }

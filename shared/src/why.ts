@@ -155,3 +155,6 @@ function diagnoseMissed(inp: WhyInput, cfg: GameConfig): WhyResult {
   if (w.causes.includes('OUT_OF_REACH')) return { cause: 'WHIFF_REACH', shot: null, contactHeight: w.ballAtIdeal.y - cfg.world.tableHeight };
   return { cause: 'WHIFF_POSITION', shot: null, dtMs: w.dtMs };
 }
+
+/** Texto del punto por tocar el lateral de la mesa (bola muerta) [§7.4]. */
+export const SIDE_TEXT = 'Lateral. La bola tocó el lateral de la mesa, no la superficie.';

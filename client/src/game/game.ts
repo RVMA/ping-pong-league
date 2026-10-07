@@ -471,7 +471,15 @@ export class Game {
       case 'bounce':
         this.audio.play('bounce_table', { volume: Math.min(1, 0.25 + e.speed / 5), pan: e.pos.x });
         if (this.bounceMarker && !this.bounceMarker.landed && e.side === HUMAN) this.bounceMarker.landed = true;
+        if (e.edge) {
+          this.audio.play('edge', { volume: 0.8, pan: e.pos.x });
+          const q = this.world.project(e.pos.x, e.pos.y + 0.1, e.pos.z);
+          this.hud.feedback('¡Canto!', 'label', q.x, q.y, 1, 900);
+        }
         this.refreshPrediction();
+        break;
+      case 'tableSide':
+        this.audio.play('edge', { volume: 0.7, pan: e.pos.x });
         break;
       case 'net':
         this.audio.play('net', { volume: 0.9, pan: e.pos.x });

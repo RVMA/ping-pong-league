@@ -3,7 +3,7 @@
  * [§2.2]: la causa la diagnostica @ppp/shared (why.ts) a partir del desglose del golpe; aquí solo se redacta,
  * con números cuando ayudan a entenderla (ms de timing, cm sobre la cinta).
  */
-import type { PointReason, PowerLevel, ShotType, Side, StrokeNote, WhyResult } from '@ppp/shared';
+import { type PointReason, type PowerLevel, type ShotType, SIDE_TEXT, type Side, type StrokeNote, type WhyResult } from '@ppp/shared';
 
 const ms = (v: number | undefined) => (v === undefined ? '' : ` (${v > 0 ? '+' : '−'}${Math.round(Math.abs(v))} ms)`);
 const cm = (m: number | undefined) => (m === undefined ? '?' : `${Math.max(0, Math.round(m * 100))}`);
@@ -114,6 +114,8 @@ export function pointText(p: PointTextInput): string {
       return mine ? 'Punto. El bot golpeó antes del bote.' : 'Golpeaste antes de que botara en tu campo.';
     case 'SERVE_FAULT':
       return mine ? 'Punto. Falta de saque del bot.' : 'Falta de saque.';
+    case 'SIDE':
+      return mine ? 'Punto. La bola del bot tocó el lateral de la mesa.' : SIDE_TEXT;
     case 'TOSS_MISSED':
       return mine ? 'Punto. El bot no golpeó su saque.' : 'No golpeaste el saque.';
   }
