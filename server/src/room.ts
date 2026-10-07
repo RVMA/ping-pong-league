@@ -1,7 +1,11 @@
 /**
- * Una partida en el servidor: el ServerMatch (autoridad) y las dos conexiones (jugador y bot remoto). Solo transporta:
- * cada mensaje entrante va al ServerMatch con su instante de llegada (ya con la latencia simulada) y cada mensaje del
- * ServerMatch sale por la conexión de su destinatario. Si alguien se va, avisa al otro y se cierra.
+ * Una partida contra el bot remoto (V0.3) en el servidor: el ServerMatch (autoridad) y las dos conexiones (jugador y
+ * bot remoto). Solo transporta: cada mensaje entrante va al ServerMatch con su instante de llegada (ya con la latencia
+ * simulada) y cada mensaje del ServerMatch sale por la conexión de su destinatario. Si alguien se va, avisa al otro y
+ * se cierra.
+ *
+ * El ServerMatch va en su modo bot (`start` sin GameStart): un game desde el rally 0, y él mismo contesta `ping` y
+ * `again`. Las salas de dos personas (V0.4) lo usan en modo sala a través de GameAuthority.
  */
 import { type GameConfig, type MatchRecord, ServerMatch, type Side } from '@ppp/shared';
 import type { BotClient } from './bot-client.ts';
@@ -40,6 +44,7 @@ export class Room {
     this.peers[side] = peer;
     peer.onMessage = (msg, now) => this.match.receive(side, msg, now);
     peer.onClose = () => this.leave(side);
+    // Modo bot de V0.3: sin GameStart.
     if (this.peers[0] && this.peers[1]) this.match.start(performance.now());
   }
 

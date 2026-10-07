@@ -14,6 +14,10 @@
  *    suavemente (la bola se funde en blendMs) sin borrar el mensaje que ya se vio.
  *  - La raqueta del rival (30 Hz) se dibuja interpolada en el tiempo que muestra tu pantalla.
  *
+ * En una sala (V0.4) el servidor manda `start` al empezar el warm-up, cada game y al reanudar tras una pausa: cada
+ * `start` deja el estado que dice (rally, saque, marcador, warm-up, game) y corta sin punto el vuelo que hubiera. En el
+ * warm-up (práctica) no hay marcador ni fin de game.
+ *
  * Sin asignaciones por tick en la ruta normal: estados, eventos y anillos reutilizados.
  */
 import { type PaddleSample, settleRef, settleSpeeds } from '../click.ts';
@@ -28,7 +32,7 @@ import { type InputIntent, type Side, sideSign, type Vec3 } from '../types.ts';
 import { DisplayClock } from './brake.ts';
 import { Flight, type FlightOutcome, strikeRally } from './flight.ts';
 import { PingTracker } from './ping.ts';
-import { type C2S, exitFromWire, exitToWire, type FlightMsg, type HitInput, hitFromWire, hitToWire, maskToKeys, type PointMsg, quantizeHit, type S2C } from './protocol.ts';
+import { type C2S, exitFromWire, exitToWire, type FlightMsg, type HitInput, hitFromWire, hitToWire, maskToKeys, type PointMsg, quantizeHit, type S2C, type StartMsg } from './protocol.ts';
 import { type ResolvedHit, resolveHit } from './resolve.ts';
 
 export interface NetStats {
@@ -94,6 +98,10 @@ export class ClientMatch {
   state: SimState;
   started = false;
   finished = false;
+  /** Warm-up (`start` con wu 1): sin marcador ni fin de game. */
+  practice = false;
+  /** Game en juego según el último `start` (0 en el warm-up y antes del primer `start`). */
+  game = 0;
   readonly stats: NetStats = { myPing: null, rivalPing: null, corrections: 0, correctionKinds: [], brakes: { flights: 0, meanSlowdown: 0, maxSlowdown: 0 }, maxRenderJump: 0, maxRenderJumpAt: 0 };
   private readonly send: (msg: C2S) => void;
   private readonly events: SimEvent[] = [];
@@ -169,6 +177,11 @@ export class ClientMatch {
   /** Instante (ms) del estado actual: tick · tickMs, como Simulation. */
   get now(): number {
     return this.state.tick * this.tickMs;
+  }
+
+  /** Rally que se muestra (o el próximo): el `n` de lo que envía este cliente. */
+  get rally(): number {
+    return this.n;
   }
 
   /** Mensaje del servidor que llegó en `arrivalMs` (tiempo de esta partida): se aplica en el primer tick que no es anterior. */
@@ -377,14 +390,7 @@ export class ClientMatch {
     }
     switch (msg.k) {
       case 'start':
-        if (!this.started && !this.finished && this.flight === null && s.score[0] + s.score[1] === 0) {
-          this.started = true;
-          s.firstServer = msg.fs;
-          s.server = msg.fs;
-          s.phaseStartMs = Math.max(0, Math.min(at, t));
-        } else {
-          this.restart(msg.fs, t);
-        }
+        this.applyStart(msg, at, t);
         return;
       case 'toss': {
         if (msg.n !== this.n || s.phase !== 'serveHold' || s.server !== this.rival) return;
@@ -764,7 +770,7 @@ export class ClientMatch {
       s.lastPoint = null;
       this.events.push({ type: 'let' });
     } else {
-      s.score[outcome.winner] += 1;
+      if (!this.practice) s.score[outcome.winner] += 1;
       s.stats[outcome.winner].points += 1;
       if (outcome.reason === 'NET') s.stats[other(outcome.winner)].netErrors += 1;
       if (outcome.reason === 'OUT') s.stats[other(outcome.winner)].outErrors += 1;
@@ -789,7 +795,7 @@ export class ClientMatch {
     const pm = this.pointMsg!;
     s.server = pm.ns;
     const go = pm.go;
-    if (go !== -1) {
+    if (go !== -1 && !this.practice) {
       s.phase = 'gameOver';
       s.winner = go;
       s.phaseStartMs = t;
@@ -815,41 +821,50 @@ export class ClientMatch {
     }
   }
 
-  private restart(fs: Side, t: number): void {
+  /**
+   * `start` del servidor (empieza el warm-up o un game, o se reanuda): el estado pasa a ser el que dice, con la bola en
+   * la mano del que saca, y el vuelo que hubiera se corta sin punto. Las estadísticas se conservan solo si se reanuda
+   * el mismo game; los mensajes guardados de rallies futuros eran del estado anterior y se olvidan.
+   */
+  private applyStart(msg: StartMsg, at: number, t: number): void {
     const s = this.state;
-    const paddles = s.paddles;
-    for (const p of paddles) {
+    const practice = msg.wu === 1;
+    const sameGame = this.started && !this.finished && practice === this.practice && msg.g === this.game;
+    for (const p of s.paddles) {
       p.pending = null;
       p.lockUntil = 0;
     }
-    this.state = {
-      tick: s.tick,
-      phase: 'serveHold',
-      phaseStartMs: t,
-      ball: s.ball,
-      paddles,
-      firstServer: fs,
-      server: fs,
-      score: [0, 0],
-      rally: newRally(),
-      streak: [0, 0],
-      stats: [newStats(), newStats()],
-      lastActivityMs: t,
-      winner: null,
-      lastPoint: null,
-    };
+    const since = Math.max(0, Math.min(at, t));
+    s.phase = 'serveHold';
+    s.phaseStartMs = since;
+    s.firstServer = msg.fs;
+    s.server = msg.ns;
+    s.score = [msg.sc[0], msg.sc[1]];
+    s.rally = newRally();
+    s.streak = [0, 0];
+    if (!sameGame) s.stats = [newStats(), newStats()];
+    s.lastActivityMs = since;
+    s.winner = null;
+    s.lastPoint = null;
+    this.practice = practice;
+    this.game = msg.g;
     this.started = true;
     this.finished = false;
-    this.n = 0;
+    this.n = msg.n;
     this.f = -1;
     this.flight = null;
+    this.braked = false;
+    this.clock.reset();
     this.myHit = null;
     this.rivalSwitch = null;
     this.pointMsg = null;
     this.predicted = null;
+    this.waitingServer = false;
+    this.resumed = false;
     this.future.length = 0;
+    this.blend.start = Number.NEGATIVE_INFINITY;
     this.attachBall();
-    this.events.push({ type: 'serveReady', server: fs });
+    this.events.push({ type: 'serveReady', server: msg.ns });
   }
 
   private attachBall(): void {

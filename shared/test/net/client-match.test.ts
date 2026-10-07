@@ -154,6 +154,92 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     }
   });
 
+  it('(g) un start con wu 1 en mitad de un vuelo lo corta: serveHold con el n nuevo, la bola en la mano del que saca y sin punto', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    c.receive({ k: 'start', fs: 0, n: 5, wu: 0, g: 1, sc: [3, 2], ns: 0 }, 0);
+    c.step(neutralIntent(1.6));
+    expect(c.rally).toBe(5);
+    expect(c.game).toBe(1);
+    expect(c.practice).toBe(false);
+    expect(c.state.score).toEqual([3, 2]);
+    const toss = neutralIntent(1.6);
+    toss.fire = c.now + 4;
+    c.step(toss);
+    expect(c.state.phase).toBe('serveToss');
+    expect(sent.filter((m) => m.k === 'toss').at(-1)).toMatchObject({ n: 5 });
+    for (let i = 0; i < 20; i++) c.step(neutralIntent(1.6));
+    expect(c.state.phase).toBe('serveToss');
+    // La sala corta el rally (cuenta atrás → warm-up, o al revés): manda start con wu 1, otro n y otro saque.
+    c.receive({ k: 'start', fs: 1, n: 9, wu: 1, g: 0, sc: [0, 0], ns: 1 }, c.now);
+    const events = [...c.step(neutralIntent(1.6))];
+    expect(c.state.phase).toBe('serveHold');
+    expect(c.rally).toBe(9);
+    expect(c.practice).toBe(true);
+    expect(c.game).toBe(0);
+    expect(c.state.server).toBe(1);
+    expect(c.state.firstServer).toBe(1);
+    expect(c.state.score).toEqual([0, 0]);
+    const hand = c.state.paddles[1].pos;
+    expect(c.state.ball.pos).toEqual({ x: hand.x, y: cfg.world.tableHeight + cfg.serve.holdHeight, z: hand.z });
+    // Un pt del rally cortado que llega tarde se ignora; el vuelo cortado no acaba en punto.
+    c.receive({ k: 'pt', n: 5, f: 0, i: 120, w: 1, r: 'TOSS_MISSED', sc: [3, 3], ns: 0, go: -1 }, c.now);
+    for (let i = 0; i < 400; i++) events.push(...c.step(neutralIntent(1.6)));
+    expect(events.some((e) => e.type === 'point' || e.type === 'let' || e.type === 'gameOver')).toBe(false);
+    expect(c.state.phase).toBe('serveHold');
+    expect(c.state.score).toEqual([0, 0]);
+    expect(sent.some((m) => m.k === 'end')).toBe(false);
+  });
+
+  it('(g) un start de reanudación pone el marcador; el siguiente lanzamiento lleva el n nuevo', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    c.receive({ k: 'start', fs: 1, n: 0, wu: 0, g: 2, sc: [0, 0], ns: 1 }, 0);
+    c.step(neutralIntent(1.6));
+    c.state.stats[0].hits = 4;
+    // Reanudación del mismo game: marcador, saque y n del servidor; las estadísticas del game se conservan.
+    c.receive({ k: 'start', fs: 1, n: 13, wu: 0, g: 2, sc: [7, 5], ns: 0 }, c.now);
+    const events = c.step(neutralIntent(1.6));
+    expect(events.some((e) => e.type === 'serveReady' && e.server === 0)).toBe(true);
+    expect(c.state.score).toEqual([7, 5]);
+    expect(c.state.server).toBe(0);
+    expect(c.state.firstServer).toBe(1);
+    expect(c.rally).toBe(13);
+    expect(c.game).toBe(2);
+    expect(c.state.stats[0].hits).toBe(4);
+    const toss = neutralIntent(1.6);
+    toss.fire = c.now + 4;
+    c.step(toss);
+    expect(c.state.phase).toBe('serveToss');
+    expect(sent.filter((m) => m.k === 'toss').at(-1)).toMatchObject({ n: 13 });
+    // Un game nuevo empieza de cero (también las estadísticas).
+    c.receive({ k: 'start', fs: 0, n: 30, wu: 0, g: 3, sc: [0, 0], ns: 0 }, c.now);
+    c.step(neutralIntent(1.6));
+    expect(c.state.phase).toBe('serveHold');
+    expect(c.state.score).toEqual([0, 0]);
+    expect(c.state.stats[0].hits).toBe(0);
+    expect(c.game).toBe(3);
+    expect(c.rally).toBe(30);
+  });
+
+  it('en práctica no hay fin de game aunque llegue un pt con ganador', () => {
+    const c = new ClientMatch(cfg, 1, () => {});
+    c.receive({ k: 'start', fs: 0, n: 3, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);
+    c.step(neutralIntent(1.6));
+    c.receive({ k: 'toss', n: 3, x: 0, z: 1600, a: 0 }, c.now);
+    c.step(neutralIntent(1.6));
+    expect(c.state.phase).toBe('serveToss');
+    c.receive({ k: 'pt', n: 3, f: 0, i: 1, w: 1, r: 'TOSS_MISSED', sc: [0, 0], ns: 0, go: 1 }, c.now);
+    const events = [...c.step(neutralIntent(1.6))];
+    for (let i = 0; i < 300; i++) events.push(...c.step(neutralIntent(1.6)));
+    expect(events.some((e) => e.type === 'point')).toBe(true);
+    expect(events.some((e) => e.type === 'gameOver')).toBe(false);
+    expect(c.finished).toBe(false);
+    expect(c.state.score).toEqual([0, 0]);
+    expect(c.state.phase).toBe('serveHold');
+    expect(c.rally).toBe(4);
+  });
+
   it('el golpe propio sale en su tick de contacto, como en local, sin esperar a la red', () => {
     const net = runNetworkMatch({ cfg, seeds: [7, 8], ping: [150, 150], jitter: 0.1, maxTicks: 120 * 60 });
     let n = 0;

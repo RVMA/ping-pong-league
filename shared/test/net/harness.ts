@@ -4,6 +4,9 @@
  * sentido y por jugador (ping/2 de ida y de vuelta, con su variación). En cada tick de 120 Hz: los dos bots piensan,
  * los dos clientes procesan su entrada, se entregan los mensajes vencidos (el servidor los procesa en su instante
  * exacto de llegada), el servidor revisa sus temporizadores y los dos clientes avanzan su mundo.
+ *
+ * Con `start` (V0.4) el ServerMatch arranca en modo sala (p. ej. el warm-up en práctica) y el arnés hace lo que hará
+ * la sala con los ping: `pong` al que lo manda, `pings` a los dos y `setPing` a la autoridad.
  */
 import { Bot } from '../../src/bot.ts';
 import { type BotDifficulty, type GameConfig, tickMs } from '../../src/config.ts';
@@ -11,8 +14,8 @@ import type { SimEvent } from '../../src/sim.ts';
 import type { Side } from '../../src/types.ts';
 import { ClientMatch } from '../../src/net/client-match.ts';
 import { LatencyQueue } from '../../src/net/latency.ts';
-import { type C2S, decodeC2S, decodeS2C, encode, type S2C } from '../../src/net/protocol.ts';
-import { ServerMatch } from '../../src/net/server-match.ts';
+import { type C2S, decodeC2S, decodeS2C, encode, type PingMsg, type S2C } from '../../src/net/protocol.ts';
+import { type GameStart, ServerMatch } from '../../src/net/server-match.ts';
 
 export interface NetworkRunOptions {
   cfg: GameConfig;
@@ -24,6 +27,10 @@ export interface NetworkRunOptions {
   maxTicks: number;
   /** Altera un mensaje del servidor antes de que llegue a `to` (para probar correcciones). */
   tamper?: (msg: S2C, to: Side) => S2C;
+  /** Arranque en modo sala (sin él, el modo bot de V0.3). */
+  start?: GameStart;
+  /** Para cuando los dos clientes han visto este número de puntos (en práctica no hay fin de game). */
+  stopAfterPoints?: number;
 }
 
 export interface NetworkRun {
@@ -45,15 +52,24 @@ export function runNetworkMatch(o: NetworkRunOptions): NetworkRun {
   const s2c: NetworkRun['s2c'] = [];
   let serverNow = 0;
   let now = 0;
-  const server = new ServerMatch(cfg, {
-    send: (to, msg) => {
-      const text = encode(msg);
-      s2c.push({ to, text });
-      const back = decodeS2C(text);
-      if (!back) throw new Error(`el servidor envió un mensaje que no se decodifica: ${text}`);
-      down[to].push(o.tamper ? o.tamper(back, to) : back, serverNow);
-    },
-  });
+  const toClient = (to: Side, msg: S2C) => {
+    const text = encode(msg);
+    s2c.push({ to, text });
+    const back = decodeS2C(text);
+    if (!back) throw new Error(`el servidor envió un mensaje que no se decodifica: ${text}`);
+    down[to].push(o.tamper ? o.tamper(back, to) : back, serverNow);
+  };
+  const server = new ServerMatch(cfg, { send: toClient });
+  // Modo sala: los ping los contesta la sala, no la autoridad.
+  const pings: [number, number] = [-1, -1];
+  const roomPing = (from: Side, m: PingMsg) => {
+    toClient(from, { k: 'pong', i: m.i, t: m.t });
+    if (m.a < 0) return;
+    pings[from] = m.a;
+    server.setPing(from, m.a);
+    toClient(0, { k: 'pings', a: [pings[0], pings[1]] });
+    toClient(1, { k: 'pings', a: [pings[0], pings[1]] });
+  };
   const mk = (side: Side) =>
     new ClientMatch(cfg, side, (msg) => {
       const text = encode(msg);
@@ -81,7 +97,9 @@ export function runNetworkMatch(o: NetworkRunOptions): NetworkRun {
       if (best < 0) return;
       if (best < 2) {
         serverNow = at;
-        server.receive(best as Side, up[best].popDue(at)!, at);
+        const msg = up[best].popDue(at)!;
+        if (o.start && msg.k === 'ping') roomPing(best as Side, msg);
+        else server.receive(best as Side, msg, at);
       } else {
         const side = (best - 2) as Side;
         clients[side].receive(down[side].popDue(at)!, at);
@@ -89,9 +107,10 @@ export function runNetworkMatch(o: NetworkRunOptions): NetworkRun {
     }
   };
 
-  server.start(0);
+  server.start(0, o.start);
   deliver(0);
   let ticks = 0;
+  const seen = [0, 0];
   for (let n = 1; n <= o.maxTicks; n++) {
     ticks = n;
     const i0 = bots[0].think(clients[0]);
@@ -102,8 +121,14 @@ export function runNetworkMatch(o: NetworkRunOptions): NetworkRun {
     deliver(now);
     serverNow = now;
     server.poll(now);
-    for (const side of [0, 1] as Side[]) for (const e of clients[side].stepWorld()) events[side].push({ t: now, e });
+    for (const side of [0, 1] as Side[]) {
+      for (const e of clients[side].stepWorld()) {
+        events[side].push({ t: now, e });
+        if (e.type === 'point' || e.type === 'let') seen[side]++;
+      }
+    }
     if (clients[0].finished && clients[1].finished) break;
+    if (o.stopAfterPoints !== undefined && seen[0] >= o.stopAfterPoints && seen[1] >= o.stopAfterPoints) break;
   }
   return { events, server, clients, c2s, s2c, ticks };
 }

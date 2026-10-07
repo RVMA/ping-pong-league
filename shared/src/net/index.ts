@@ -9,3 +9,4 @@ export * from './validate.ts';
 export * from './server-match.ts';
 export * from './client-match.ts';
 export * from './route.ts';
+export * from './match.ts';
