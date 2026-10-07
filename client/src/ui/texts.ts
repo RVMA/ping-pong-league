@@ -65,6 +65,8 @@ export function whyText(w: WhyResult, smashMinAboveTape: number): string {
       return 'Fallaste el golpe: hiciste click sin la bola cerca.';
     case 'NO_CLICK':
       return 'No llegaste a golpearla.';
+    case 'TABLE_SIDE':
+      return SIDE_TEXT;
     case 'UNKNOWN':
       return '';
   }
@@ -115,7 +117,7 @@ export function pointText(p: PointTextInput): string {
     case 'SERVE_FAULT':
       return mine ? 'Punto. Falta de saque del bot.' : 'Falta de saque.';
     case 'SIDE':
-      return mine ? 'Punto. La bola del bot tocó el lateral de la mesa.' : SIDE_TEXT;
+      return mine ? 'Punto. La bola del bot tocó el lateral de la mesa.' : why || SIDE_TEXT;
     case 'TOSS_MISSED':
       return mine ? 'Punto. El bot no golpeó su saque.' : 'No golpeaste el saque.';
   }

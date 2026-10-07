@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyContact,
+  diagnose,
   type BallContact,
   type BallState,
   makeConfig,
   makeEnv,
+  neutralIntent,
   newRally,
   registerStrike,
   SIDE_TEXT,
+  Simulation,
+  type SimEvent,
   simDt,
   stepBall,
 } from '../src/index.ts';
@@ -131,27 +135,55 @@ describe('reglas con aristas', () => {
 });
 
 describe('determinismo', () => {
-  it('(f) misma trayectoria bit a bit en dos ejecuciones con un contacto de canto', () => {
-    const trace = () => {
-      const b = ball([hw + 0.004, top + 0.4, 0.3], [0.5, -2.5, 1.1]);
+  it('(f) misma trayectoria bit a bit en dos ejecuciones, con contactos de canto y de lateral', () => {
+    const trace = (start: [number, number, number], vel: [number, number, number]) => {
+      const b = ball(start, vel);
       b.spin = { x: 40, y: -15, z: 22 };
       const out: number[] = [];
+      const kinds: string[] = [];
       for (let i = 0; i < 300; i++) {
-        stepBall(b, dt, env, undefined, { net: false });
+        const cs: BallContact[] = [];
+        stepBall(b, dt, env, cs, { net: false });
+        for (const c of cs) kinds.push(c.kind === 'table' && c.edge ? 'edge' : c.kind);
         out.push(b.pos.x, b.pos.y, b.pos.z, b.vel.x, b.vel.y, b.vel.z);
       }
-      return out;
+      return { out, kinds };
     };
-    const a = trace();
-    const c = trace();
-    expect(a.length).toBe(c.length);
-    for (let i = 0; i < a.length; i++) expect(Object.is(a[i], c[i])).toBe(true);
-    expect(a.some((v) => !Number.isFinite(v))).toBe(false);
+    const cases: [string, [number, number, number], [number, number, number]][] = [
+      ['edge', [hw + 0.005, top + 0.3, 0.3], [0, -2.5, 0]],
+      ['side', [hw + 0.06, top - 0.01, 0.3], [-4, 0, 0]],
+    ];
+    for (const [kind, start, vel] of cases) {
+      const a = trace(start, vel);
+      const c = trace(start, vel);
+      expect(a.kinds).toContain(kind);
+      expect(a.kinds).toEqual(c.kinds);
+      expect(a.out.length).toBe(c.out.length);
+      for (let i = 0; i < a.out.length; i++) expect(Object.is(a.out[i], c.out[i])).toBe(true);
+      expect(a.out.some((v) => !Number.isFinite(v))).toBe(false);
+    }
   });
 });
 
 describe('why', () => {
-  it('(g) el punto SIDE da el texto del lateral', () => {
-    expect(SIDE_TEXT).toBe('Lateral. La bola tocó el lateral de la mesa, no la superficie.');
+  it('(g) un punto SIDE tiene causa con nombre y el texto del lateral', () => {
+    const w = diagnose({ reason: 'SIDE', lastHit: null, whiffed: false }, cfg);
+    expect(w).not.toBeNull();
+    expect(w!.cause).toBe('TABLE_SIDE');
+    expect(SIDE_TEXT).toBe('Lateral. La bola tocó el lateral de la mesa, no la superficie.'); // el cliente lo muestra para TABLE_SIDE
+  });
+
+  it('un lateral real en la Simulation da tableSide y punto SIDE', () => {
+    const sim = new Simulation(cfg, { firstServer: 0 });
+    const s = sim.state;
+    s.phase = 'rally';
+    registerStrike(s.rally, 0, false);
+    s.ball.pos = { x: hw + 0.06, y: top - 0.01, z: -0.8 };
+    s.ball.vel = { x: -4, y: 0, z: 0 };
+    s.ball.spin = { x: 0, y: 0, z: 0 };
+    const events: SimEvent[] = [];
+    for (let i = 0; i < 20; i++) events.push(...sim.step([neutralIntent(), neutralIntent()]));
+    expect(events.some((e) => e.type === 'tableSide')).toBe(true);
+    expect(events.find((e) => e.type === 'point')).toMatchObject({ winner: 1, reason: 'SIDE' });
   });
 });

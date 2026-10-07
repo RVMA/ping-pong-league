@@ -45,6 +45,8 @@ export type WhyCause =
   | 'WHIFF_REACH'
   | 'WHIFF_NO_BALL'
   | 'NO_CLICK'
+  // Lateral de la mesa
+  | 'TABLE_SIDE'
   | 'UNKNOWN';
 
 export interface WhyResult {
@@ -71,6 +73,7 @@ export interface WhyInput {
 /** Diagnostica un punto perdido por error propio. null si el motivo no lo necesita (volea, saque…). */
 export function diagnose(inp: WhyInput, cfg: GameConfig): WhyResult | null {
   const last = inp.lastHit;
+  if (inp.reason === 'SIDE') return { cause: 'TABLE_SIDE', shot: last && !last.targets.serve ? last.targets.type : null, contactHeight: last?.contactHeight };
   if (inp.reason === 'MISSED' || inp.reason === 'DOUBLE_BOUNCE') return diagnoseMissed(inp, cfg);
   if (!last || (inp.reason !== 'NET' && inp.reason !== 'OUT' && inp.reason !== 'OWN_SIDE')) return null;
   const t = last.targets;
