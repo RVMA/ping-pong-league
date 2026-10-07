@@ -33,3 +33,12 @@ describe('hash de la config (§17.6: cliente y servidor con la misma config)', (
     expect(cfg.net.ping.average).toBe(5);
   });
 });
+
+describe('hash de la config: sala (V0.4)', () => {
+  it('cambia con la sección room y con el pico de latencia; no con la prueba de lectura', () => {
+    const base = configHash(makeConfig());
+    expect(configHash(makeConfig({ room: { countdownMs: 2000 } }))).not.toBe(base);
+    expect(configHash(makeConfig({ net: { latency: { spike: { maxProb: 0.1 } } } }))).not.toBe(base);
+    expect(configHash(makeConfig({ presentation: { readTest: { shots: 10 } } }))).toBe(base);
+  });
+});

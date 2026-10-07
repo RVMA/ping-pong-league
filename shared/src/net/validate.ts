@@ -19,7 +19,7 @@ export function validHello(h: HelloMsg, cfg: GameConfig): ErrCode | null {
   if (h.v !== PROTOCOL_VERSION) return 'version';
   if (h.h !== configHash(cfg)) return 'config';
   const lat = cfg.net.latency;
-  if (h.p > lat.maxPingMs || h.bp > lat.maxPingMs || h.j > lat.maxJitter || !validOffset(h.o, cfg)) return 'params';
+  if (h.p > lat.maxPingMs || h.bp > lat.maxPingMs || h.j > lat.maxJitter || h.sp > lat.spike.maxProb || !validOffset(h.o, cfg)) return 'params';
   return null;
 }
 

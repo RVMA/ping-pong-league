@@ -61,7 +61,7 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
   it('un golpe que el servidor rechaza acaba en punto con su marcador', () => {
     const sent: C2S[] = [];
     const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
-    c.receive({ k: 'start', fs: 0 }, 0);
+    c.receive({ k: 'start', fs: 0, n: 0, wu: 0, g: 1, sc: [0, 0], ns: 0 }, 0);
     c.step(neutralIntent(1.6)); // el inicio se aplica en el primer tick
     // Lanzar la bola.
     const toss = neutralIntent(1.6);
@@ -95,7 +95,7 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     const env = makeEnv(cfg);
     const sent: C2S[] = [];
     const c = new ClientMatch(cfg, 1, (m) => sent.push(m));
-    c.receive({ k: 'start', fs: 0 }, 0);
+    c.receive({ k: 'start', fs: 0, n: 0, wu: 0, g: 1, sc: [0, 0], ns: 0 }, 0);
     c.step(neutralIntent(1.6));
     // El rival (lado 0) lanza y saca un PERFECT.
     c.receive({ k: 'toss', n: 0, x: 0, z: 1600, a: 0 }, c.now);

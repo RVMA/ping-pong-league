@@ -21,10 +21,27 @@ import {
 const cfg = makeConfig();
 const hitWire = { t: 812.125, x: -123.456, z: 1601.5, vx: 2.5, q: 1, b: 0 as const, sv: [120.5, 300, 0], sx: -120.25, sz: 1600 };
 
+const roomMsg: S2C = {
+  k: 'room',
+  code: 'QZXK',
+  md: 'standard',
+  ph: 'match',
+  pl: [
+    { nm: 'Ana', c: 1, r: 1, rt: 0 },
+    { nm: 'Leo', c: 0, r: 0, rt: 1 },
+  ],
+  gw: [1, 0],
+  dl: 2500,
+  dk: 'count',
+};
+
 const c2s: C2S[] = [
-  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'player', p: 100, bp: 100, j: 0.1, d: 'medium', s: 7, o: 0 },
-  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'bot', room: 'r-12', p: 150, bp: 150, j: 0, d: 'hard', s: 3, o: -20 },
-  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'player', p: 0, bp: 0, j: 0, d: 'medium', s: 3, o: 0, fs: 1 },
+  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'player', nm: 'Ana', p: 100, bp: 100, j: 0.1, sp: 0, d: 'medium', s: 7, o: 0 },
+  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'bot', nm: 'Bot', tk: 'abcd1234-ef56', p: 150, bp: 150, j: 0, sp: 0.2, d: 'hard', s: 3, o: -20 },
+  { k: 'hello', v: PROTOCOL_VERSION, h: '0a1b2c3d', r: 'player', nm: '', p: 0, bp: 0, j: 0, sp: 0, d: 'medium', s: 3, o: 0, fs: 1 },
+  { k: 'rdy', on: 1 },
+  { k: 'rt', on: 0 },
+  { k: 'leave' },
   { k: 'p', n: 3, r: 1234, x: -123, z: 1650 },
   { k: 'p', n: 0, r: -1, x: 0, z: 1700 },
   { k: 'toss', n: 4, x: 12.345, z: 1600, a: 0 },
@@ -37,9 +54,14 @@ const c2s: C2S[] = [
 ];
 
 const s2c: S2C[] = [
-  { k: 'welcome', v: PROTOCOL_VERSION, side: 0, room: 'r-12' },
+  { k: 'welcome', v: PROTOCOL_VERSION, side: 0, room: 'QZXK', tk: 'a1b2c3d4-e5f6', md: 'standard' },
+  { k: 'welcome', v: PROTOCOL_VERSION, side: 1, room: 'b-12', tk: 'a1b2c3d4-e5f6', md: 'bot' },
   { k: 'err', m: 'config', d: 'hash distinto' },
-  { k: 'start', fs: 0 },
+  { k: 'start', fs: 0, n: 0, wu: 0, g: 0, sc: [0, 0], ns: 0 },
+  { k: 'start', fs: 1, n: 37, wu: 1, g: 2, sc: [7, 9], ns: 1 },
+  roomMsg,
+  { k: 'room', code: 'QZXK', md: 'quick', ph: 'waiting', pl: [null, null], gw: [0, 0], dl: -1, dk: '' },
+  { k: 'mend', w: 0, why: 'score', gw: [2, 1], st: [{ pf: 62, ms: 4, ne: 3, pts: 41 }, { pf: 48, ms: 9, ne: 5, pts: 35 }], rj: [0, 1] },
   { k: 'p', n: 3, r: 1234, x: -123, z: -1650 },
   { k: 'toss', n: 4, x: 12.345, z: -1600, a: 1 },
   { k: 'fl', n: 4, f: 3, p: 1, j: 95, h: hitWire, s: [0.1 + 0.2, 0.9, -1.2, 3.25, 1e-9, -7.75, 100.5, -3, 0] },
@@ -131,15 +153,31 @@ describe('mensajes malformados: se descartan, nunca lanzan', () => {
     `{"k":"hit","n":1,"f":1,"t":10,"x":0,"z":1600,"vx":0,"q":0,"b":0,"sv":[${Array(65).fill(1).join(',')}],"sx":0,"sz":0}`,
     `{"k":"hit","n":1,"f":1,"t":10,"x":99999,"z":1600,"vx":0,"q":0,"b":0,"sv":[]}`,
     `{"k":"hit","n":1,"f":1,"t":10,"x":0,"z":1600,"vx":0,"q":0,"b":0,"sv":[1]}`,
-    '{"k":"hello","v":"1","h":"0a1b2c3d","r":"player","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0}',
-    '{"k":"hello","v":1,"h":"zz","r":"player","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0}',
-    '{"k":"hello","v":1,"h":"0a1b2c3d","r":"admin","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0}',
-    '{"k":"hello","v":1,"h":"0a1b2c3d","r":"player","p":0,"bp":0,"j":0,"d":"medium","s":1,"o":0,"fs":2}',
+    '{"k":"hello","v":"1","h":"0a1b2c3d","r":"player","nm":"A","p":0,"bp":0,"j":0,"sp":0,"d":"medium","s":1,"o":0}',
+    '{"k":"hello","v":1,"h":"zz","r":"player","nm":"A","p":0,"bp":0,"j":0,"sp":0,"d":"medium","s":1,"o":0}',
+    '{"k":"hello","v":1,"h":"0a1b2c3d","r":"admin","nm":"A","p":0,"bp":0,"j":0,"sp":0,"d":"medium","s":1,"o":0}',
+    '{"k":"hello","v":1,"h":"0a1b2c3d","r":"player","nm":"A","p":0,"bp":0,"j":0,"sp":0,"d":"medium","s":1,"o":0,"fs":2}',
+    `{"k":"hello","v":2,"h":"0a1b2c3d","r":"player","nm":"A","p":0,"bp":0,"j":0,"sp":-0.1,"d":"medium","s":1,"o":0}`,
+    `{"k":"hello","v":2,"h":"0a1b2c3d","r":"player","nm":"A","tk":"${'x'.repeat(200)}","p":0,"bp":0,"j":0,"sp":0,"d":"medium","s":1,"o":0}`,
+    '{"k":"rdy","on":2}',
     '[1,2,3,"4"]',
     '[1.5,2,3,4]',
   ];
   it('rechaza cada caso del cliente', () => {
     for (const t of bad) expect(decodeC2S(t), t).toBeNull();
+  });
+  it('rechaza mensajes nuevos inválidos del servidor', () => {
+    const room = { k: 'room', code: 'QZXK', md: 'standard', ph: 'match', pl: [null, null], gw: [0, 0], dl: -1, dk: '' };
+    expect(decodeS2C(JSON.stringify(room))).not.toBeNull();
+    for (const bad of [{ ph: 'dormida' }, { gw: [0, 0, 1] }, { md: 'huge' }, { dk: 'x' }, { code: '' }, { pl: [null] }, { pl: [{ nm: 'a', c: 1, r: 1 }, null] }]) expect(decodeS2C(JSON.stringify({ ...room, ...bad })), JSON.stringify(bad)).toBeNull();
+    expect(decodeS2C('{"k":"room","code":"QZXK","md":"standard","ph":"match","pl":[null,null],"gw":[0,0],"dl":1e400,"dk":""}')).toBeNull();
+    expect(decodeS2C('{"k":"mend","w":0,"why":"score","gw":[2,1],"rj":[0,0]}')).toBeNull();
+    expect(decodeS2C('{"k":"start","fs":0}')).toBeNull();
+    expect(decodeS2C('{"k":"welcome","v":2,"side":0,"room":"QZXK","tk":"short","md":"standard"}')).toBeNull();
+  });
+  it('encode de un room típico ≤ 160 bytes y de un start ≤ 80', () => {
+    expect(encode(roomMsg).length).toBeLessThanOrEqual(160);
+    expect(encode({ k: 'start', fs: 1, n: 123456, wu: 0, g: 2, sc: [10, 11], ns: 1 }).length).toBeLessThanOrEqual(80);
   });
   it('rechaza estados de salida incompletos o no finitos del servidor', () => {
     expect(decodeS2C('{"k":"fl","n":1,"f":1,"p":0,"j":3,"h":{"t":1,"x":0,"z":0,"vx":0,"q":0,"b":0,"sv":[]},"s":[1,2,3,4,5,6,7,8]}')).toBeNull();

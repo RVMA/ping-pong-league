@@ -26,7 +26,10 @@ const ERR_TEXT: Record<ErrCode, string> = {
   config: 'Configuración del juego distinta de la del servidor (¿parámetros de URL como speed o radius?)',
   params: 'Parámetros fuera de rango (ping, variación o desfase de latencia)',
   room: 'Sala inexistente o completa',
+  full: 'Sala completa',
   proto: 'Mensaje inválido',
+  rate: 'Demasiados mensajes',
+  route: 'Ruta no válida',
 };
 
 export async function startServer(opts: { port: number; cfg?: GameConfig; log?: (line: string) => void; host?: string }): Promise<GameServer> {
@@ -58,7 +61,9 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
     ticker.add(task);
   };
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // Provisional (V0.3): el bot remoto dice a qué sala va en la query de la URL; la sala ya no viaja en `hello`.
+    const wantedRoom = new URL(req.url ?? '/', 'http://localhost').searchParams.get('room');
     const peer = new Peer(ws, log);
     pending.add(peer);
     wake();
@@ -78,11 +83,11 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
       peer.onBad = () => {};
       if (msg.r === 'player') {
         counter += 1;
-        const id = `r-${counter}`;
+        const id = `b-${counter}`;
         const room = new Room(id, cfg, log, () => rooms.delete(id), msg.fs ?? 0);
         rooms.set(id, room);
         peer.setLatency(msg.p, msg.j, msg.s);
-        peer.send({ k: 'welcome', v: PROTOCOL_VERSION, side: 0, room: id });
+        peer.send({ k: 'welcome', v: PROTOCOL_VERSION, side: 0, room: id, tk: crypto.randomUUID(), md: 'bot' });
         room.attach(0, peer);
         const bot = new BotClient({ url: `ws://127.0.0.1:${port}/ws`, role: 'bot', room: id, difficulty: msg.d, seed: msg.s, ping: msg.bp, botping: msg.bp, jitter: msg.j, cfg });
         room.bot = bot;
@@ -90,10 +95,10 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
         log(`[${id}] jugador: ping ${msg.p} ms, bot ${msg.d} con ping ${msg.bp} ms, variación ±${Math.round(msg.j * 100)} %`);
         return;
       }
-      const room = msg.room ? rooms.get(msg.room) : undefined;
+      const room = wantedRoom ? rooms.get(wantedRoom) : undefined;
       if (!room || room.peers[1] || room.closed) return reject('room');
       peer.setLatency(msg.p, msg.j, msg.s + 7919);
-      peer.send({ k: 'welcome', v: PROTOCOL_VERSION, side: 1, room: room.id });
+      peer.send({ k: 'welcome', v: PROTOCOL_VERSION, side: 1, room: room.id, tk: crypto.randomUUID(), md: 'bot' });
       room.attach(1, peer);
     };
   });

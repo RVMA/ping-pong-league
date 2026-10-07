@@ -8,3 +8,4 @@ export * from './latency.ts';
 export * from './validate.ts';
 export * from './server-match.ts';
 export * from './client-match.ts';
+export * from './route.ts';

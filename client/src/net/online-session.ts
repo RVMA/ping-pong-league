@@ -117,7 +117,7 @@ export class OnlineSession implements GameSession {
     this.setStatus('connecting');
     ws.onopen = () => {
       const p = this.params;
-      this.send({ k: 'hello', v: PROTOCOL_VERSION, h: configHash(this.cfg), r: 'player', p: p.ping, bp: p.botping, j: p.jitter, d: difficulty, s: p.seed, o: this.latencyOffset });
+      this.send({ k: 'hello', v: PROTOCOL_VERSION, h: configHash(this.cfg), r: 'player', nm: 'Jugador', p: p.ping, bp: p.botping, j: p.jitter, sp: 0, d: difficulty, s: p.seed, o: this.latencyOffset });
     };
     ws.onmessage = (ev) => {
       const text = String(ev.data);

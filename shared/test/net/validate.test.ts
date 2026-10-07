@@ -5,7 +5,7 @@ import { type HelloMsg, PROTOCOL_VERSION } from '../../src/net/protocol.ts';
 import { validClickTime, validHello, validOffset, validPaddleBounds, validReach } from '../../src/net/validate.ts';
 
 const cfg = makeConfig();
-const hello: HelloMsg = { k: 'hello', v: PROTOCOL_VERSION, h: configHash(cfg), r: 'player', p: 100, bp: 100, j: 0.1, d: 'medium', s: 7, o: 0 };
+const hello: HelloMsg = { k: 'hello', v: PROTOCOL_VERSION, h: configHash(cfg), r: 'player', nm: 'Ana', p: 100, bp: 100, j: 0.1, sp: 0, d: 'medium', s: 7, o: 0 };
 
 describe('validación del servidor [§17.3]', () => {
   it('el desfase de latencia declarado está dentro del límite [−50, +100] ms', () => {
@@ -23,6 +23,8 @@ describe('validación del servidor [§17.3]', () => {
     expect(validHello({ ...hello, bp: 501 }, cfg)).toBe('params');
     expect(validHello({ ...hello, j: 0.8 }, cfg)).toBe('params');
     expect(validHello({ ...hello, o: 200 }, cfg)).toBe('params');
+    expect(validHello({ ...hello, sp: 0.9 }, cfg)).toBe('params');
+    expect(validHello({ ...hello, sp: cfg.net.latency.spike.maxProb }, cfg)).toBeNull();
   });
 
   it('la raqueta dentro de sus límites (y detrás de la línea de fondo al sacar)', () => {

@@ -10,28 +10,35 @@
  *
  * Decodificar nunca lanza: un mensaje que no cumple tipos, rangos y números finitos devuelve null.
  */
-import type { BotDifficulty, GameConfig } from '../config.ts';
+import type { BotDifficulty, GameConfig, MatchMode } from '../config.ts';
 import type { BallState } from '../physics.ts';
 import type { PointReason } from '../rules.ts';
 import type { ShotKeys, Side } from '../types.ts';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export type Role = 'player' | 'bot';
 
 // ——— Cliente → servidor ———
 
-/** Primer mensaje: versión, hash de la config, rol y parámetros de la partida (latencia simulada, bot, desfase). */
+/**
+ * Primer mensaje: versión, hash de la config, rol, nombre y parámetros de la partida (latencia simulada, bot, desfase).
+ * La sala va en la URL del WebSocket, no aquí. `tk` es el token de reconexión (solo al volver a una sala).
+ */
 export interface HelloMsg {
   k: 'hello';
   v: number;
   h: string;
   r: Role;
-  room?: string;
+  /** Nombre del jugador (el servidor lo limpia). */
+  nm: string;
+  tk?: string;
   /** Ping simulado (ms de ida y vuelta) de esta conexión y del bot; variación (fracción). */
   p: number;
   bp: number;
   j: number;
+  /** Probabilidad de picos de latencia simulados (0…net.latency.spike.maxProb). */
+  sp: number;
   d: BotDifficulty;
   s: number;
   /** Desfase de latencia calibrado que el cliente resta a sus clicks [§3.7]. */
@@ -109,7 +116,24 @@ export interface AgainMsg {
   k: 'again';
 }
 
-export type C2S = HelloMsg | PadMsg | TossMsg | HitMsg | WhiffMsg | EndMsg | PingMsg | AgainMsg;
+/** Listo (1) / no listo (0) en la sala. */
+export interface ReadyMsg {
+  k: 'rdy';
+  on: 0 | 1;
+}
+
+/** Activa o desactiva la prueba de lectura del servicio rival. */
+export interface ReadTestMsg {
+  k: 'rt';
+  on: 0 | 1;
+}
+
+/** Salir de la sala a propósito. */
+export interface LeaveMsg {
+  k: 'leave';
+}
+
+export type C2S = HelloMsg | PadMsg | TossMsg | HitMsg | WhiffMsg | EndMsg | PingMsg | AgainMsg | ReadyMsg | ReadTestMsg | LeaveMsg;
 
 // ——— Servidor → cliente ———
 
@@ -118,9 +142,12 @@ export interface WelcomeMsg {
   v: number;
   side: Side;
   room: string;
+  /** Token de reconexión. */
+  tk: string;
+  md: MatchMode | 'bot';
 }
 
-export type ErrCode = 'version' | 'config' | 'params' | 'room' | 'proto';
+export type ErrCode = 'version' | 'config' | 'params' | 'room' | 'full' | 'proto' | 'rate' | 'route';
 
 export interface ErrMsg {
   k: 'err';
@@ -128,9 +155,15 @@ export interface ErrMsg {
   d: string;
 }
 
+/** Empieza (o se reanuda) un game: fs = primer saque; n = rally con el que empieza; wu = warm-up; g = game (0 en warm-up); sc, ns = marcador y saque. */
 export interface StartMsg {
   k: 'start';
   fs: Side;
+  n: number;
+  wu: 0 | 1;
+  g: number;
+  sc: [number, number];
+  ns: Side;
 }
 
 export type TossRelay = TossMsg;
@@ -190,7 +223,46 @@ export interface ByeMsg {
   m: string;
 }
 
-export type S2C = WelcomeMsg | ErrMsg | StartMsg | PadMsg | TossRelay | FlightMsg | WhiffRelay | PointMsg | PongMsg | PingsMsg | ByeMsg;
+export type RoomPhase = 'waiting' | 'warmup' | 'countdown' | 'match' | 'between' | 'paused';
+
+/** Jugador en la sala: nombre, conectado, listo, prueba de lectura. */
+export interface RoomPlayerWire {
+  nm: string;
+  c: 0 | 1;
+  r: 0 | 1;
+  rt: 0 | 1;
+}
+
+/** Estado de la sala; dl = ms hasta el plazo vigente al enviar (−1 sin plazo); dk = qué plazo es. */
+export interface RoomMsg {
+  k: 'room';
+  code: string;
+  md: MatchMode;
+  ph: RoomPhase;
+  pl: [RoomPlayerWire | null, RoomPlayerWire | null];
+  gw: [number, number];
+  dl: number;
+  dk: '' | 'ready' | 'count' | 'between' | 'pause';
+}
+
+export interface PlayerStatsWire {
+  pf: number;
+  ms: number;
+  ne: number;
+  pts: number;
+}
+
+/** Fin del partido: ganador, motivo, games ganados, estadísticas y puntos de la prueba de lectura (rj). */
+export interface MatchEndMsg {
+  k: 'mend';
+  w: Side;
+  why: 'score' | 'abandon';
+  gw: [number, number];
+  st: [PlayerStatsWire, PlayerStatsWire];
+  rj: [number, number];
+}
+
+export type S2C = WelcomeMsg | ErrMsg | StartMsg | PadMsg | TossRelay | FlightMsg | WhiffRelay | PointMsg | PongMsg | PingsMsg | ByeMsg | RoomMsg | MatchEndMsg;
 
 /** Mensaje a texto. La raqueta (el mensaje frecuente) va como array [n, r, x, z]. */
 export function encode(msg: C2S | S2C): string {
@@ -233,12 +305,36 @@ const MAX_MM = 5000;
 const MAX_SPEED_MM_S = 100000;
 const MAX_SWING = 100;
 const MAX_SAMPLES = 64;
-const ROOM_RE = /^[A-Za-z0-9-]{1,32}$/;
+const CODE_RE = /^[A-Za-z0-9-]{1,16}$/;
+const TOKEN_RE = /^[A-Za-z0-9-]{8,64}$/;
+const NAME_RE = /^[\s\S]{0,64}$/;
 const HASH_RE = /^[0-9a-f]{8}$/;
 const TEXT_RE = /^[\s\S]{0,200}$/;
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 const REASONS = ['NET', 'OUT', 'OWN_SIDE', 'DOUBLE_BOUNCE', 'MISSED', 'VOLLEY', 'SERVE_FAULT', 'TOSS_MISSED', 'SIDE', 'LET'];
-const ERR_CODES = ['version', 'config', 'params', 'room', 'proto'];
+const ERR_CODES = ['version', 'config', 'params', 'room', 'full', 'proto', 'rate', 'route'];
+const MODES = ['quick', 'standard', 'full'];
+const PHASES = ['waiting', 'warmup', 'countdown', 'match', 'between', 'paused'];
+const DEADLINES = ['', 'ready', 'count', 'between', 'pause'];
+/** Cota de forma del campo `sp`; el límite real (net.latency.spike.maxProb) lo aplica validHello. */
+const MAX_SPIKE_PROB = 1;
+
+/** Dos enteros en [min, max]. */
+function pair(v: unknown, min: number, max: number): v is [number, number] {
+  return Array.isArray(v) && v.length === 2 && int(v[0], min, max) && int(v[1], min, max);
+}
+
+/** Jugador de la sala; null = hueco libre; undefined = no válido. */
+function roomPlayer(v: unknown): RoomPlayerWire | null | undefined {
+  if (v === null) return null;
+  if (!isObj(v) || !str(v.nm, NAME_RE) || !bit(v.c) || !bit(v.r) || !bit(v.rt)) return undefined;
+  return { nm: v.nm, c: v.c, r: v.r, rt: v.rt };
+}
+
+function stats(v: unknown): PlayerStatsWire | null {
+  if (!isObj(v) || !num(v.pf, 0, 100) || !int(v.ms, 0, 999) || !int(v.ne, 0, 999) || !int(v.pts, 0, 999)) return null;
+  return { pf: v.pf, ms: v.ms, ne: v.ne, pts: v.pts };
+}
 
 function parse(text: string): unknown {
   if (typeof text !== 'string' || text.length === 0 || text.length > 8192) return undefined;
@@ -289,12 +385,12 @@ export function decodeC2S(text: string): C2S | null {
   switch (o.k) {
     case 'hello': {
       if (!int(o.v, 0, 1000) || !str(o.h, HASH_RE) || (o.r !== 'player' && o.r !== 'bot')) return null;
-      if (o.room !== undefined && !str(o.room, ROOM_RE)) return null;
-      if (!num(o.p, 0, 10000) || !num(o.bp, 0, 10000) || !num(o.j, 0, 1) || typeof o.d !== 'string' || !DIFFICULTIES.includes(o.d)) return null;
+      if (!str(o.nm, NAME_RE) || (o.tk !== undefined && !str(o.tk, TOKEN_RE))) return null;
+      if (!num(o.p, 0, 10000) || !num(o.bp, 0, 10000) || !num(o.j, 0, 1) || !num(o.sp, 0, MAX_SPIKE_PROB) || typeof o.d !== 'string' || !DIFFICULTIES.includes(o.d)) return null;
       if (!int(o.s, -4294967296, 4294967296) || !num(o.o, -1000, 1000)) return null;
       if (o.fs !== undefined && !side(o.fs)) return null;
-      const m: HelloMsg = { k: 'hello', v: o.v, h: o.h, r: o.r, p: o.p, bp: o.bp, j: o.j, d: o.d as BotDifficulty, s: o.s, o: o.o };
-      if (o.room !== undefined) m.room = o.room;
+      const m: HelloMsg = { k: 'hello', v: o.v, h: o.h, r: o.r, nm: o.nm, p: o.p, bp: o.bp, j: o.j, sp: o.sp, d: o.d as BotDifficulty, s: o.s, o: o.o };
+      if (o.tk !== undefined) m.tk = o.tk;
       if (o.fs !== undefined) m.fs = o.fs;
       return m;
     }
@@ -316,6 +412,12 @@ export function decodeC2S(text: string): C2S | null {
       return { k: 'ping', i: o.i, t: o.t, a: o.a };
     case 'again':
       return { k: 'again' };
+    case 'rdy':
+      return bit(o.on) ? { k: 'rdy', on: o.on } : null;
+    case 'rt':
+      return bit(o.on) ? { k: 'rt', on: o.on } : null;
+    case 'leave':
+      return { k: 'leave' };
     default:
       return null;
   }
@@ -329,14 +431,15 @@ export function decodeS2C(text: string): S2C | null {
   const o = v;
   switch (o.k) {
     case 'welcome':
-      if (!int(o.v, 0, 1000) || !side(o.side) || !str(o.room, ROOM_RE)) return null;
-      return { k: 'welcome', v: o.v, side: o.side, room: o.room };
+      if (!int(o.v, 0, 1000) || !side(o.side) || !str(o.room, CODE_RE) || !str(o.tk, TOKEN_RE)) return null;
+      if (o.md !== 'bot' && !(typeof o.md === 'string' && MODES.includes(o.md))) return null;
+      return { k: 'welcome', v: o.v, side: o.side, room: o.room, tk: o.tk, md: o.md as MatchMode | 'bot' };
     case 'err':
       if (typeof o.m !== 'string' || !ERR_CODES.includes(o.m) || !str(o.d, TEXT_RE)) return null;
       return { k: 'err', m: o.m as ErrCode, d: o.d };
     case 'start':
-      if (!side(o.fs)) return null;
-      return { k: 'start', fs: o.fs };
+      if (!side(o.fs) || !int(o.n, 0, MAX_RALLY) || !bit(o.wu) || !int(o.g, 0, 9) || !side(o.ns) || !pair(o.sc, 0, 99)) return null;
+      return { k: 'start', fs: o.fs, n: o.n, wu: o.wu, g: o.g, sc: [o.sc[0], o.sc[1]], ns: o.ns };
     case 'toss':
       return toss(o);
     case 'fl': {
@@ -369,6 +472,22 @@ export function decodeS2C(text: string): S2C | null {
     case 'bye':
       if (!str(o.m, TEXT_RE)) return null;
       return { k: 'bye', m: o.m };
+    case 'room': {
+      if (!str(o.code, CODE_RE) || typeof o.md !== 'string' || !MODES.includes(o.md) || typeof o.ph !== 'string' || !PHASES.includes(o.ph)) return null;
+      if (!Array.isArray(o.pl) || o.pl.length !== 2 || !pair(o.gw, 0, 99) || !int(o.dl, -1, 600000) || typeof o.dk !== 'string' || !DEADLINES.includes(o.dk)) return null;
+      const a = roomPlayer(o.pl[0]);
+      const b = roomPlayer(o.pl[1]);
+      if (a === undefined || b === undefined) return null;
+      return { k: 'room', code: o.code, md: o.md as MatchMode, ph: o.ph as RoomPhase, pl: [a, b], gw: [o.gw[0], o.gw[1]], dl: o.dl, dk: o.dk as RoomMsg['dk'] };
+    }
+    case 'mend': {
+      if (!side(o.w) || (o.why !== 'score' && o.why !== 'abandon') || !pair(o.gw, 0, 99) || !pair(o.rj, 0, 1e6)) return null;
+      if (!Array.isArray(o.st) || o.st.length !== 2) return null;
+      const a = stats(o.st[0]);
+      const b = stats(o.st[1]);
+      if (!a || !b) return null;
+      return { k: 'mend', w: o.w, why: o.why, gw: [o.gw[0], o.gw[1]], st: [a, b], rj: [o.rj[0], o.rj[1]] };
+    }
     default:
       return null;
   }

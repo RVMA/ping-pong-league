@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 function hello(over: Partial<HelloMsg> = {}): HelloMsg {
-  return { k: 'hello', v: PROTOCOL_VERSION, h: configHash(cfg), r: 'player', p: 0, bp: 0, j: 0, d: 'medium', s: 7, o: 0, ...over };
+  return { k: 'hello', v: PROTOCOL_VERSION, h: configHash(cfg), r: 'player', nm: 'Jugador', p: 0, bp: 0, j: 0, sp: 0, d: 'medium', s: 7, o: 0, ...over };
 }
 
 /** Abre un socket, envía `first` y devuelve los mensajes recibidos hasta que se cierre o pase `ms`. */

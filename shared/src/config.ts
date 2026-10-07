@@ -499,7 +499,7 @@ export const DEFAULT_CONFIG = {
     /** Respaldo: si el jugador que debe golpear calla este tiempo tras el fin del vuelo, el punto se cierra solo. */
     timers: { fallbackMs: 3000 },
     /** Latencia simulada (parámetros ping, botping y jitter de la URL): límites aceptados y variación por defecto. */
-    latency: { defaultJitter: 0.1, maxPingMs: 500, maxJitter: 0.5 },
+    latency: { defaultJitter: 0.1, maxPingMs: 500, maxJitter: 0.5, spike: { maxProb: 0.2, minMs: 100, maxMs: 300 } },
     /**
      * Cuantización del evento de golpe (mm, ms, mm/s, alturas de pantalla/s): quien golpea predice su vuelo con el
      * evento ya cuantizado, así su predicción y la del servidor coinciden bit a bit.
@@ -522,8 +522,29 @@ export const DEFAULT_CONFIG = {
     halveOnGameChange: true,
   },
 
+  /** Salas de dos jugadores (V0.4): código, modos, plazos y límites del Worker. Entra en el hash. */
+  room: {
+    codeLength: 4,
+    /** Sin I ni O (se confunden con 1 y 0). */
+    codeAlphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ',
+    defaultMode: 'standard' as MatchMode,
+    gamesToWin: { quick: 1, standard: 2, full: 3 },
+    readyHoldMs: 600,
+    countdownMs: 3000,
+    betweenGamesMs: 4000,
+    warmupTimeoutMs: 180000,
+    warmupWarnMs: 150000,
+    reconnectMs: 30000,
+    resumeCountdownMs: 3000,
+    nameMaxLength: 16,
+    rate: { burst: 200, perSecond: 100 },
+    maxMessageBytes: 16384,
+  },
+
   /** Presentación (solo cliente). */
   presentation: {
+    /** Prueba de lectura del servicio rival (no entra en el hash). */
+    readTest: { shots: 30, autoReturn: { perfect: 0.5, good: 0.3, weakLate: 0.2 } },
     camera: { fov: 46, pos: [0, 1.78, 3.45] as [number, number, number], lookAt: [0, 0.72, -0.35] as [number, number, number] },
     /** La bola real (40 mm) es casi invisible desde la cámara trasera: escala SOLO visual. */
     ballVisualScale: 1.5,
@@ -575,6 +596,8 @@ export const DEFAULT_CONFIG = {
 };
 
 export type GameConfig = typeof DEFAULT_CONFIG;
+/** Duración de un partido de sala: games a ganar 1 / 2 / 3. */
+export type MatchMode = 'quick' | 'standard' | 'full';
 export type BotDifficulty = keyof GameConfig['bot']['difficulties'];
 
 type DeepPartial<T> = T extends readonly unknown[] ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;

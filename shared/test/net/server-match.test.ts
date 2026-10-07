@@ -52,8 +52,8 @@ describe('ServerMatch: autoridad por eventos [§17.2, §17.3]', () => {
     const { server, take } = setup();
     server.start(0);
     expect(take()).toEqual([
-      { to: 0, msg: { k: 'start', fs: 0 } },
-      { to: 1, msg: { k: 'start', fs: 0 } },
+      { to: 0, msg: { k: 'start', fs: 0, n: 0, wu: 0, g: 1, sc: [0, 0], ns: 0 } },
+      { to: 1, msg: { k: 'start', fs: 0, n: 0, wu: 0, g: 1, sc: [0, 0], ns: 0 } },
     ]);
   });
 
@@ -212,8 +212,8 @@ describe('ServerMatch: autoridad por eventos [§17.2, §17.3]', () => {
     expect(server.over).toBe(true);
     server.receive(1, { k: 'again' }, now + 5000);
     expect(take()).toEqual([
-      { to: 0, msg: { k: 'start', fs: 0 } },
-      { to: 1, msg: { k: 'start', fs: 0 } },
+      { to: 0, msg: { k: 'start', fs: 0, n: 0, wu: 0, g: 1, sc: [0, 0], ns: 0 } },
+      { to: 1, msg: { k: 'start', fs: 0, n: 0, wu: 0, g: 1, sc: [0, 0], ns: 0 } },
     ]);
     expect(server.score).toEqual([0, 0]);
   });

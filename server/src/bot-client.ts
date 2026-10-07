@@ -48,11 +48,11 @@ export class BotClient {
   }
 
   start(): void {
-    const ws = new WebSocket(this.opts.url);
+    const ws = new WebSocket(this.opts.room ? `${this.opts.url}?room=${encodeURIComponent(this.opts.room)}` : this.opts.url);
     this.ws = ws;
     ws.on('open', () => {
       const o = this.opts;
-      this.send({ k: 'hello', v: PROTOCOL_VERSION, h: configHash(o.cfg), r: o.role, ...(o.room ? { room: o.room } : {}), p: o.ping, bp: o.botping, j: o.jitter, d: o.difficulty, s: o.botSeed ?? o.seed, o: 0, ...(o.firstServer !== undefined ? { fs: o.firstServer } : {}) });
+      this.send({ k: 'hello', v: PROTOCOL_VERSION, h: configHash(o.cfg), r: o.role, nm: o.role === 'bot' ? 'Bot' : 'Jugador', p: o.ping, bp: o.botping, j: o.jitter, sp: 0, d: o.difficulty, s: o.botSeed ?? o.seed, o: 0, ...(o.firstServer !== undefined ? { fs: o.firstServer } : {}) });
     });
     ws.on('message', (data) => {
       const text = String(data);

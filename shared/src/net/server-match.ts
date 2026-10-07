@@ -105,7 +105,7 @@ export class ServerMatch {
     this.flight = null;
     this.record.winner = null;
     this.whiffs[0] = this.whiffs[1] = null;
-    this.both({ k: 'start', fs: this.firstServer });
+    this.both({ k: 'start', fs: this.firstServer, n: this.n, wu: 0, g: 1, sc: [0, 0], ns: this.firstServer });
   }
 
   receive(from: Side, msg: C2S, now: number): void {
