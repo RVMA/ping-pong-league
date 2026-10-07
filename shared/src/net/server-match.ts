@@ -9,7 +9,8 @@
  *
  * En una sala (V0.4, §14) es la `GameAuthority` que maneja la sala:
  *  - práctica (warm-up, §14.2): el punto no suma, saca quien perdió la bola (en un let, el mismo) y nunca acaba;
- *  - número de rally monótono: empieza en `n0` y nunca vuelve atrás, así lo de un rally anterior siempre es pasado;
+ *  - número de rally monótono: empieza en `n0` y nunca vuelve atrás; lo de un rally anterior a `n0` o cortado por la
+ *    pausa es pasado y se ignora sin contar como rechazo (lo tardío de un rally que acabó en punto aquí sí lo es);
  *  - pausa: corta el rally en juego sin punto y descarta lanzamientos, golpes y `end` hasta reanudar; al reanudar
  *    manda `start` con el marcador, el saque y el número de rally actuales;
  *  - receptor ausente (§14.4, P56): el punto se cierra al acabar el vuelo que le llega, sin el respaldo de 3 s;
@@ -32,8 +33,12 @@ export interface MatchRecord {
   points: { n: number; winner: Side | -1; reason: PointReason | 'LET'; score: [number, number] }[];
   hits: { n: number; f: number; player: Side; tier: QualityTier; type: ShotType; dtMs: number; serve: boolean }[];
   rejected: { from: Side; kind: string; why: string }[];
-  /** Descartados sin culpa del jugador (llegaron con la partida en pausa): no son rechazos ni discrepancias. */
-  ignored: { from: Side; kind: string; why: 'paused' }[];
+  /**
+   * Descartados sin culpa del jugador, que no son rechazos ni discrepancias: llegaron con la partida en pausa
+   * ('paused') o son de un rally pasado que no acabó en punto aquí, uno anterior a `n0` o uno cortado por la pausa
+   * ('past'). Lo tardío de un rally que sí acabó en punto en esta autoridad es un rechazo ('stale').
+   */
+  ignored: { from: Side; kind: string; why: 'paused' | 'past' }[];
   /** CPU del servidor por golpe (validar, recalcular y calcular el vuelo nuevo), ms. */
   hitCpuMs: number[];
   winner: Side | null;
@@ -85,7 +90,7 @@ export interface GameAuthority {
   nextDeadline(): number;
   /** Hay un vuelo en juego: el marcador aún puede cambiar. */
   readonly busy: boolean;
-  /** n del rally en juego o, si no hay, del próximo. */
+  /** n del próximo rally, el primero que nadie ha usado: con un vuelo en juego, el siguiente al suyo. */
   readonly rally: number;
   readonly score: [number, number];
   readonly record: MatchRecord;
@@ -132,6 +137,10 @@ export class ServerMatch implements GameAuthority {
   private phase: Phase = 'idle';
   private paused = false;
   private n = 0;
+  /** Primer rally de este game: lo anterior es de otra autoridad (pasado). */
+  private n0 = 0;
+  /** Rallies cortados por la pausa sin punto: lo que llegue de ellos también es pasado. */
+  private readonly cut = new Set<number>();
   private server: Side;
   private sc: [number, number] = [0, 0];
   private rallyState: RallyState = newRally();
@@ -171,7 +180,7 @@ export class ServerMatch implements GameAuthority {
   }
 
   get rally(): number {
-    return this.n;
+    return this.phase === 'flight' ? this.n + 1 : this.n;
   }
 
   /** Empieza un game: con `g`, el que dice la sala; sin él, el modo bot de V0.3 (0-0 desde el rally 0). */
@@ -194,6 +203,8 @@ export class ServerMatch implements GameAuthority {
       this.sc = [0, 0];
       this.server = this.botFirstServer;
     }
+    this.n0 = this.n;
+    this.cut.clear();
     this.paused = false;
     this.record.winner = null;
     this.toServeHold();
@@ -229,6 +240,7 @@ export class ServerMatch implements GameAuthority {
     if (this.phase !== 'serveHold' && this.phase !== 'flight') return;
     // El rally en juego (o el que iba a empezar) se corta sin punto: lo que llegue de él ya es pasado.
     if (this.phase === 'flight') this.log(`pausa: rally ${this.n} cortado en el vuelo ${this.f}`);
+    this.cut.add(this.n);
     this.n += 1;
     this.toServeHold();
   }
@@ -280,8 +292,17 @@ export class ServerMatch implements GameAuthority {
     this.log(`descartado ${kind} del lado ${from}: ${why}`);
   }
 
-  private ignore(from: Side, kind: string): void {
-    this.record.ignored.push({ from, kind, why: 'paused' });
+  /**
+   * Lanzamiento, golpe o `end` que no llega a la autoridad, sin contar como rechazo: con la partida en pausa, o de un
+   * rally pasado que no acabó en punto aquí (anterior a `n0`, o cortado por la pausa). Devuelve si se descartó.
+   */
+  private ignored(from: Side, kind: string, n: number): boolean {
+    let why: 'paused' | 'past';
+    if (this.paused) why = 'paused';
+    else if (n < this.n0 || this.cut.has(n)) why = 'past';
+    else return false;
+    this.record.ignored.push({ from, kind, why });
+    return true;
   }
 
   private handle(from: Side, msg: C2S, now: number): void {
@@ -303,11 +324,11 @@ export class ServerMatch implements GameAuthority {
         return;
       }
       case 'toss':
-        if (this.paused) return this.ignore(from, 'toss');
+        if (this.ignored(from, 'toss', msg.n)) return;
         this.onToss(from, msg.n, msg.x / 1000, msg.z / 1000, msg, now);
         return;
       case 'hit':
-        if (this.paused) return this.ignore(from, 'hit');
+        if (this.ignored(from, 'hit', msg.n)) return;
         this.onHit(from, msg, now);
         return;
       case 'wf':
@@ -316,7 +337,8 @@ export class ServerMatch implements GameAuthority {
         if (msg.n === this.n) this.send(other(from), { k: 'wf', n: msg.n, f: msg.f, t: msg.t, p: from });
         return;
       case 'end':
-        if (this.paused) return this.ignore(from, 'end');
+        if (this.ignored(from, 'end', msg.n)) return;
+        // Lo tardío de un rally que acabó en punto aquí sí es un rechazo: el receptor y el servidor no coincidieron.
         if (this.phase !== 'flight' || !this.flight || msg.n !== this.n || msg.f !== this.f || this.flight.receiver !== from) {
           this.reject(from, 'end', 'stale');
           return;

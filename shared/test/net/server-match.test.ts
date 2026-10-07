@@ -326,16 +326,18 @@ describe('ServerMatch como GameAuthority de una sala (V0.4)', () => {
     expect(take()[0].msg).toEqual({ k: 'start', fs: 1, n: 60, wu: 1, g: 0, sc: [0, 0], ns: 1 });
   });
 
-  it('(c) n monótono: el primer toss válido es el del rally n0; lo de un rally anterior se descarta como «stale»', () => {
+  it('(c) n monótono: el primer toss válido es el del rally n0; lo de un rally anterior a n0 es pasado (ignorado, no rechazo)', () => {
     const { server, take } = setup();
     server.start(0, { firstServer: 0, n0: 37, practice: false, game: 1 });
     take();
     server.receive(0, tossMsg(0, 0, 0), 100);
     server.receive(0, tossMsg(36, 0, 0), 100);
+    server.receive(1, { k: 'end', n: 36, f: 3 }, 100);
     expect(take()).toEqual([]);
-    expect(server.record.rejected).toEqual([
-      { from: 0, kind: 'toss', why: 'stale' },
-      { from: 0, kind: 'toss', why: 'stale' },
+    expect(server.record.ignored).toEqual([
+      { from: 0, kind: 'toss', why: 'past' },
+      { from: 0, kind: 'toss', why: 'past' },
+      { from: 1, kind: 'end', why: 'past' },
     ]);
     server.receive(0, tossMsg(37, 0, 0), 1000);
     expect(take()).toEqual([{ to: 1, msg: tossMsg(37, 0, 0) }]);
@@ -343,13 +345,57 @@ describe('ServerMatch como GameAuthority de una sala (V0.4)', () => {
     const input = serveInput(tossFlight(0, 0), 0, 0, 0);
     server.receive(0, hitMsg(36, 0, input), 1000 + input.t + 20);
     expect(take()).toEqual([]);
-    expect(server.record.rejected.at(-1)).toEqual({ from: 0, kind: 'hit', why: 'stale' });
+    expect(server.record.ignored.at(-1)).toEqual({ from: 0, kind: 'hit', why: 'past' });
+    expect(server.record.rejected).toEqual([]);
     expect(server.busy).toBe(true);
     server.receive(0, hitMsg(37, 0, input), 1000 + input.t + 25);
     expect(take().find((o) => o.msg.k === 'fl')?.msg).toMatchObject({ n: 37, f: 1 });
     server.receive(1, { k: 'end', n: 37, f: 1 }, 4000);
     expect(take().find((o) => o.msg.k === 'pt')?.msg).toMatchObject({ n: 37, w: 0, sc: [1, 0] });
     expect(server.rally).toBe(38);
+    expect(server.record.rejected).toEqual([]);
+  });
+
+  it('un mensaje tardío de un rally que acabó en punto en este game sí es un rechazo («stale»): es una discrepancia', () => {
+    const { server, take } = setup();
+    server.start(0, { firstServer: 0, n0: 37, practice: false, game: 1 });
+    server.receive(0, tossMsg(37, 0.1, 0), 1000);
+    take();
+    // El respaldo cierra el punto y luego llega el `end` del que debía golpear.
+    server.poll(1000 + tossFlight(0, 0.1).end.i * tick + cfg.net.timers.fallbackMs);
+    expect(take().find((o) => o.msg.k === 'pt')?.msg).toMatchObject({ n: 37, r: 'TOSS_MISSED' });
+    server.receive(0, { k: 'end', n: 37, f: 0 }, 5000);
+    server.receive(0, tossMsg(37, 0.1, 0), 5000);
+    expect(take()).toEqual([]);
+    expect(server.record.rejected).toEqual([
+      { from: 0, kind: 'end', why: 'stale' },
+      { from: 0, kind: 'toss', why: 'stale' },
+    ]);
+    expect(server.record.ignored).toEqual([]);
+  });
+
+  it('rally es siempre el próximo n sin usar: con un vuelo en juego, el siguiente al suyo', () => {
+    const { server, take } = setup();
+    server.start(0, { firstServer: 0, n0: 37, practice: false, game: 1 });
+    expect(server.rally).toBe(37);
+    server.receive(0, tossMsg(37, 0, 0), 1000);
+    expect(server.busy).toBe(true);
+    expect(server.rally).toBe(38);
+    const input = serveInput(tossFlight(0, 0), 0, 0, 0);
+    server.receive(0, hitMsg(37, 0, input), 1000 + input.t + 20);
+    expect(take().some((o) => o.msg.k === 'fl')).toBe(true);
+    expect(server.busy).toBe(true);
+    expect(server.rally).toBe(38);
+    server.receive(1, { k: 'end', n: 37, f: 1 }, 4000);
+    expect(server.busy).toBe(false);
+    expect(server.rally).toBe(38);
+    // Otra autoridad sembrada con él en mitad de un vuelo no reutiliza el rally en juego.
+    server.receive(0, tossMsg(38, 0, 0), 9000);
+    const next = setup();
+    next.server.start(0, { firstServer: 0, n0: server.rally, practice: true, game: 0 });
+    next.server.receive(0, tossMsg(38, 0, 0), 9100);
+    expect(next.take().filter((o) => o.msg.k === 'toss')).toEqual([]);
+    expect(next.server.record.ignored).toEqual([{ from: 0, kind: 'toss', why: 'past' }]);
   });
 
   it('(d) pause descarta toss/hit/end sin contarlos como rechazos; resume manda start con el marcador, el saque y el n siguiente', () => {
@@ -387,6 +433,11 @@ describe('ServerMatch como GameAuthority de una sala (V0.4)', () => {
       { to: 0, msg: { k: 'start', fs: 0, n: 13, wu: 0, g: 1, sc: [7, 5], ns } },
       { to: 1, msg: { k: 'start', fs: 0, n: 13, wu: 0, g: 1, sc: [7, 5], ns } },
     ]);
+    // Un lanzamiento del rally cortado (12) que cruza el `start` es pasado: ignorado, no rechazo.
+    server.receive(at.srv, tossMsg(12, 0, at.srv), at.now + 5010);
+    expect(take()).toEqual([]);
+    expect(server.record.ignored.at(-1)).toEqual({ from: at.srv, kind: 'toss', why: 'past' });
+    expect(server.record.rejected).toHaveLength(rejected);
     // El juego sigue en el rally 13 desde 7-5.
     const pm = playPoint(server, take, ns, 1, 13, at.now + 6000);
     expect(pm).toMatchObject({ n: 13, sc: [7, 6], go: -1 });
@@ -402,6 +453,7 @@ describe('ServerMatch como GameAuthority de una sala (V0.4)', () => {
     server.receive(0, tossMsg(5, 0, 0), 1000);
     take();
     expect(server.busy).toBe(true);
+    expect(server.rally).toBe(6);
     expect(server.nextDeadline()).toBeLessThan(Number.POSITIVE_INFINITY);
     server.pause();
     expect(server.busy).toBe(false);
@@ -415,10 +467,18 @@ describe('ServerMatch como GameAuthority de una sala (V0.4)', () => {
       { k: 'start', fs: 0, n: 6, wu: 1, g: 0, sc: [0, 0], ns: 0 },
       { k: 'start', fs: 0, n: 6, wu: 1, g: 0, sc: [0, 0], ns: 0 },
     ]);
+    // Lo del rally cortado que cruza el `start` es pasado: se ignora, no es un rechazo.
     server.receive(0, { k: 'end', n: 5, f: 0 }, 61010);
+    server.receive(0, tossMsg(5, 0, 0), 61020);
     expect(take()).toEqual([]);
-    expect(server.record.rejected.at(-1)).toEqual({ from: 0, kind: 'end', why: 'stale' });
+    expect(server.record.ignored).toEqual([
+      { from: 0, kind: 'end', why: 'paused' },
+      { from: 0, kind: 'end', why: 'past' },
+      { from: 0, kind: 'toss', why: 'past' },
+    ]);
+    expect(server.record.rejected).toEqual([]);
     expect(points).toEqual([]);
+    expect(server.busy).toBe(false);
   });
 
   it('(e) receptor ausente: el punto se cierra en sentAt + end.i·tick con el desenlace del vuelo, sin los 3 s del respaldo', () => {
