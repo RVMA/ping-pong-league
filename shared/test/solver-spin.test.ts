@@ -45,13 +45,15 @@ describe('solver con spin: Magnus dentro de la simulación que resuelve [§7.5]'
   ];
 
   it('bota en el objetivo (±1 cm) con el margen pedido (±5 mm) con topspin, backspin y lateral', () => {
+    // Mide la precisión del Newton, no el tope de P54: con 450 rad/s y margen 0.06 desde (−0.9, 0.45 m, 2.3) pide 40 m/s.
+    const free = makeConfig({ shotTypes: { solverMaxSpeed: 60 } });
     for (const start of starts) {
       const sgn = start.z > 0 ? 1 : -1;
       for (const [top, side] of spins) {
         for (const clearance of [0.06, 0.2]) {
           const landing = { x: -0.35 * sgn, z: -sgn * 1.05 };
           const spin = spinFor(start, landing, top, side);
-          const sol = solveShot(start, { landing, clearance, serve: false, spin }, env, dt, cfg);
+          const sol = solveShot(start, { landing, clearance, serve: false, spin }, env, dt, free);
           expect(sol.converged, `top=${top} side=${side} c=${clearance} start=${JSON.stringify(start)}`).toBe(true);
           const r = fly(start, sol.vel, spin);
           expect(r.net).toBe(false);

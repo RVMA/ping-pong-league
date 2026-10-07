@@ -21,6 +21,7 @@ interface Acc {
   h: number[];
   clr: number[];
   capped: number;
+  maxV: number;
   parts: Record<string, number>;
 }
 const byType: Record<string, Acc> = {};
@@ -32,6 +33,7 @@ const endByLastType: Record<string, Record<string, number>> = {};
 const causes: Record<string, number> = {};
 const blockedFrom: Record<string, number> = {};
 const whiffWhy: Record<string, number> = {};
+let maxExit = 0;
 
 for (let g = 0; g < games; g++) {
   const seed = seed0 + g * 101;
@@ -51,9 +53,12 @@ for (let g = 0; g < games; g++) {
         lastT = sim.now;
         hits++;
         const key = e.serve ? 'SERVE' : e.targets.type;
-        const a = (byType[key] ??= { n: 0, speed: [], h: [], clr: [], capped: 0, parts: {} });
+        const a = (byType[key] ??= { n: 0, speed: [], h: [], clr: [], capped: 0, maxV: 0, parts: {} });
         a.n++;
         a.speed.push(Math.hypot(sim.state.ball.vel.x, sim.state.ball.vel.z));
+        const v3 = Math.hypot(sim.state.ball.vel.x, sim.state.ball.vel.y, sim.state.ball.vel.z);
+        a.maxV = Math.max(a.maxV, v3);
+        maxExit = Math.max(maxExit, v3);
         a.h.push(e.pos.y - cfg.world.tableHeight);
         a.clr.push(e.targets.clearance);
         if ((e.targets.parts.clearance.paceCap ?? 0) > 0) a.capped++;
@@ -107,6 +112,7 @@ for (const [k, a] of Object.entries(byType)) {
     `${k.padEnd(8)} n=${String(a.n).padStart(4)}  v ${avg(a.speed).toFixed(1)} m/s (real ${(avg(a.speed) * cfg.sim.gameSpeed).toFixed(1)})  h ${avg(a.h).toFixed(2)} [p10 ${pct(a.h, 0.1).toFixed(2)} p90 ${pct(a.h, 0.9).toFixed(2)}]  margen ${avg(a.clr).toFixed(3)}  techo ${Math.round((100 * a.capped) / a.n)} %  partes: ${parts}`,
   );
 }
+console.log(`velocidad de salida máxima (módulo 3D, m/s de simulación): ${maxExit.toFixed(1)}  por tipo: ${Object.entries(byType).map(([k, a]) => `${k} ${a.maxV.toFixed(1)}`).join(', ')}`);
 console.log('fin del punto según el último golpe:', JSON.stringify(endByLastType));
 const named = Object.entries(causes).filter(([k]) => !k.endsWith('UNKNOWN')).reduce((a, [, v]) => a + v, 0);
 const all = Object.values(causes).reduce((a, b) => a + b, 0);

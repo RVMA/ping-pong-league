@@ -180,6 +180,12 @@ export const DEFAULT_CONFIG = {
       { dt: 60, clearance: 0.3, depth: 0.74 },
       { dt: 120, clearance: 0.55, depth: 0.68 },
     ] as ShotCurvePoint[],
+    /**
+     * ✅ Profundidad mínima del bote pedido, en fracción de media mesa [§7.5, P54]. Un golpe muy pronto no puede pedir
+     * botar en tu propia mitad (profundidad negativa: el solver devolvía ~151 m/s); la parte `minDepth` sube la suma
+     * hasta este valor y la bola va a la red, que es la consecuencia legible del §4.3.
+     */
+    minLandingDepth: 0.05,
     /** Golpear la bola muy baja reduce el margen sobre la red ("posición desfavorable" §6.1). */
     lowContactRefHeight: 0.12,
     lowContactPenaltyPerM: 0.6,
@@ -307,6 +313,13 @@ export const DEFAULT_CONFIG = {
      * solver no tendría solución.
      */
     maxPace: 20,
+    /**
+     * ✅ Tope del módulo de la velocidad que puede devolver el solver (m/s de simulación) [§7.5, P54]. Si el Newton
+     * pidiera más (objetivo imposible, p. ej. un topspin débil muy pronto que botaría casi en la red), la velocidad se
+     * escala a este módulo y `converged` pasa a false: la bola sale a un ritmo razonable y acaba en la red. Los golpes
+     * normales quedan muy por debajo (el smash medio de V0.3 sale a ~13 m/s).
+     */
+    solverMaxSpeed: 25,
   },
 
   /**

@@ -34,11 +34,13 @@ describe('solver de tiro', () => {
   const clearances = [0.05, 0.15, 0.4];
 
   it('bota en el objetivo (±1 cm) con el margen pedido (±5 mm) desde posiciones variadas', () => {
+    // Mide la precisión del Newton, no el tope de P54: desde (−0.9, 0.6 m, 2.4) con margen 0.05 pide 25.3 m/s, por encima de solverMaxSpeed.
+    const free = makeConfig({ shotTypes: { solverMaxSpeed: 60 } });
     for (const start of starts) {
       for (const clearance of clearances) {
         const sgn = start.z > 0 ? 1 : -1;
         const landing = { x: -0.3 * sgn, z: -sgn * 1.0 };
-        const sol = solveShot(start, { landing, clearance, serve: false }, env, dt, cfg);
+        const sol = solveShot(start, { landing, clearance, serve: false }, env, dt, free);
         expect(sol.converged).toBe(true);
         const c = tableContacts(start, sol.vel).find((k) => k.kind === 'table')!;
         expect(Math.abs(c.pos.x - landing.x)).toBeLessThan(0.01);

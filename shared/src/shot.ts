@@ -32,7 +32,7 @@ export type ClearancePart =
   | 'paceCap'
   | 'floor';
 /** Partes de la profundidad del bote (fracción de media mesa). */
-export type DepthPart = 'base' | 'timing' | 'power' | 'powerLate' | 'smashLow' | 'blockSpin';
+export type DepthPart = 'base' | 'timing' | 'power' | 'powerLate' | 'smashLow' | 'blockSpin' | 'minDepth';
 /** Partes del lateral del bote (m, coordenadas de quien golpea; + = su derecha). */
 export type LateralPart = 'base' | 'aim' | 'angleRisk' | 'edge';
 
@@ -298,6 +298,9 @@ export function planShot(
     // «Golpe fuerte y tarde → larga»: riesgo del topspin, no de la potencia (tarde nunca es un golpe completo).
     const late = type === 'TOPSPIN' && dt > 0 ? timingErrorFraction(dt, cfg) * st.topspin.lateLong : 0;
     if (late > 0) dp.powerLate = late;
+    // P54 [§7.5]: la profundidad pedida nunca baja del mínimo (un golpe muy pronto iría a la red, no a tu mitad).
+    const depthSum = sumParts(dp);
+    if (depthSum < cfg.shot.minLandingDepth) dp.minDepth = cfg.shot.minLandingDepth - depthSum;
     landing = { x: lateral * sgn, z: -sgn * sumParts(dp) * half };
     const anglePen = -cfg.shot.aimClearancePenalty * Math.min(1, Math.abs(cleanAim) / maxX);
     if (anglePen < 0) cp.angle = anglePen;
@@ -550,9 +553,22 @@ export function solveShot(start: Vec3, targets: ShotGoal, env: PhysicsEnv, dt: n
     }
   }
 
+  // P54 [§7.5]: tope de velocidad; si el Newton pidiera más, se escala el módulo y no cuenta como convergido.
+  let vx = dirX * best.vh - dirZ * best.vl;
+  let vy = best.vy;
+  let vz = dirZ * best.vh + dirX * best.vl;
+  const sp = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  const cap = cfg.shotTypes.solverMaxSpeed;
+  const capped = sp > cap;
+  if (capped) {
+    const k = cap / sp;
+    vx *= k;
+    vy *= k;
+    vz *= k;
+  }
   return {
-    vel: { x: dirX * best.vh - dirZ * best.vl, y: best.vy, z: dirZ * best.vh + dirX * best.vl },
-    converged: isConverged(best),
+    vel: { x: vx, y: vy, z: vz },
+    converged: isConverged(best) && !capped,
     clearanceError: best.ec,
     landingError: best.el,
     lateralError: best.eq,

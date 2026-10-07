@@ -1,0 +1,19 @@
+c393fe9
+npm run sim -- medium medium 7
+bots: medium vs medium  seed=7  gameSpeed=0.75
+resultado: 11-9  fase=gameOver  tiempo=157.3 s
+golpes/punto (incl. saque): media 6.15, máx 22
+ms entre golpes (media): 778
+motivos de punto: { TOSS_MISSED: 3, MISSED: 10, DOUBLE_BOUNCE: 1, OUT: 2, NET: 4 } lets: 0
+calidades: { WHIFF: 12, PERFECT: 38, GOOD: 63, WEAK: 22 }
+golpes por tipo (sin saques): { NORMAL: 70, TOPSPIN: 23, SLICE: 6, SMASH: 6, BLOCK: 1 }
+"¿por qué fallé?" (causa de cada punto perdido por error): {
+  WHIFF_EARLY: 4,
+  NO_CLICK: 2,
+  POWER_LATE: 1,
+  EARLY: 4,
+  WHIFF_POSITION: 4,
+  WHIFF_LATE: 1,
+  SLICE_EARLY: 1
+}
+stats: [{"hits":62,"perfect":20,"good":33,"weak":9,"whiffs":5,"maxStreak":2,"netErrors":3,"outErrors":0,"points":11,"types":{"NORMAL":35,"TOPSPIN":10,"SLICE":3,"SMASH":5,"BLOCK":1}},{"hits":61,"perfect":18,"good":30,"weak":13,"whiffs":7,"maxStreak":5,"netErrors":1,"outErrors":2,"points":9,"types":{"NORMAL":35,"TOPSPIN":13,"SLICE":3,"SMASH":1,"BLOCK":0}}]
