@@ -15,7 +15,7 @@ golpe empieza tu vuelo al instante (sin esperar a la red), el golpe del rival em
 a velocidad real, y la bola que se aleja se frena en tu pantalla lo justo para llegar a su raqueta cuando llega su golpe.
 Nadie pierde tiempo de reacción ni precisión por el ping; a cambio, los rallies duran algo más.
 
-- Diseño vigente (v4): [`ping_pong_pvp_gameplay_design_v4.md`](ping_pong_pvp_gameplay_design_v4.md). Versiones anteriores en [`docs/archive/`](docs/archive/)
+- Diseño vigente (v5): [`ping_pong_pvp_gameplay_design_v5.md`](ping_pong_pvp_gameplay_design_v5.md). Versiones anteriores en [`docs/archive/`](docs/archive/)
 - Análisis de V0.3 y propuestas: [`docs/analisis_v0.3.md`](docs/analisis_v0.3.md) (V0.2 y V0.2b: [`docs/analisis_v0.2.md`](docs/analisis_v0.2.md); V0.1: [`docs/analisis_v0.1.md`](docs/analisis_v0.1.md))
 - Plan de implementación de V0.3: [`docs/superpowers/plans/2026-10-03-v0.3-netcode.md`](docs/superpowers/plans/2026-10-03-v0.3-netcode.md)
 
