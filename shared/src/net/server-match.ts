@@ -410,10 +410,14 @@ export class ServerMatch implements GameAuthority {
       this.closePoint(this.f, fl.end.i, fl.end.outcome);
     };
     const input = hitFromWire(msg);
-    if (!validClickTime(input.t, fl.end.i, now - this.sentAt, this.cfg)) return fail('time');
+    const serve = fl.mode === 'toss';
+    // «No más tarde de lo que pudo verse» solo vale para los vuelos que manda el servidor. El lanzamiento lo empieza el
+    // cliente que saca, y el servidor solo sabe cuándo le llegó el `toss`: un pico de TCP lo retrasa y el golpe llega
+    // justo detrás (FIFO), así que entre los dos parecen pasar menos ms que los que el cliente midió desde su lanzamiento.
+    const seenMs = serve ? Number.POSITIVE_INFINITY : now - this.sentAt;
+    if (!validClickTime(input.t, fl.end.i, seenMs, this.cfg)) return fail('time');
     const w = this.whiffs[from];
     if (w && w.n === this.n && w.f === this.f && input.t < w.t + this.cfg.hit.whiffLockoutMs) return fail('lockout');
-    const serve = fl.mode === 'toss';
     if (!validPaddleBounds(input.pad, from, serve, this.cfg)) return fail('bounds');
     // La raqueta del evento es la del tick en que se procesó el click (hasta un tick después del click).
     const r = this.R + evalTick(input.t, this.tick) * this.tick;

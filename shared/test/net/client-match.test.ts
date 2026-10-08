@@ -222,6 +222,38 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     expect(c.rally).toBe(30);
   });
 
+  it('el último pt del partido y el start del warm-up llegan juntos: se ve el punto y el fin del game, y luego el warm-up', () => {
+    const env = makeEnv(cfg);
+    const c = new ClientMatch(cfg, 1, () => {});
+    c.receive({ k: 'start', fs: 0, n: 40, wu: 0, g: 3, sc: [3, 10], ns: 0 }, 0);
+    c.step(neutralIntent(1.6));
+    // El rival lanza y no saca: el servidor cierra el punto al caer el lanzamiento (3-11, fin del partido) y la sala, en el
+    // mismo instante, manda el start del warm-up. Los dos llegan antes de que mi pantalla vea caer la bola.
+    c.receive({ k: 'toss', n: 40, x: 0, z: 1600, a: 0 }, c.now);
+    c.step(neutralIntent(1.6));
+    const tossExit: BallState = { pos: { x: 0, y: cfg.world.tableHeight + cfg.serve.holdHeight, z: 1.6 }, vel: { x: 0, y: cfg.serve.tossSpeed, z: 0 }, spin: { x: 0, y: 0, z: 0 } };
+    const end = new Flight(cfg, env, tossExit, 'toss', 0, newRally()).end.i;
+    c.receive({ k: 'pt', n: 40, f: 0, i: end, w: 1, r: 'TOSS_MISSED', sc: [3, 11], ns: 1, go: 1 }, c.now);
+    c.receive({ k: 'start', fs: 0, n: 41, wu: 1, g: 0, sc: [0, 0], ns: 0 }, c.now);
+    const seen: { t: number; type: string }[] = [];
+    let point: unknown = null;
+    for (let k = 0; k < 600 && !c.practice; k++) {
+      for (const e of c.step(neutralIntent(1.6))) {
+        if (e.type === 'point') point = { ...e };
+        if (e.type === 'point' || e.type === 'gameOver' || e.type === 'serveReady') seen.push({ t: c.now, type: e.type });
+      }
+    }
+    expect(seen.map((x) => x.type)).toEqual(['point', 'gameOver', 'serveReady']);
+    expect(point).toEqual({ type: 'point', winner: 1, reason: 'TOSS_MISSED', score: [3, 11] });
+    // El punto se queda en pantalla su tiempo antes del warm-up, que empieza entonces (el saque automático cuenta desde ahí).
+    expect(seen[2].t - seen[0].t).toBeGreaterThanOrEqual(cfg.rules.pointDelayMs);
+    expect(c.practice).toBe(true);
+    expect(c.rally).toBe(41);
+    expect(c.state.score).toEqual([0, 0]);
+    expect(c.state.phaseStartMs).toBe(seen[2].t);
+    expect(c.stats.corrections).toBe(0);
+  });
+
   it('en práctica no hay fin de game aunque llegue un pt con ganador', () => {
     const c = new ClientMatch(cfg, 1, () => {});
     c.receive({ k: 'start', fs: 0, n: 3, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);

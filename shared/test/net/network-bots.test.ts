@@ -81,6 +81,25 @@ describe('red en memoria: bots por la red', () => {
     }
   });
 
+  it('regresión: un golpe tardío (su contacto cae al acabar el vuelo) no manda además `end`; el servidor cierra el punto con el golpe', () => {
+    const net = runNetworkMatch({ cfg, seeds: [21, 121], ping: [0, 0], jitter: 0, maxTicks: MAX });
+    const msgs = net.c2s.map((x) => ({ from: x.from, m: decodeC2S(x.text)! }));
+    const flights = new Set(net.s2c.map((x) => JSON.parse(x.text)).filter((m) => m.k === 'fl').map((m) => `${m.n}:${m.f}`));
+    const hits = msgs.filter((x) => x.m.k === 'hit').map((x) => ({ from: x.from, key: x.m.k === 'hit' ? `${x.m.n}:${x.m.f}` : '' }));
+    // Hay un golpe que no abrió vuelo y cuyo rally acabó en ese mismo vuelo (tardío) …
+    const late = hits.filter((h) => {
+      const [n, f] = h.key.split(':').map(Number);
+      return !flights.has(`${n}:${f + 1}`) && net.server.record.points.some((p) => p.n === n);
+    });
+    expect(late.length).toBeGreaterThan(0);
+    // … y nadie manda `end` de un vuelo al que ya respondió con un golpe.
+    const ends = msgs.filter((x) => x.m.k === 'end').map((x) => ({ from: x.from, key: x.m.k === 'end' ? `${x.m.n}:${x.m.f}` : '' }));
+    expect(ends.length).toBeGreaterThan(5);
+    expect(ends.filter((e) => hits.some((h) => h.from === e.from && h.key === e.key))).toEqual([]);
+    expect(net.server.record.rejected).toEqual([]);
+    for (const c of net.clients) expect(c.stats.correctionKinds).toEqual([]);
+  });
+
   it('las teclas de golpe solo viajan dentro del golpe (§13)', () => {
     const net = runNetworkMatch({ cfg, seeds: [7, 8], ping: [100, 100], jitter: 0.1, maxTicks: 120 * 60 });
     let pads = 0;

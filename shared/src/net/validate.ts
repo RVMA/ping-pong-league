@@ -46,7 +46,8 @@ export function validReach(from: { r: number; x: number; z: number } | null, to:
 
 /**
  * Click en `tMs` del vuelo: después de que empiece, no después del paso en que el vuelo acaba (`endIndex`) y no más
- * tarde de lo que pudo verse: desde que el servidor envió el vuelo han pasado `elapsedMs` (más una tolerancia).
+ * tarde de lo que pudo verse: desde que el servidor envió el vuelo han pasado `elapsedMs` (más una tolerancia). El
+ * lanzamiento del saque no lo envía el servidor (lo empieza el cliente): para él, `elapsedMs` = Infinity.
  */
 export function validClickTime(tMs: number, endIndex: number, elapsedMs: number, cfg: GameConfig): boolean {
   if (!(tMs > 0)) return false;

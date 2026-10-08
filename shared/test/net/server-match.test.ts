@@ -159,15 +159,40 @@ describe('ServerMatch: autoridad por eventos [§17.2, §17.3]', () => {
     expect(take().some((o) => o.msg.k === 'fl')).toBe(true);
   });
 
-  it('rechaza un click «en el futuro»', () => {
+  it('rechaza un click «en el futuro»: más tarde de lo que pudo verse el vuelo que mandó el servidor', () => {
     const { server, take } = setup();
     server.start(0);
     server.receive(0, tossMsg(0, 0.1, 0), 1000);
-    take();
     const input = serveInput(tossFlight(0, 0.1), 0, 0.1, 0);
-    server.receive(0, hitMsg(0, 0, input), 1000 + input.t - 200);
+    const sent = 1000 + input.t + 20;
+    server.receive(0, hitMsg(0, 0, input), sent);
+    expect(take().filter((o) => o.msg.k === 'fl')).toHaveLength(2);
+    // El saque salió del servidor en `sent`: un click a 300 ms de su vuelo que llega 100 ms después no pudo verse.
+    const back = quantizeHit({ t: 300, pad: { x: 0, z: -1.6 }, swingVx: 0, keys: {}, block: false, speeds: [], ref: null }, cfg);
+    server.receive(1, hitMsg(0, 1, back), sent + 100);
     expect(take().some((o) => o.msg.k === 'fl')).toBe(false);
-    expect(server.record.rejected.at(-1)?.why).toBe('time');
+    expect(server.record.rejected).toEqual([{ from: 1, kind: 'hit', why: 'time' }]);
+  });
+
+  it('un saque cuyo lanzamiento llegó tarde (pico de TCP, con el golpe justo detrás) no se rechaza: el lanzamiento lo empezó el cliente', () => {
+    const { server, take } = setup();
+    server.start(0);
+    const input = serveInput(tossFlight(0, 0.1), 0, 0.1, 0);
+    // El cliente lanzó en 1000 y golpeó en 1000 + t (ida 50 ms); el toss sufrió un pico de 300 ms y el golpe, sin pico,
+    // llega detrás de él: al servidor le parece que entre los dos pasaron t − 300 ms.
+    server.receive(0, tossMsg(0, 0.1, 0), 1000 + 50 + 300);
+    take();
+    server.receive(0, hitMsg(0, 0, input), 1000 + input.t + 50);
+    expect(server.record.rejected).toEqual([]);
+    expect(take().filter((o) => o.msg.k === 'fl')).toHaveLength(2);
+    // Sigue sin poder golpear después del final del lanzamiento.
+    const late = setup();
+    late.server.start(0);
+    late.server.receive(0, tossMsg(0, 0.1, 0), 1000);
+    const toss = tossFlight(0, 0.1);
+    const after = quantizeHit({ t: toss.end.i * tick + 5, pad: { x: 0.1, z: TOSS_Z }, swingVx: 0, keys: {}, block: false, speeds: [], ref: null }, cfg);
+    late.server.receive(0, hitMsg(0, 0, after), 1000 + after.t + 50);
+    expect(late.server.record.rejected).toEqual([{ from: 0, kind: 'hit', why: 'time' }]);
   });
 
   it('end del receptor cierra el punto; un segundo end se ignora', () => {

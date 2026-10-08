@@ -15,8 +15,9 @@
  *  - La raqueta del rival (30 Hz) se dibuja interpolada en el tiempo que muestra tu pantalla.
  *
  * En una sala (V0.4) el servidor manda `start` al empezar el warm-up, cada game y al reanudar tras una pausa: cada
- * `start` deja el estado que dice (rally, saque, marcador, warm-up, game) y corta sin punto el vuelo que hubiera. En el
- * warm-up (práctica) no hay marcador ni fin de game.
+ * `start` deja el estado que dice (rally, saque, marcador, warm-up, game) y corta sin punto el vuelo que hubiera. Si el
+ * servidor ya cerró el rally que se ve (el último punto del partido, con el `start` del warm-up justo detrás), el
+ * `start` espera a que la pantalla enseñe ese punto. En el warm-up (práctica) no hay marcador ni fin de game.
  *
  * Sin asignaciones por tick en la ruta normal: estados, eventos y anillos reutilizados.
  */
@@ -130,6 +131,8 @@ export class ClientMatch {
   private predicted: { w: Side | -1; r: PointReason | 'LET' } | null = null;
   private waitingServer = false;
   private resumed = false;
+  /** Hay un `start` esperando a que se vea el punto en pantalla (showingPoint). */
+  private startHeld = false;
   // Raqueta rival (anillo reutilizado).
   private readonly pads: PadSlot[] = Array.from({ length: PAD_RING }, () => ({ n: -1, r: -1, x: 0, z: 0 }));
   private padHead = 0;
@@ -373,7 +376,14 @@ export class ClientMatch {
 
   private applyInbox(t: number): void {
     while (this.inHead < this.inbox.length && this.inbox[this.inHead].at <= t) {
-      const { msg, at } = this.inbox[this.inHead++];
+      const { msg, at } = this.inbox[this.inHead];
+      if (msg.k === 'start' && this.showingPoint()) {
+        // El fin del partido manda el último `pt` y enseguida el `start` del warm-up: el start espera a que mi pantalla
+        // acabe de enseñar ese punto (y lo que llegó después espera con él, en orden).
+        this.startHeld = true;
+        break;
+      }
+      this.inHead++;
       this.handle(msg, at, t);
     }
     if (this.inHead > 64 && this.inHead * 2 > this.inbox.length) {
@@ -390,7 +400,9 @@ export class ClientMatch {
     }
     switch (msg.k) {
       case 'start':
-        this.applyStart(msg, at, t);
+        // Si esperó a que se viera el punto, empieza ahora y no cuando llegó (el saque automático cuenta desde aquí).
+        this.applyStart(msg, this.startHeld ? t : at, t);
+        this.startHeld = false;
         return;
       case 'toss': {
         if (msg.n !== this.n || s.phase !== 'serveHold' || s.server !== this.rival) return;
@@ -493,6 +505,11 @@ export class ClientMatch {
         rawSwing: { vx: msg.h.vx, vy: 0 },
       });
     }
+  }
+
+  /** El servidor ya cerró el rally que se muestra, pero mi pantalla aún no ha acabado de enseñar su punto. */
+  private showingPoint(): boolean {
+    return this.pointMsg !== null && this.pointMsg.n === this.n && this.state.phase !== 'gameOver';
   }
 
   private correction(kind: string): void {
@@ -760,6 +777,9 @@ export class ClientMatch {
 
   private endPoint(at: number, outcome: FlightOutcome, f: number, i: number, sendEnd: boolean, fromServer = false): void {
     const s = this.state;
+    // Si ya respondí a este vuelo con un golpe (p. ej. tardío: su contacto cae al acabar el vuelo), el servidor cierra el
+    // punto al resolverlo; un `end` detrás sería tardío (un rechazo).
+    const answered = this.myHit !== null && this.myHit.f === f;
     s.paddles[this.side].pending = null;
     this.myHit = null;
     this.rivalSwitch = null;
@@ -778,7 +798,7 @@ export class ClientMatch {
       this.events.push({ type: 'point', winner: outcome.winner, reason: outcome.reason, score: [s.score[0], s.score[1]] });
     }
     this.predicted = outcome.kind === 'let' ? { w: -1, r: 'LET' } : { w: outcome.winner, r: outcome.reason };
-    if (sendEnd) this.send({ k: 'end', n: this.n, f });
+    if (sendEnd && !answered) this.send({ k: 'end', n: this.n, f });
     if (this.pointMsg && this.pointMsg.n === this.n) {
       if (fromServer) {
         const pm = this.pointMsg;
