@@ -10,3 +10,6 @@ export * from './server-match.ts';
 export * from './client-match.ts';
 export * from './route.ts';
 export * from './match.ts';
+export * from './match-stats.ts';
+export * from './rate.ts';
+export * from './room.ts';

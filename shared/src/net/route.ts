@@ -11,6 +11,12 @@ const BOT_ROOM_RE = /^b-[0-9]{1,9}$/;
 // Los separadores de línea (U+2028, U+2029) caen en la clase de espacios y se colapsan con los demás.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: se quitan a propósito
 const STRIP_RE = /[\x00-\x1f\x7f-\x9f<>]/g;
+/**
+ * Invisibles de formato que se quitan sin dejar hueco: anchos cero (U+200B–U+200D, U+2060…), marcas y controles de
+ * dirección (U+200E, U+200F, U+061C, U+202A–U+202E, U+2066–U+2069), otros de U+2060–U+206F y el BOM (U+FEFF). Un nombre
+ * hecho solo de ellos queda vacío y toma el nombre por defecto.
+ */
+const FORMAT_RE = /[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g;
 
 /** Query (`?a=1&b=2`) → mapa; sin lanzar con porcentajes mal formados (ese par se ignora). */
 function parseQuery(search: string): Map<string, string> {
@@ -75,9 +81,12 @@ export function newRoomCode(random: () => number, cfg: GameConfig): string {
   return code;
 }
 
-/** Nombre limpio: sin caracteres de control ni `<>`, espacios colapsados, recortado a nameMaxLength code points (sin partir pares sustitutos); vacío → fallback. */
+/**
+ * Nombre limpio: sin invisibles de formato, caracteres de control ni `<>`, espacios colapsados, recortado a
+ * nameMaxLength code points (sin partir pares sustitutos); vacío → fallback.
+ */
 export function cleanName(raw: string, fallback: string, cfg: GameConfig): string {
-  const t = typeof raw === 'string' ? raw.replace(STRIP_RE, ' ').replace(/\s+/g, ' ').trim() : '';
+  const t = typeof raw === 'string' ? raw.replace(FORMAT_RE, '').replace(STRIP_RE, ' ').replace(/\s+/g, ' ').trim() : '';
   const cut = Array.from(t).slice(0, cfg.room.nameMaxLength).join('').trim();
   return cut || fallback;
 }

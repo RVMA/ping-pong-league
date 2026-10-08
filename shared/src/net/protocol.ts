@@ -252,7 +252,7 @@ export interface PlayerStatsWire {
   pts: number;
 }
 
-/** Fin del partido: ganador, motivo, games ganados, estadísticas y puntos de la prueba de lectura (rj). */
+/** Fin del partido: ganador, motivo, games ganados, estadísticas y rechazos del servidor por lado (rj, diagnóstico). */
 export interface MatchEndMsg {
   k: 'mend';
   w: Side;

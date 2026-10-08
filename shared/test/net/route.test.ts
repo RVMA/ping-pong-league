@@ -52,6 +52,16 @@ describe('cleanName', () => {
     expect(cleanName('\u0000Ana\u0007', 'J', cfg)).toBe('Ana');
     expect(cleanName('Ana  María', 'J', cfg)).toBe('Ana María');
   });
+  it('quita los invisibles de formato (anchos cero, controles de dirección, BOM); solo con ellos → fallback', () => {
+    expect(cleanName('A\u200Bna', 'J', cfg)).toBe('Ana');
+    expect(cleanName('\u202Eana\u202C', 'J', cfg)).toBe('ana');
+    expect(cleanName('\u2066Bea\u2069\uFEFF', 'J', cfg)).toBe('Bea');
+    const invisibles = '\u200B\u200C\u200D\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2060\u2061\u2066\u2067\u2068\u2069\u206F\uFEFF\u061C';
+    expect(cleanName(invisibles, 'Jugador 1', cfg)).toBe('Jugador 1');
+    expect(cleanName(` ${invisibles} \u200B `, 'Jugador 2', cfg)).toBe('Jugador 2');
+    // No cuentan para el límite de 16.
+    expect(cleanName(`${'\u200B'.repeat(20)}Carlos`, 'J', cfg)).toBe('Carlos');
+  });
   it('no parte pares sustitutos', () => {
     expect(cleanName('😀', 'J', cfg)).toBe('😀');
     const n = cleanName('😀'.repeat(20), 'J', cfg);
