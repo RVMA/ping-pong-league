@@ -69,7 +69,7 @@ const players: BotClient[] = [];
 for (let g = 0; g < games; g++) {
   const seed = seed0 + g * 101;
   // Mismas semillas y mismo primer saque que shot-stats (bot 0: seed; bot 1: seed·31 + 1; saca primero g % 2).
-  const c = new BotClient({ url, role: 'player', difficulty: d0, seed, botSeed: seed * 31 + 1, ping, botping: ping, jitter, cfg, firstServer: (g % 2) as 0 | 1 });
+  const c = new BotClient({ url, route: `?bot=${d0}`, role: 'player', difficulty: d0, seed, botSeed: seed * 31 + 1, ping, botping: ping, jitter, cfg, firstServer: (g % 2) as 0 | 1 });
   trackLosses(c);
   players.push(c);
   c.start();
@@ -80,7 +80,7 @@ const hooked = new Set<string>();
 const rooms = new Map<string, { room: import('../src/room.ts').Room; endedAt: number; bytes: { in: number; out: number }[] }>();
 const finished = await new Promise<boolean>((resolve) => {
   const timer = setInterval(() => {
-    for (const r of server.rooms.values()) {
+    for (const r of server.botRooms.values()) {
       if (!rooms.has(r.id)) rooms.set(r.id, { room: r, endedAt: 0, bytes: [] });
       if (r.bot && !hooked.has(r.id)) {
         hooked.add(r.id);
@@ -127,7 +127,7 @@ for (const { room, endedAt, bytes } of rooms.values()) {
     up.push(b.in / secs);
     down.push(b.out / secs);
   }
-  for (const c of [players.find((p) => p.room === room.id), room.bot]) {
+  for (const c of [players.find((p) => p.code === room.id), room.bot]) {
     const st = c?.match?.stats;
     if (!st) continue;
     corrections += st.corrections;

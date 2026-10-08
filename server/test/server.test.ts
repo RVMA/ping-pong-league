@@ -18,9 +18,9 @@ function hello(over: Partial<HelloMsg> = {}): HelloMsg {
   return { k: 'hello', v: PROTOCOL_VERSION, h: configHash(cfg), r: 'player', nm: 'Jugador', p: 0, bp: 0, j: 0, sp: 0, d: 'medium', s: 7, o: 0, ...over };
 }
 
-/** Abre un socket, envía `first` y devuelve los mensajes recibidos hasta que se cierre o pase `ms`. */
+/** Abre un socket (ruta de V0.3: contra el bot), envía `first` y devuelve los mensajes recibidos hasta que se cierre o pase `ms`. */
 async function exchange(port: number, first: string, ms = 1500): Promise<{ msgs: S2C[]; closed: boolean }> {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?bot=medium`);
   const msgs: S2C[] = [];
   let closed = false;
   await new Promise<void>((resolve) => {
@@ -69,12 +69,12 @@ describe('servidor de juego (sockets reales)', () => {
 
   it('un jugador contra el bot que arranca el servidor: se juegan puntos sin rechazos ni correcciones', async () => {
     server = await startServer({ port: 0, cfg, log: () => {} });
-    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, role: 'player', difficulty: 'medium', seed: 7, ping: 0, botping: 0, jitter: 0, cfg });
+    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, route: '?bot=medium', role: 'player', difficulty: 'medium', seed: 7, ping: 0, botping: 0, jitter: 0, cfg });
     const kinds = new Set<string>();
     player.onMessage = (m) => kinds.add(m.k);
     player.start();
-    expect(await until(() => [...(server?.rooms.values() ?? [])].some((r) => r.record.points.length >= 2), 25000)).toBe(true);
-    const room = [...server.rooms.values()][0];
+    expect(await until(() => [...(server?.botRooms.values() ?? [])].some((r) => r.record.points.length >= 2), 25000)).toBe(true);
+    const room = [...server.botRooms.values()][0];
     expect(kinds.has('welcome') && kinds.has('start') && kinds.has('pings')).toBe(true);
     expect(room.record.rejected).toEqual([]);
     expect(player.match?.stats.corrections).toBe(0);
@@ -89,34 +89,34 @@ describe('servidor de juego (sockets reales)', () => {
 
   it('si el jugador se va a mitad de punto, la sala se cierra y el bot se detiene', async () => {
     server = await startServer({ port: 0, cfg, log: () => {} });
-    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, role: 'player', difficulty: 'medium', seed: 3, ping: 0, botping: 0, jitter: 0, cfg });
+    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, route: '?bot=medium', role: 'player', difficulty: 'medium', seed: 3, ping: 0, botping: 0, jitter: 0, cfg });
     player.start();
-    expect(await until(() => (server?.rooms.size ?? 0) === 1 && [...server!.rooms.values()][0].bot?.match?.started === true, 5000)).toBe(true);
-    const room = [...server.rooms.values()][0];
+    expect(await until(() => (server?.botRooms.size ?? 0) === 1 && [...server!.botRooms.values()][0].bot?.match?.started === true, 5000)).toBe(true);
+    const room = [...server.botRooms.values()][0];
     await new Promise((r) => setTimeout(r, 1500));
     player.stop();
-    expect(await until(() => server!.rooms.size === 0, 3000)).toBe(true);
+    expect(await until(() => server!.botRooms.size === 0, 3000)).toBe(true);
     expect(room.bot?.stopped).toBe(true);
   }, 15000);
 
   it('sin conexiones el servidor no deja su bucle en marcha', async () => {
     server = await startServer({ port: 0, cfg, log: () => {} });
     expect(ticker.taskCount).toBe(0);
-    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, role: 'player', difficulty: 'medium', seed: 9, ping: 0, botping: 0, jitter: 0, cfg });
+    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, route: '?bot=medium', role: 'player', difficulty: 'medium', seed: 9, ping: 0, botping: 0, jitter: 0, cfg });
     player.start();
     expect(await until(() => ticker.taskCount > 0, 3000)).toBe(true);
     player.stop();
-    expect(await until(() => server!.rooms.size === 0 && ticker.taskCount === 0, 3000)).toBe(true);
+    expect(await until(() => server!.botRooms.size === 0 && ticker.taskCount === 0, 3000)).toBe(true);
   }, 10000);
 
   it('si el bot se cae, el jugador recibe bye', async () => {
     server = await startServer({ port: 0, cfg, log: () => {} });
-    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, role: 'player', difficulty: 'medium', seed: 5, ping: 0, botping: 0, jitter: 0, cfg });
+    const player = new BotClient({ url: `ws://127.0.0.1:${server.port}/ws`, route: '?bot=medium', role: 'player', difficulty: 'medium', seed: 5, ping: 0, botping: 0, jitter: 0, cfg });
     const got: string[] = [];
     player.onMessage = (m) => got.push(m.k);
     player.start();
-    expect(await until(() => [...(server?.rooms.values() ?? [])][0]?.bot?.match?.started === true, 5000)).toBe(true);
-    [...server.rooms.values()][0].bot!.stop();
+    expect(await until(() => [...(server?.botRooms.values() ?? [])][0]?.bot?.match?.started === true, 5000)).toBe(true);
+    [...server.botRooms.values()][0].bot!.stop();
     expect(await until(() => got.includes('bye'), 3000)).toBe(true);
     player.stop();
   }, 15000);

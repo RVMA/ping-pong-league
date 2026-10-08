@@ -1,11 +1,12 @@
 /**
- * Una partida contra el bot remoto (V0.3) en el servidor: el ServerMatch (autoridad) y las dos conexiones (jugador y
- * bot remoto). Solo transporta: cada mensaje entrante va al ServerMatch con su instante de llegada (ya con la latencia
- * simulada) y cada mensaje del ServerMatch sale por la conexión de su destinatario. Si alguien se va, avisa al otro y
- * se cierra.
+ * Una partida contra el bot remoto (V0.3, ruta `/ws?bot=<dificultad>`, solo en el servidor Node) en una sala `b-<n>`:
+ * el ServerMatch (autoridad) y las dos conexiones (jugador y bot remoto, que entra con `/ws?room=b-<n>` y rol `bot`).
+ * Solo transporta: cada mensaje entrante va al ServerMatch con su instante de llegada (ya con la latencia simulada),
+ * cada mensaje del ServerMatch sale por la conexión de su destinatario y el plazo del ServerMatch se atiende cuando
+ * vence. Si alguien se va, avisa al otro y se cierra.
  *
  * El ServerMatch va en su modo bot (`start` sin GameStart): un game desde el rally 0, y él mismo contesta `ping` y
- * `again`. Las salas de dos personas (V0.4) lo usan en modo sala a través de GameAuthority.
+ * `again`. Las salas de dos personas (V0.4) lo usan en modo sala a través de GameAuthority (room-host.ts).
  */
 import { type GameConfig, type MatchRecord, ServerMatch, type Side } from '@ppp/shared';
 import type { BotClient } from './bot-client.ts';
@@ -51,7 +52,7 @@ export class Room {
   pump(now: number): void {
     this.peers[0]?.pump(now);
     this.peers[1]?.pump(now);
-    if (!this.closed) this.match.poll(now);
+    if (!this.closed && now >= this.match.nextDeadline()) this.match.poll(now);
   }
 
   private leave(side: Side): void {

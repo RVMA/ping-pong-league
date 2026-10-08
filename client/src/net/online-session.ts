@@ -107,7 +107,7 @@ export class OnlineSession implements GameSession {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     let ws: WebSocket;
     try {
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws = new WebSocket(`${proto}://${location.host}/ws?bot=${encodeURIComponent(difficulty)}`);
     } catch (e) {
       this.setStatus('error', `No se pudo conectar: ${(e as Error).message}`);
       return;
