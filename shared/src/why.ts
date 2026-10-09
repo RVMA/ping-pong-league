@@ -125,29 +125,42 @@ function minOf(...v: (number | undefined)[]): number {
 function outCause(t: ShotTargets, ev: HitEvaluation, cfg: GameConfig): WhyCause {
   const halfW = cfg.world.tableWidth / 2;
   const halfL = cfg.world.tableLength / 2;
-  if (Math.abs(t.landing.x) > halfW) {
-    // Partes que empujaron hacia el lado por el que salió (coordenadas de quien golpea).
-    const l = t.parts.lateral;
-    const dir = (l.base ?? 0) + (l.aim ?? 0) + (l.angleRisk ?? 0) + (l.edge ?? 0) >= 0 ? 1 : -1;
-    const over = Math.abs(t.landing.x) - halfW;
-    const push: [WhyCause, number][] = [
-      [t.type === 'SLICE' ? 'SLICE_EARLY' : 'CROSS_EARLY', (l.angleRisk ?? 0) * dir],
-      ['EDGE_WIDE', (l.edge ?? 0) * dir],
-      ['SLICE_ANGLE', t.type === 'SLICE' ? (l.aim ?? 0) * dir : 0],
-    ];
-    return decisive(push, (v) => v >= over, true) ?? (ev.posFrac >= 0.5 ? 'EDGE_WIDE' : 'UNKNOWN');
-  }
-  if (Math.abs(t.landing.z) > halfL) {
-    const d = t.parts.depth;
-    const over = (Math.abs(t.landing.z) - halfL) / halfL;
-    const push: [WhyCause, number][] = [
-      ['POWER_LATE', d.powerLate ?? 0],
-      ['BLOCK_TOPSPIN', d.blockSpin ?? 0],
-      ['POWER_LONG', d.power ?? 0],
-    ];
-    return decisive(push, (v) => v >= over, true) ?? 'UNKNOWN';
-  }
-  return ev.posFrac >= 0.5 ? 'EDGE_WIDE' : 'UNKNOWN';
+  // Cuánto se pasa el bote pedido de la banda (m) y del fondo (fracción de media mesa, como las partes de profundidad).
+  const overX = Math.abs(t.landing.x) - halfW;
+  const overZ = (Math.abs(t.landing.z) - halfL) / halfL;
+  const edge: WhyCause = ev.posFrac >= 0.5 ? 'EDGE_WIDE' : 'UNKNOWN';
+  if (overX > 0) return decisive(widePush(t), (v) => v >= overX, true) ?? edge;
+  if (overZ > 0) return decisive(longPush(t), (v) => v >= overZ, true) ?? 'UNKNOWN';
+  // El bote pedido queda dentro y la bola salió igual: el golpe pedía algo que el solver no puede cumplir (p. ej. un
+  // saque pronto y muy cruzado, con margen negativo sobre la cinta: sale más alto y más largo de lo pedido, en diagonal
+  // hacia la banda) o lo desvió la cinta. Cuenta la parte que acercó el bote a una línea al menos tanto como el margen
+  // que le quedaba (sin ella, quedaría al doble de distancia); primero la línea más cercana. Si ninguna, como antes.
+  const toLine = (push: [WhyCause, number][], margin: number) => decisive(push.filter(([, v]) => v >= margin), () => true, true);
+  const wide = () => toLine(widePush(t), -overX);
+  const long = () => toLine(longPush(t), -overZ);
+  const first = -overX <= -overZ * halfL ? (wide() ?? long()) : (long() ?? wide());
+  return first ?? edge;
+}
+
+/** Partes que empujaron hacia la banda por la que sale el bote pedido (m, coordenadas de quien golpea). */
+function widePush(t: ShotTargets): [WhyCause, number][] {
+  const l = t.parts.lateral;
+  const dir = (l.base ?? 0) + (l.aim ?? 0) + (l.angleRisk ?? 0) + (l.edge ?? 0) >= 0 ? 1 : -1;
+  return [
+    [t.type === 'SLICE' ? 'SLICE_EARLY' : 'CROSS_EARLY', (l.angleRisk ?? 0) * dir],
+    ['EDGE_WIDE', (l.edge ?? 0) * dir],
+    ['SLICE_ANGLE', t.type === 'SLICE' ? (l.aim ?? 0) * dir : 0],
+  ];
+}
+
+/** Partes que alargaron el bote pedido (fracción de media mesa). */
+function longPush(t: ShotTargets): [WhyCause, number][] {
+  const d = t.parts.depth;
+  return [
+    ['POWER_LATE', d.powerLate ?? 0],
+    ['BLOCK_TOPSPIN', d.blockSpin ?? 0],
+    ['POWER_LONG', d.power ?? 0],
+  ];
 }
 
 function diagnoseMissed(inp: WhyInput, cfg: GameConfig): WhyResult {
