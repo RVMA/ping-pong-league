@@ -12,9 +12,15 @@
     "dev": "node scripts/dev.mjs",
     "build": "npm run build -w client",
     "test": "npm run test -w shared && npm run test -w server",
-    "typecheck": "npm run typecheck -w shared && npm run typecheck -w client && npm run typecheck -w server",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w client && npm run typecheck -w server && tsc -p server/tsconfig.worker.json",
     "sim": "node shared/scripts/headless-match.ts",
     "server": "node server/src/main.ts",
-    "room-bots": "node server/scripts/room-bots.ts"
+    "room-bots": "node server/scripts/room-bots.ts",
+    "cf:types": "wrangler types server/worker-configuration.d.ts",
+    "cf:dev": "npm run build && wrangler dev --port 8787",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.149.0"
   }
 }

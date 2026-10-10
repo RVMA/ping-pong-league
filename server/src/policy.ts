@@ -17,6 +17,18 @@ export const ERR_TEXT: Record<ErrCode, string> = {
   route: 'Código de sala no válido',
 };
 
+/** Al crear una sala sin encontrar un código libre (los dos servidores). */
+export const NO_FREE_CODE_TEXT = 'No hay códigos de sala libres: inténtalo otra vez';
+
+/** Textos que solo da el Worker de producción (Decisiones 14 y 20: sin latencia simulada ni bot remoto). */
+export const WORKER_TEXT = {
+  bot: 'Contra el bot se juega en local',
+  latency: 'La latencia simulada solo existe en el servidor de desarrollo',
+  helloLate: 'La conexión no se presentó a tiempo: recarga la página',
+  tooBig: 'Mensaje demasiado grande (16 KB como mucho)',
+  busy: 'El servidor no pudo abrir la sala: inténtalo otra vez',
+} as const;
+
 /** Texto de una ruta mala según su motivo (`parseRoute` → `{ kind: 'bad', why }`). */
 export function routeErrorText(why: string): string {
   switch (why) {

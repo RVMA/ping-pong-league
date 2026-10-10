@@ -1,0 +1,139 @@
+9bd3577 (+ Worker de Task 9, sin commit; se confirma sin cambios en el commit de Task 9)
+wrangler 4.149.0 (workerd 1.20261006.1); compatibility_date 2026-10-10 aceptada por wrangler types, wrangler dev y el
+dry-run sin aviso ni rechazo. Servidor: npm run cf:dev (wrangler dev --port 8787, modo local; sin login ni cuenta).
+
+== 1. Origen ajeno: 403 antes de abrir el socket (comando del brief, sin la barra de progreso de curl)
+curl -i -H "Upgrade: websocket" -H "Connection: Upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Origin: http://evil.example" "http://localhost:8787/ws?create=quick"
+HTTP/1.1 403 Forbidden
+Content-Length: 19
+Content-Type: text/plain;charset=UTF-8
+
+Origen no permitido
+
+== 2. http://localhost:8787/ sirve el cliente (Static Assets); /ws sin WebSocket → 426
+GET / -> 200 text/html; charset=utf-8 1013 B
+GET /assets/index-CmDvLEU5.js -> 200 text/javascript; charset=utf-8 696885 B
+GET /ws -> 426 text/plain;charset=UTF-8 18 B
+Navegador (Chromium, Playwright) en http://localhost:8787/: la página carga y pinta su canvas (1920x897), 0 errores y
+0 avisos en la consola. Desde la página (Origin http://localhost:8787, aceptado):
+  new WebSocket('ws://localhost:8787/ws?bot=medium') → {"k":"err","m":"route","d":"Contra el bot se juega en local"}, cierre 1008
+  new WebSocket('ws://localhost:8787/ws?room=ZZZZ')  → {"k":"err","m":"room","d":"Sala inexistente"}, cierre 1008
+(el `err` llega legible al navegador: Decisión 14).
+
+== 3. Errores legibles, límites, crear/unirse/pestaña duplicada, plazo del hello y vencimiento de una reserva
+node server/scripts/worker-checks.ts ws://localhost:8787/ws
+OK    origen ajeno → 403 antes de abrir → HTTP 403
+OK    origen propio (http://localhost:8787) → se abre → abierto
+OK    ?bot=medium → route: Contra el bot se juega en local (cierre 1008)
+OK    ?room=b-1 (sala de bot de Node) → route: Código de sala no válido (cierre 1008)
+OK    ?room=AB0D → route: Código de sala no válido (cierre 1008)
+OK    ?room=abc (3 letras) → route: Código de sala no válido (cierre 1008)
+OK    ?create=mega → route: Modo de partido no válido (quick, standard o full) (cierre 1008)
+OK    sin ruta → route: Falta la ruta: /ws?create=<modo>, /ws?room=<código> o /ws?bot=<dificultad> (cierre 1008)
+OK    ?room=ZZZZ (sin sala) → room: Sala inexistente (cierre 1008)
+OK    hello con p: 100 → params: La latencia simulada solo existe en el servidor de desarrollo (cierre 1008)
+OK    hello con j: 0.1 → params: La latencia simulada solo existe en el servidor de desarrollo (cierre 1008)
+OK    hello con sp: 0.01 → params: La latencia simulada solo existe en el servidor de desarrollo (cierre 1008)
+OK    hello con r: 'bot' → params: Contra el bot se juega en local (cierre 1008)
+OK    hello con otra config → config: Configuración del juego distinta de la del servidor (¿parámetros de URL como speed o radius?) (cierre 1008)
+OK    primer mensaje que no es hello → proto: Mensaje inválido (cierre 1008)
+OK    crear: welcome con código de 4 letras, lado 0 → {"k":"welcome","v":2,"side":0,"room":"QCUH","tk":"fe2bc5a9-8876-430f-a9b3-c28a137bc324","md":"quick"}
+OK    unirse con el código en minúsculas y espacios: lado 1 y warm-up → {"k":"welcome","v":2,"side":1,"room":"QCUH","tk":"1b2d1dcb-ba50-4a66-8cf5-0b452afac283","md":"quick"} {"k":"start","fs":0,"n":0,"wu":1,"g":0,"sc":[0,0],"ns":0}
+OK    tercer jugador → full: Sala llena (cierre 1008)
+OK    pestaña duplicada: bye a la vieja y la nueva ocupa el lado 0 → {"k":"bye","m":"Conectado desde otra pestaña"} cierre 1000; {"k":"welcome","v":2,"side":0,"room":"QCUH","tk":"fe2bc5a9-8876-430f-a9b3-c28a137bc324","md":"quick"}
+OK    mensaje de más de 16 KB → err y cierre 1009 → proto: Mensaje demasiado grande (16 KB como mucho) (cierre 1009)
+OK    500 mensajes de golpe → err rate y cierre → rate: Demasiados mensajes: conexión cerrada (cierre 1008)
+OK    sin hello en 10 s → proto: La conexión no se presentó a tiempo: recarga la página (cierre 1008)
+      (cerrada a los 10.0 s)
+OK    cerrado por tamaño y nadie más escribe: su hueco se libera a los 30 s → sala esperando rival a los 30.0 s
+todas las comprobaciones OK
+exit 0
+(Comprobación de mutación: con onMessage devolviendo antes de reprogramar el temporizador tras un cierre por tamaño o
+ritmo — el fallo encontrado en la revisión —, la última comprobación da «FALLA … el hueco sigue reservado».)
+
+Registro del Durable Object durante esa corrida (wrangler dev; sin las líneas «GET /ws 101»):
+[wrangler:info] GET /ws 403 Forbidden (6ms)
+[UBWT] sala nueva (quick)
+[UBWT] sala descartada: quien la creaba no entró
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+X [ERROR] Uncaught Error: Network connection lost. 
+[QKZN] sala nueva (quick)
+[QKZN] conexión cerrada: params
+[QKZN] sala descartada: quien la creaba no entró
+[HWGD] sala nueva (quick)
+[HWGD] conexión cerrada: params
+[HWGD] sala descartada: quien la creaba no entró
+[MVSQ] sala nueva (quick)
+[MVSQ] conexión cerrada: params
+[MVSQ] sala descartada: quien la creaba no entró
+[UTTE] sala nueva (quick)
+[UTTE] conexión cerrada: params
+[UTTE] sala descartada: quien la creaba no entró
+[FQRV] sala nueva (quick)
+[FQRV] conexión cerrada: config
+[FQRV] sala descartada: quien la creaba no entró
+[LTTD] sala nueva (quick)
+[LTTD] conexión cerrada: proto
+[LTTD] sala descartada: quien la creaba no entró
+[QCUH] sala nueva (quick)
+[QCUH] join 0
+[QCUH] join 1
+[QCUH] warmup 0
+[QCUH] conexión cerrada: full
+[QCUH] replace 0
+[QCUH] disconnect 1
+[QCUH] conexión cerrada: proto (lado 1)
+[QCUH] disconnect 0
+[QCUH] conexión cerrada: rate (lado 0)
+[SDVE] sala nueva (quick)
+[JXEB] sala nueva (quick)
+[SDVE] join 0
+[SDVE] join 1
+[SDVE] warmup 0
+[SDVE] disconnect 1
+[SDVE] conexión cerrada: proto (lado 1)
+[JXEB] conexión cerrada: proto
+[JXEB] sala descartada: quien la creaba no entró
+X [ERROR] Uncaught Error: Network connection lost. 
+[QCUH] expire 1
+[QCUH] expire 0
+[QCUH] closed
+[QCUH] sala cerrada
+[SDVE] expire 1
+[SDVE] disconnect 0
+
+Cada sala de un creador que no llega a entrar (hello con latencia, otra config, primer mensaje que no es hello, sin
+hello en 10 s, cierre antes del hello) queda «descartada»: el código no se queda ocupado. QCUH y SDVE se cierran al
+vencer las reservas de 30 s.
+
+«Uncaught Error: Network connection lost.»: lo escribe el runtime local (workerd, sin pila; el evento fetch que abrió el
+socket acaba con resultado de excepción) cuando se corta una conexión cuyo cliente NUNCA mandó un mensaje: los 7
+rechazos por socket (6 rutas en el Worker y ZZZZ en el objeto), la sonda del origen propio que cierra en el acto y la
+del hello que no llega. Con un mensaje del cliente antes (cierre por params, config, proto, tamaño, ritmo, full,
+pestaña duplicada, o un cierre del cliente tras el hello) no aparece. Probado una a una; añadir oyentes de error/cierre
+o aplazar el err+cierre no lo cambia. El cliente real manda su hello al abrir, así que en el uso normal no ocurre; la
+sala sigue intacta en todos los casos. En producción se verá, como mucho, como resultado «exception» de esas
+peticiones en la observabilidad.
+
+== 4. Dry-run del despliegue (sin cuenta)
+npx wrangler deploy --dry-run --outdir .wrangler/dry
+
+ ⛅️ wrangler 4.149.0
+────────────────────
+✨ Read 12 files from the assets directory N:\CLAUDE PROJECTS\ping pong masters\client\dist
+Total Upload: 131.14 KiB / gzip: 39.82 KiB
+Your Worker has access to the following bindings:
+Binding                  Resource            
+env.ROOMS (RoomDO)       Durable Object      
+env.ASSETS               Assets              
+
+--dry-run: exiting now.
+exit 0
+Worker: 131.14 KiB (39.82 KiB gzip) frente al límite del plan gratuito de 3 MB comprimido (~1.3 %). El bundle solo
+importa «cloudflare:workers» (ninguna API de Node). Static Assets: 12 archivos de client/dist (944 KB), aparte.

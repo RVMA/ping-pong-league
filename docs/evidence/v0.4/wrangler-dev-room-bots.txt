@@ -1,0 +1,121 @@
+9bd3577 (+ Worker de Task 9, sin commit; se confirma sin cambios en el commit de Task 9)
+ejecutado con el equipo mantenido despierto (SetThreadExecutionState, ver cabecera de room-bots.ts)
+servidor: npm run cf:dev (wrangler 4.149.0, workerd 1.20261006.1, compatibility_date 2026-10-10, modo local)
+node server/scripts/room-bots.ts ws://localhost:8787/ws 5 quick medium medium 7
+room-bots: ws://localhost:8787/ws; 5 partidos quick, medium vs medium, semilla 7, ping 0/0 ms ±0 %, picos 0, gameSpeed 0.75
+# 5 SEKK: 1-0 (11-2), primer saque 0, 82 s, 13 puntos, correcciones 0+0, rj 0+0
+# 1 KKVP: 1-0 (11-8), primer saque 0, 117 s, 19 puntos, correcciones 0+0, rj 0+0
+# 2 DJEZ: 0-1 (9-11), primer saque 0, 147 s, 20 puntos, correcciones 0+0, rj 0+0
+# 3 MMCJ: 1-0 (12-10), primer saque 0, 163 s, 22 puntos, correcciones 0+0, rj 0+0
+# 4 KRXV: 1-0 (12-10), primer saque 1, 184 s, 22 puntos, correcciones 0+0, rj 0+0
+
+partidos acabados: 5/5 (1-0: 5; 5 games); primer saque del partido (sorteo): lado 0 en 4, lado 1 en 1; 3.4 min en total; pausas del proceso de más de 5 s: 0
+golpes/punto (partido, sin warm-up): media 5.73 (mediana 4, p90 14), 96 puntos; referencia local (shot-stats medium medium 30 7): 6.08 → -5.8 %
+motivos: NET 34 (35 %), MISSED 43 (45 %), OUT 12 (13 %), TOSS_MISSED 7 (7 %)
+causas ("¿por qué fallé?"): 89/89 con nombre {"NET:EARLY":32,"MISSED:WHIFF_EARLY":15,"MISSED:WHIFF_LATE":15,"MISSED:WHIFF_POSITION":12,"OUT:POWER_LATE":8,"OUT:SLICE_EARLY":2,"MISSED:NO_CLICK":1,"NET:SMASH_LOW":1,"OUT:CROSS_EARLY":1,"NET:SMASH_EARLY":1,"OUT:EDGE_WIDE":1} ; sin diagnóstico (como en shot-stats): {"TOSS_MISSED":7}
+discrepancias: 0 = 0 correcciones de los clientes + 0 rechazos del servidor (rj de los mend)
+saque: primer saque de cada game alternado en 5/5 partidos; saque de cada punto según las reglas: 182/182 (los dos clientes)
+marcadores iguales en los dos clientes (pt recibidos, puntos enseñados y mend): 5/5 partidos
+duración del partido (del primer start al mend): media 139 s (mín 82, máx 184)
+ping medido: media 1.2 ms, p95 2.0 ms, máx 7.6 ms (802 medidas)
+bytes/s por jugador (partido): subida media 780 (máx 814), bajada media 876 (máx 931)
+mensajes/s por jugador (partido): subida media 31.0 (máx 31.1), bajada media 32.6 (máx 32.6)
+Durable Objects: 11179 peticiones por hora de partido (máx 11183 en un partido) = mensajes entrantes de los dos por hora ÷ 20 + 2 conexiones → 8.9 h de partido al día en el plan gratuito (100000/día)
+frenado de la bola que se aleja: medio 2.0 %, máximo 2.3 % (502 vuelos); mayor salto de la bola en pantalla: 2.0 cm
+criterios: proceso sin pausas OK; 5/5 acabados OK; 0 discrepancias OK; golpes/punto ±10 % OK; 100 % de causas con nombre OK; saque alternado OK; marcadores iguales OK; CPU p99 < 1 ms n/a; subida < 2 KB/s OK; bajada < 3 KB/s OK; Durable Objects ≤ 12 000/h OK
+exit 0
+
+Nota (criterio del coordinador): pasa = 5/5 acabados + 0 discrepancias (+ causas con nombre, saques, marcadores
+iguales, bytes y Durable Objects/h). Golpes/punto (±10 %) es solo una estadística con esta muestra (96 puntos):
+aquí -5.8 %. La CPU por golpe es n/a contra una URL (se mide en el servidor Node).
+
+Registro del Durable Object durante la corrida (wrangler dev; sin las líneas «GET /ws 101»). Una línea por evento de
+sala, ninguna por mensaje. SDVE es la última sala de worker-checks, que vence su reserva aquí. KRXV acaba con
+«disconnect» en vez de «leave»: el script hace execFileSync (referencia local) y process.exit tras el último leave(),
+así que esos marcos no salen; la sala reserva los huecos y se cierra a los 30 s (líneas 697-700 del registro:
+«[KRXV] expire 0», «[KRXV] expire 1», «[KRXV] closed», «[KRXV] sala cerrada»). El «Network connection lost» es del
+runtime local al cortarse esas conexiones (ver worker-checks.txt).
+[KKVP] sala nueva (quick)
+[DJEZ] sala nueva (quick)
+[MMCJ] sala nueva (quick)
+[KRXV] sala nueva (quick)
+[SEKK] sala nueva (quick)
+[KKVP] join 0
+[MMCJ] join 0
+[DJEZ] join 0
+[KRXV] join 0
+[SEKK] join 0
+[KKVP] join 1
+[KKVP] warmup 0
+[DJEZ] join 1
+[DJEZ] warmup 0
+[MMCJ] join 1
+[MMCJ] warmup 0
+[KRXV] join 1
+[KRXV] warmup 0
+[SEKK] join 1
+[SEKK] warmup 0
+[KKVP] ready 1
+[KKVP] ready 0
+[KKVP] countdown
+[KKVP] match 0
+[KKVP] game 1
+[DJEZ] ready 1
+[DJEZ] ready 0
+[DJEZ] countdown
+[SEKK] ready 0
+[SEKK] ready 1
+[SEKK] countdown
+[DJEZ] match 0
+[DJEZ] game 1
+[MMCJ] ready 0
+[MMCJ] ready 1
+[MMCJ] countdown
+[SDVE] expire 0
+[SDVE] closed
+[SDVE] sala cerrada
+[KRXV] ready 0
+[KRXV] ready 1
+[KRXV] countdown
+[SEKK] match 0
+[SEKK] game 1
+[MMCJ] match 0
+[MMCJ] game 1
+[KRXV] match 1
+[KRXV] game 1
+[SEKK] gameover 1 0
+[SEKK] mend 0
+[SEKK] warmup 1
+[SEKK] leave 0
+[SEKK] leave 1
+[SEKK] closed
+[SEKK] sala cerrada
+[KKVP] gameover 1 0
+[KKVP] mend 0
+[KKVP] warmup 1
+[KKVP] leave 0
+[KKVP] leave 1
+[KKVP] closed
+[KKVP] sala cerrada
+[DJEZ] gameover 1 1
+[DJEZ] mend 1
+[DJEZ] warmup 0
+[DJEZ] leave 1
+[DJEZ] leave 0
+[DJEZ] closed
+[DJEZ] sala cerrada
+[MMCJ] gameover 1 0
+[MMCJ] mend 0
+[MMCJ] warmup 1
+[MMCJ] leave 1
+[MMCJ] leave 0
+[MMCJ] closed
+[MMCJ] sala cerrada
+[KRXV] gameover 1 0
+[KRXV] mend 0
+[KRXV] warmup 1
+[KRXV] disconnect 0
+▲ [WARNING] NOSENTRY reporting trace with exception outcome, but no actual exceptions; trace->eventInfo = FetchEventInfo: GET, http://localhost:8787/ws?code=KRXV&create=quick
+X [ERROR] Uncaught Error: Network connection lost. 
+[KRXV] disconnect 1
+X [ERROR] Uncaught Error: Network connection lost. 

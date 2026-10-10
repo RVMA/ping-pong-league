@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ping-pong-masters",
+  "main": "server/src/worker/index.ts",
+  "compatibility_date": "2026-10-10",
+  "assets": { "directory": "./client/dist", "binding": "ASSETS", "run_worker_first": ["/ws"] },
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomDO" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDO"] }],
+  "observability": { "enabled": true }
+}

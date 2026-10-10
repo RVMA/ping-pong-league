@@ -21,7 +21,7 @@ import { type BotDifficulty, type ErrCode, type GameConfig, type HelloMsg, type 
 import { type WebSocket, WebSocketServer } from 'ws';
 import { BotClient } from './bot-client.ts';
 import { Peer } from './peer.ts';
-import { cryptoRandom, DEV_ORIGINS, originAllowed, routeErrorText } from './policy.ts';
+import { cryptoRandom, DEV_ORIGINS, NO_FREE_CODE_TEXT, originAllowed, routeErrorText } from './policy.ts';
 import { Room } from './room.ts';
 import { RoomHost } from './room-host.ts';
 import { ticker } from './ticker.ts';
@@ -111,7 +111,7 @@ export async function startServer(opts: { port: number; cfg?: GameConfig; log?: 
 
   const createRoom = (peer: Peer, mode: MatchMode, hello: HelloMsg, at: number) => {
     const code = freeCode();
-    if (!code) return reject(peer, 'room', 'No hay códigos de sala libres: inténtalo otra vez');
+    if (!code) return reject(peer, 'room', NO_FREE_CODE_TEXT);
     const room = new RoomHost({ cfg, code, mode, log, random: cryptoRandom, newToken: () => crypto.randomUUID() });
     peer.setLatency(hello.p, hello.j, hello.s, spikeOf(hello.sp));
     const res = room.join(peer, hello, at);
