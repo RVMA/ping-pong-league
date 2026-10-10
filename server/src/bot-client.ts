@@ -6,7 +6,8 @@
  *  - el script de partidos por la red (V0.3) lo usa como jugador de `?bot=`;
  *  - en una sala (`?create=<modo>` o `?room=<código>`) juega el warm-up, da a Listo tras `warmupPoints` puntos y juega
  *    el partido; guarda el `mend` en `lastEnd`.
- * Cuenta bytes y mensajes de cada sentido; las correcciones, el ping medido y el frenado están en `match.stats`.
+ * Cuenta bytes y mensajes de cada sentido y guarda cada ping medido (`pings`); las correcciones, la media del ping y el
+ * frenado están en `match.stats`.
  */
 import { Bot, type BotDifficulty, type ByeMsg, type C2S, ClientMatch, configHash, decodeS2C, encode, type ErrMsg, type GameConfig, type MatchEndMsg, type MatchMode, neutralIntent, PROTOCOL_VERSION, type Role, type RoomMsg, type S2C, type Side, type SimEvent } from '@ppp/shared';
 import { WebSocket } from 'ws';
@@ -63,6 +64,8 @@ export class BotClient {
   bytesOut = 0;
   messagesIn = 0;
   messagesOut = 0;
+  /** Cada ping medido (ms de ida y vuelta, como lo mide su ClientMatch), para las estadísticas de los scripts. */
+  readonly pings: number[] = [];
   /** Momento (performance.now) del primer `start`. */
   startedAt = 0;
   onMessage: (msg: S2C) => void = () => {};
@@ -160,6 +163,10 @@ export class BotClient {
         return;
       case 'start':
         if (!this.startedAt) this.startedAt = now;
+        this.match?.receive(msg, now - this.epoch);
+        return;
+      case 'pong':
+        if (this.match) this.pings.push(Math.max(0, now - this.epoch - msg.t));
         this.match?.receive(msg, now - this.epoch);
         return;
       default:

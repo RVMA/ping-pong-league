@@ -1,0 +1,12 @@
+b91efc7 (+ room-bots.ts de Task 8, sin commit)
+node server/scripts/net-bots.ts medium medium 30 7 100 0.1
+medium vs medium (bot remoto), 30 partidos por la red, ping 100 ms ±10 %, gameSpeed 0.75
+golpes/punto: media 6.16 (mediana 4, p90 13), 563 puntos
+motivos: OUT 56 (10 %), MISSED 261 (46 %), NET 214 (38 %), TOSS_MISSED 26 (5 %), DOUBLE_BOUNCE 5 (1 %), OWN_SIDE 1 (0 %)
+causas ("¿por qué fallé?"): 536/536 con nombre {"NET:EARLY":185,"MISSED:WHIFF_LATE":94,"MISSED:WHIFF_EARLY":82,"MISSED:WHIFF_POSITION":68,"OUT:POWER_LATE":35,"MISSED:NO_CLICK":17,"NET:SMASH_LOW":15,"OUT:CROSS_EARLY":10,"NET:SMASH_EARLY":9,"OUT:SLICE_EARLY":7,"DOUBLE_BOUNCE:NO_CLICK":5,"OUT:EDGE_WIDE":3,"NET:TOPSPIN_LOW":2,"NET:BLOCK_FAST_LOW":1,"OWN_SIDE:SMASH_LOW":1,"OUT:SLICE_ANGLE":1,"NET:CROSS_MARGIN":1}
+discrepancias: 0 correcciones de los clientes, 0 rechazos del servidor
+CPU del servidor por golpe: p50 0.118 ms, p99 0.623 ms, máx 14.410 ms (3472 golpes)
+bytes/s por jugador: subida media 776 (máx 810), bajada media 860 (máx 916)
+frenado de la bola que se aleja: medio 26.1 %, máximo 75.0 %
+ping medido: media 121.7 ms; duración media del game 157 s
+(código de salida 0)

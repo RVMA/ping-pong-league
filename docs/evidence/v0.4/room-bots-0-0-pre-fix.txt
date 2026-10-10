@@ -1,0 +1,42 @@
+782f651 (+ room-bots.ts de Task 8, sin commit)
+node server/scripts/room-bots.ts local 20 standard medium medium 7 0 0 0.1
+room-bots: servidor Node en este proceso (puerto 56667); 20 partidos standard, medium vs medium, semilla 7, ping 0/0 ms ±10 %, picos 0, gameSpeed 0.75
+# 7 UPDR: 0-2 (2-11 5-11), primer saque 0, 230 s, 29 puntos, correcciones 0+0, rj 0+0
+# 9 CAPV: 2-0 (11-7 11-7), primer saque 0, 285 s, 36 puntos, correcciones 0+0, rj 0+0
+# 1 GWEC: 0-2 (7-11 7-11), primer saque 1, 306 s, 36 puntos, correcciones 0+0, rj 0+0
+#10 FSDE: 0-2 (7-11 7-11), primer saque 1, 311 s, 36 puntos, correcciones 0+0, rj 0+0
+# 5 AVLL: 2-0 (11-9 14-12), primer saque 1, 342 s, 46 puntos, correcciones 0+0, rj 0+0
+# 3 NUDW: 2-1 (12-10 8-11 11-5), primer saque 0, 425 s, 57 puntos, correcciones 0+0, rj 0+0
+# 4 HMXK: 2-0 (11-9 16-14), primer saque 0, 427 s, 50 puntos, correcciones 0+0, rj 0+0
+# 2 QKYA: 2-1 (11-6 9-11 11-8), primer saque 1, 443 s, 56 puntos, correcciones 0+0, rj 0+0
+# 6 ADHP: 1-2 (6-11 11-9 9-11), primer saque 1, 440 s, 57 puntos, correcciones 0+0, rj 0+0
+# 8 EFFL: 2-1 (9-11 11-4 13-11), primer saque 0, 479 s, 59 puntos, correcciones 0+0, rj 0+0
+#11 BLAW: 0-2 (9-11 9-11), primer saque 0, 330 s, 40 puntos, correcciones 0+0, rj 0+0
+#12 WEYJ: 2-1 (11-1 10-12 11-8), primer saque 1, 340 s, 53 puntos, correcciones 0+0, rj 0+0
+#13 YRHH: 2-1 (11-6 6-11 11-8), primer saque 1, 394 s, 53 puntos, correcciones 0+0, rj 0+0
+#16 LDJU: 2-0 (12-10 11-6), primer saque 0, 335 s, 39 puntos, correcciones 0+0, rj 0+0
+#14 BYXW: 1-2 (9-11 11-9 9-11), primer saque 0, 504 s, 60 puntos, correcciones 0+0, rj 0+0
+#15 JVGR: 2-1 (10-12 12-10 11-9), primer saque 0, 503 s, 64 puntos, correcciones 0+0, rj 0+0
+#17 CATP: 2-1 (5-11 11-6 12-10), primer saque 1, 411 s, 55 puntos, correcciones 0+0, rj 0+0
+#19 QGUB: 2-1 (2-11 12-10 11-7), primer saque 1, 414 s, 53 puntos, correcciones 0+0, rj 0+0
+#20 FMWF: 2-1 (11-7 7-11 11-9), primer saque 1, 461 s, 56 puntos, correcciones 0+0, rj 0+0
+#18 WWZC: 2-1 (7-11 11-7 14-12), primer saque 0, 507 s, 62 puntos, correcciones 0+0, rj 0+0
+
+partidos acabados: 20/20 (2-0: 8, 2-1: 12; 52 games); primer saque del partido (sorteo): lado 0 en 10, lado 1 en 10; 16.3 min en total
+golpes/punto (partido, sin warm-up): media 6.31 (mediana 5, p90 14), 997 puntos; referencia local (shot-stats medium medium 30 7): 6.08 → +3.7 %
+motivos: DOUBLE_BOUNCE 10 (1 %), NET 382 (38 %), MISSED 464 (47 %), TOSS_MISSED 46 (5 %), OUT 90 (9 %), OWN_SIDE 5 (1 %)
+causas ("¿por qué fallé?"): 950/951 con nombre {"NET:EARLY":339,"MISSED:WHIFF_EARLY":156,"MISSED:WHIFF_POSITION":140,"MISSED:WHIFF_LATE":138,"OUT:POWER_LATE":62,"MISSED:NO_CLICK":30,"NET:SMASH_LOW":22,"OUT:SLICE_EARLY":19,"NET:SMASH_EARLY":14,"DOUBLE_BOUNCE:NO_CLICK":10,"OUT:CROSS_EARLY":6,"OWN_SIDE:SMASH_LOW":3,"NET:CROSS_MARGIN":3,"OWN_SIDE:LOW_CONTACT":1,"NET:SLICE_MARGIN":1,"NET:BLOCK_EARLY":1,"OUT:SLICE_ANGLE":1,"OUT:UNKNOWN":1,"OWN_SIDE:EARLY":1,"OUT:EDGE_WIDE":1,"NET:TOPSPIN_LOW":1,"NET:BLOCK_FAST_LOW":1} ; sin diagnóstico (como en shot-stats): {"TOSS_MISSED":46}
+discrepancias: 0 = 0 correcciones de los clientes + 0 rechazos del servidor (rj de los mend); rechazos en todo el registro de las salas (warm-up incluido): 0
+saque: primer saque de cada game alternado en 20/20 partidos; saque de cada punto según las reglas: 1890/1890 (los dos clientes)
+marcadores iguales en los dos clientes (pt recibidos, puntos enseñados y mend): 20/20 partidos
+duración del partido (del primer start al mend): media 394 s (mín 230, máx 507)
+ping medido: media 15.0 ms, p95 31.3 ms, máx 35.0 ms (8366 medidas)
+bytes/s por jugador (partido): subida media 791 (máx 815), bajada media 892 (máx 928)
+mensajes/s por jugador (partido): subida media 31.0 (máx 31.1), bajada media 32.5 (máx 32.6)
+Durable Objects: 11174 peticiones por hora de partido (máx 11183 en un partido) = mensajes entrantes de los dos por hora ÷ 20 + 2 conexiones → 8.9 h de partido al día en el plan gratuito (100000/día)
+frenado de la bola que se aleja: medio 5.5 %, máximo 31.2 % (5571 vuelos); mayor salto de la bola en pantalla: 3.1 cm
+CPU del servidor por golpe, autoridad (recalcular + vuelo nuevo): p50 0.117 ms, p99 0.651 ms, máx 2.116 ms (6563 golpes, todos, warm-up incluido)
+CPU del servidor por golpe, todo el receive de la sala: p50 0.151 ms, p99 0.687 ms, máx 2.579 ms (6581 mensajes de golpe, todos)
+registro del servidor: respaldo 0, descartados 0, errores 0
+criterios: 20/20 acabados OK; 0 discrepancias OK; golpes/punto ±10 % OK; 100 % de causas con nombre FALLA; saque alternado OK; marcadores iguales OK; CPU p99 < 1 ms OK; subida < 2 KB/s OK; bajada < 3 KB/s OK; Durable Objects ≤ 12 000/h OK
+(código de salida 1)
