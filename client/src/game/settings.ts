@@ -11,11 +11,26 @@
  *  - why: 0 / 1 desactiva o activa "¿por qué fallé?" (sustituye a lo guardado)
  *  - reduce: 1 reduce el temblor de cámara y los destellos (sin ráfagas de chispas) [§19]; por defecto sigue la
  *    preferencia «reducir movimiento» del sistema (reduce=0 la ignora)
- *  - online: 1 juega en red contra el bot remoto (V0.3), con latencia simulada:
- *    ping (tu ping en ms, por defecto 0), botping (el del bot, por defecto el mismo que ping) y jitter (variación,
- *    fracción; por defecto 0.1 = ±10 %)
+ *  - online: 1 juega en red contra el bot remoto (V0.3, solo el servidor de desarrollo), con latencia simulada:
+ *    ping (tu ping en ms, por defecto 0), botping (el del bot, por defecto el mismo que ping), jitter (variación,
+ *    fracción; por defecto 0.1 = ±10 %) y spike (probabilidad de picos de TCP; por defecto 0)
+ *  - room: código de la sala a la que entrar (minúsculas valen); tras crear una, la URL pasa a ?room=<código>
+ *  - create: quick | standard | full crea una sala nada más abrir (para pruebas; el lobby lo hace con botones)
+ *  - name: nombre del jugador (si no, el guardado o el del lobby)
+ *  - autoplay: easy | medium | hard, el bot mueve tu raqueta (Task 12)
+ *  - read: 1 prueba de lectura contra el bot en local (Task 12)
+ *  - En una sala, ping, jitter y spike simulan latencia en tu conexión (solo el servidor de desarrollo: el publicado
+ *    rechaza una conexión con latencia simulada)
  */
-import { type BotDifficulty, type ConfigOverrides, DEFAULT_CONFIG } from '@ppp/shared';
+import { type BotDifficulty, type ConfigOverrides, DEFAULT_CONFIG, cleanName, type MatchMode, normalizeCode } from '@ppp/shared';
+
+/** Latencia simulada de una conexión (la aplica el servidor de desarrollo). */
+export interface SimulatedLatency {
+  ping: number;
+  botping: number;
+  jitter: number;
+  spike: number;
+}
 
 export interface Settings {
   overrides: ConfigOverrides;
@@ -28,11 +43,41 @@ export interface Settings {
   /** "¿Por qué fallé?" forzado por URL; si no hay, lo guardado o el valor de la config. */
   explain: boolean | null;
   /** Modo en red contra el bot remoto (V0.3) con su latencia simulada, o null para jugar en local. */
-  online: { ping: number; botping: number; jitter: number } | null;
+  online: SimulatedLatency | null;
+  /** Sala a la que entrar (código normalizado), o null. */
+  room: string | null;
+  /** Crear una sala de ese modo nada más abrir, o null. */
+  create: MatchMode | null;
+  /** Nombre del jugador por URL (limpio), o null. */
+  name: string | null;
+  /** Piloto automático (Task 12), o null. */
+  autoplay: BotDifficulty | null;
+  /** Prueba de lectura contra el bot en local (Task 12). */
+  read: boolean;
+  /** Latencia simulada de tu conexión en una sala (todo 0 salvo que la URL diga otra cosa). */
+  latency: SimulatedLatency;
 }
 
 const EXPLAIN_KEY = 'ppp.explainErrors';
 const KEYBAR_KEY = 'ppp.keyBar';
+const NAME_KEY = 'ppp.name';
+
+/** Nombre guardado en este navegador (lobby), o '' si no hay. */
+export function loadName(): string {
+  try {
+    return cleanName(localStorage.getItem(NAME_KEY) ?? '', '', DEFAULT_CONFIG);
+  } catch {
+    return '';
+  }
+}
+
+export function saveName(name: string): void {
+  try {
+    localStorage.setItem(NAME_KEY, name);
+  } catch {
+    // Sin almacenamiento: solo dura esta sesión.
+  }
+}
 
 /** Barra de teclas de golpe visible (V0.2b): visible por defecto; Tab la cambia y se guarda en este navegador. */
 export function loadKeyBar(): boolean {
@@ -92,8 +137,11 @@ export function readSettings(search = window.location.search): Settings {
   const systemReduce = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   if (reduceParam === '1' || (reduceParam !== '0' && systemReduce)) overrides.presentation = { reduceShakeAndFlash: true };
   const offset = num('offset');
-  const bot = q.get('bot');
-  const difficulty: BotDifficulty = bot === 'easy' || bot === 'hard' || bot === 'medium' ? bot : 'medium';
+  const difficulty = difficultyOf(q.get('bot')) ?? 'medium';
+  const roomParam = q.get('room');
+  const createParam = q.get('create');
+  const createMode = createParam?.trim().toLowerCase();
+  const name = cleanName(q.get('name') ?? '', '', DEFAULT_CONFIG);
   return {
     overrides,
     difficulty,
@@ -102,14 +150,33 @@ export function readSettings(search = window.location.search): Settings {
     seed: num('seed') ?? Math.floor(Math.random() * 1e9),
     latencyOffset: offset ?? null,
     explain: q.get('why') === '0' ? false : q.get('why') === '1' ? true : null,
-    online: q.get('online') === '1' ? onlineParams(num) : null,
+    online: q.get('online') === '1' ? latencyParams(num, true) : null,
+    room: roomParam === null ? null : normalizeCode(roomParam, DEFAULT_CONFIG),
+    // Como la ruta del servidor: `?create=` vacío es el modo por defecto.
+    create: createMode === undefined ? null : createMode === '' ? DEFAULT_CONFIG.room.defaultMode : Object.hasOwn(DEFAULT_CONFIG.room.gamesToWin, createMode) ? (createMode as MatchMode) : null,
+    name: name || null,
+    autoplay: difficultyOf(q.get('autoplay')),
+    read: q.get('read') === '1',
+    latency: latencyParams(num, false),
   };
 }
 
-/** Latencia simulada del modo online, dentro de los límites que acepta el servidor (config.net.latency). */
-function onlineParams(num: (k: string) => number | undefined): { ping: number; botping: number; jitter: number } {
+function difficultyOf(v: string | null): BotDifficulty | null {
+  return v === 'easy' || v === 'medium' || v === 'hard' ? v : null;
+}
+
+/**
+ * Latencia simulada, dentro de los límites que acepta el servidor (config.net.latency). Contra el bot remoto la
+ * variación por defecto es ±10 %; en una sala, 0 salvo que haya ping (el servidor publicado exige todo a 0).
+ */
+function latencyParams(num: (k: string) => number | undefined, bot: boolean): SimulatedLatency {
   const lat = DEFAULT_CONFIG.net.latency;
   const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
   const ping = clamp(num('ping') ?? 0, lat.maxPingMs);
-  return { ping, botping: clamp(num('botping') ?? ping, lat.maxPingMs), jitter: clamp(num('jitter') ?? lat.defaultJitter, lat.maxJitter) };
+  return {
+    ping,
+    botping: bot ? clamp(num('botping') ?? ping, lat.maxPingMs) : 0,
+    jitter: clamp(num('jitter') ?? (bot || ping > 0 ? lat.defaultJitter : 0), lat.maxJitter),
+    spike: clamp(num('spike') ?? 0, lat.spike.maxProb),
+  };
 }

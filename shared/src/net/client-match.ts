@@ -103,6 +103,11 @@ export class ClientMatch {
   practice = false;
   /** Game en juego según el último `start` (0 en el warm-up y antes del primer `start`). */
   game = 0;
+  /**
+   * Quieta: la sala está en una fase sin juego (cuenta atrás, entre games, pausa, esperando rival) y no se saca, ni solo
+   * ni con click, hasta el próximo `start`, que la suelta. La raqueta y el ping siguen.
+   */
+  held = false;
   readonly stats: NetStats = { myPing: null, rivalPing: null, corrections: 0, correctionKinds: [], brakes: { flights: 0, meanSlowdown: 0, maxSlowdown: 0 }, maxRenderJump: 0, maxRenderJumpAt: 0 };
   private readonly send: (msg: C2S) => void;
   private readonly events: SimEvent[] = [];
@@ -227,7 +232,7 @@ export class ClientMatch {
     switch (s.phase) {
       case 'serveHold':
         this.attachBall();
-        if (this.started && s.server === this.side && t - s.phaseStartMs >= this.cfg.serve.autoTossMs) this.toss(true);
+        if (this.started && !this.held && s.server === this.side && t - s.phaseStartMs >= this.cfg.serve.autoTossMs) this.toss(true);
         break;
       case 'serveToss':
       case 'rally':
@@ -295,7 +300,7 @@ export class ClientMatch {
     const pad = s.paddles[me];
     if (fire < pad.lockUntil || pad.pending) return;
     if (s.phase === 'serveHold') {
-      if (me === s.server && this.started) this.toss(false);
+      if (me === s.server && this.started && !this.held) this.toss(false);
       return;
     }
     if (s.phase === 'serveToss' && me !== s.server) return;
@@ -869,6 +874,7 @@ export class ClientMatch {
     this.practice = practice;
     this.game = msg.g;
     this.started = true;
+    this.held = false;
     this.finished = false;
     this.n = msg.n;
     this.f = -1;

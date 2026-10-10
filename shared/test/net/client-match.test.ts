@@ -254,6 +254,29 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     expect(c.stats.corrections).toBe(0);
   });
 
+  it('quieta (fase de sala sin juego): no saca, ni sola ni con click, hasta el próximo start; la raqueta y el ping siguen', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    c.receive({ k: 'start', fs: 0, n: 5, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);
+    c.step(neutralIntent(1.6));
+    c.held = true;
+    const click = neutralIntent(1.6);
+    click.fire = c.now + 4;
+    c.step(click);
+    const ticks = Math.ceil((cfg.serve.autoTossMs * 3) / tick);
+    for (let i = 0; i < ticks; i++) c.step(neutralIntent(1.6));
+    expect(c.state.phase).toBe('serveHold');
+    expect(sent.some((m) => m.k === 'toss')).toBe(false);
+    expect(sent.some((m) => m.k === 'p')).toBe(true);
+    expect(sent.some((m) => m.k === 'ping')).toBe(true);
+    // El start siguiente la suelta: el saque automático vuelve a contar desde él.
+    c.receive({ k: 'start', fs: 0, n: 6, wu: 0, g: 1, sc: [0, 0], ns: 0 }, c.now);
+    c.step(neutralIntent(1.6));
+    expect(c.held).toBe(false);
+    for (let i = 0; i < ticks && !sent.some((m) => m.k === 'toss'); i++) c.step(neutralIntent(1.6));
+    expect(sent.filter((m) => m.k === 'toss')).toMatchObject([{ n: 6, a: 1 }]);
+  });
+
   it('en práctica no hay fin de game aunque llegue un pt con ganador', () => {
     const c = new ClientMatch(cfg, 1, () => {});
     c.receive({ k: 'start', fs: 0, n: 3, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);

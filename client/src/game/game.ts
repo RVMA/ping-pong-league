@@ -18,6 +18,7 @@ import {
   shotFromKeys,
   type ShotTargets,
   type ShotType,
+  type PingLevel,
   pingLevel,
   type Side,
   type SimEvent,
@@ -35,6 +36,7 @@ import { PrecisionStats } from '../ui/precision-stats.ts';
 import { keyMissText, pointText, powerLevelText, SHOT_LABEL, strokeText } from '../ui/texts.ts';
 import { type NetStatus, OnlineSession } from '../net/online-session.ts';
 import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration.ts';
+import { type LobbyInfo, type PlayMode, type RoomHost, RoomFlow } from './room-flow.ts';
 import { type GameSession, LocalSession, type SessionView } from './session.ts';
 import { loadExplain, loadKeyBar, saveExplain, saveKeyBar, type Settings } from './settings.ts';
 
@@ -82,19 +84,23 @@ export interface EventLogEntry {
   e: SimEvent;
 }
 
-export class Game {
+export class Game implements RoomHost {
   readonly cfg: GameConfig;
-  /** De dónde sale la partida: simulación local o vista en red contra el bot remoto (V0.3). */
-  readonly session: GameSession;
   readonly world: World;
   readonly hud: Hud;
   readonly audio = new AudioManager();
   readonly input: MouseTranslator;
-  /** La sesión en red (null en local). */
-  private readonly online: OnlineSession | null;
+  /** La sesión en red: la del bot remoto (V0.3) o la de la sala (V0.4); null en local. */
+  private online: OnlineSession | null;
+  private readonly local: LocalSession;
+  /** Lobby, sala y su flujo (V0.4). */
+  readonly roomFlow: RoomFlow;
   private readonly onlineParams: Settings['online'];
   private difficulty: BotDifficulty;
-  private readonly clock = { epoch: 0 };
+  readonly clock = { epoch: 0 };
+  /** Pings por lado para el marcador (reutilizados: sin memoria nueva por frame). */
+  private readonly pingVals: [number | null, number | null] = [null, null];
+  private readonly pingLvls: [PingLevel, PingLevel] = ['unknown', 'unknown'];
   private running = false;
   private paused = false;
   private prev: Snapshot;
@@ -136,17 +142,13 @@ export class Game {
     this.cfg = makeConfig(settings.overrides);
     this.difficulty = settings.difficulty;
     this.onlineParams = settings.online;
-    if (settings.online) {
-      this.online = new OnlineSession(this.cfg, { ...settings.online, seed: settings.seed }, this.clock);
-      this.online.onStatus = (s, d) => this.onNetStatus(s, d);
-      this.session = this.online;
-    } else {
-      this.online = null;
-      this.session = new LocalSession(this.cfg, this.difficulty, settings.seed);
-    }
+    this.local = new LocalSession(this.cfg, this.difficulty, settings.seed);
+    this.online = settings.online ? new OnlineSession(this.cfg, { ...settings.online, seed: settings.seed }, this.clock) : null;
+    if (this.online) this.online.onStatus = (s, d) => this.onNetStatus(s, d);
     this.world = new World(canvas, this.cfg, CHARACTERS);
     this.hud = new Hud(hudRoot, CHARACTERS);
     this.input = new MouseTranslator(canvas, this.world.camera, this.cfg.world.tableHeight + this.cfg.presentation.cursorPlaneHeight, this.clock, HUMAN);
+    this.roomFlow = new RoomFlow(this, settings);
     this.curr = this.snapshot(this.emptySnapshot());
     this.prev = this.snapshot(this.emptySnapshot());
     const rest = this.cfg.world.tableHeight + this.cfg.paddle.restHeight;
@@ -161,6 +163,7 @@ export class Game {
     window.addEventListener('resize', resize);
     resize();
     window.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('keyup', (e) => this.roomFlow.onKey(e));
     // El audio solo puede arrancar tras un gesto del usuario (también con ?autostart=1).
     canvas.addEventListener('pointerdown', (e) => {
       void this.audio.unlock();
@@ -179,30 +182,48 @@ export class Game {
     this.input.onShotKeyDown = (key, perf) => this.onShotKeyDown(key, perf);
 
     if (settings.autostart) this.start(this.difficulty);
-    else this.showMenu();
+    else if (this.onlineParams) this.showMenu();
+    else this.roomFlow.boot();
     requestAnimationFrame(this.frame);
   }
 
-  /** Pantalla de inicio: elegir rival y calibrar la latencia (hará de lobby hasta que haya salas). */
+  /** De dónde sale la partida: simulación local o vista en red (bot remoto de V0.3 o sala). */
+  get session(): GameSession {
+    return this.online ?? this.local;
+  }
+
+  /** Fuera del juego: el lobby o la sala (V0.4); con ?online=1, la pantalla de inicio de V0.3 contra el bot remoto. */
   private showMenu(): void {
-    this.running = false;
-    this.hud.showKeyBar(false);
-    this.hud.setHint('');
-    this.input.captureKeys = false;
-    this.hud.showStart(
-      this.difficulty,
-      this.labels(),
-      (d) => this.start(d),
-      { offsetMs: this.latencyOffset, onCalibrate: () => this.startCalibration() },
-      {
-        on: this.explain,
-        onToggle: (on) => {
-          this.explain = on;
-          saveExplain(on);
-        },
-      },
-      this.onlineInfo(),
-    );
+    if (!this.onlineParams) return this.roomFlow.home();
+    this.setPlay('off');
+    const info = this.lobbyInfo();
+    this.hud.showStart(this.difficulty, info.labels, (d) => this.start(d), { offsetMs: this.latencyOffset, onCalibrate: () => this.startCalibration() }, { on: info.explain, onToggle: info.setExplain }, this.onlineInfo());
+  }
+
+  /** Lo que enseña el lobby (V0.4). */
+  lobbyInfo(): LobbyInfo {
+    const setExplain = (on: boolean) => {
+      this.explain = on;
+      saveExplain(on);
+    };
+    return { offsetMs: this.latencyOffset, explain: this.explain, labels: this.labels(), difficulty: this.difficulty, setExplain };
+  }
+
+  /** La sesión en red de la sala pasa a ser la del juego (null: vuelve la local). */
+  useNet(session: OnlineSession | null): void {
+    this.online = session;
+    session?.setLatencyOffset(this.latencyOffset ?? 0);
+  }
+
+  /** Se juega ('play'), se mueve la raqueta sin golpear ('hold', fases de sala sin juego) o hay una pantalla encima. */
+  setPlay(mode: PlayMode): void {
+    this.running = mode !== 'off';
+    this.paused = false;
+    this.input.captureKeys = this.running;
+    this.input.enabled = mode === 'play';
+    this.input.clearFires();
+    this.hud.showKeyBar(this.running && this.keyBarOn);
+    if (mode !== 'play') this.hud.setHint('');
   }
 
   /** Línea del menú en el modo online (undefined en local). */
@@ -217,10 +238,7 @@ export class Game {
     if (status === 'waiting') this.hud.showConnection('Conectando…', 'Esperando al bot remoto.');
     else if (status === 'playing') this.beginPlay();
     else if (status === 'lost' || status === 'error') {
-      this.running = false;
-      this.input.captureKeys = false;
-      this.hud.showKeyBar(false);
-      this.hud.setHint('');
+      this.setPlay('off');
       this.hud.showConnection(status === 'lost' ? 'Conexión perdida' : 'No se pudo jugar online', detail, () => this.showMenu());
     }
   }
@@ -276,7 +294,11 @@ export class Game {
     );
   }
 
-  private cancelCalibration(): void {
+  get calibrating(): boolean {
+    return this.calibration !== null;
+  }
+
+  cancelCalibration(): void {
     this.calibration = null;
     this.hud.setBanner(null);
     this.showMenu();
@@ -304,11 +326,7 @@ export class Game {
   private beginPlay(): void {
     this.hud.setScore(this.sim.state.score, this.sim.state.server);
     this.hud.hideOverlay();
-    this.input.clearFires();
-    this.running = true;
-    this.paused = false;
-    this.input.captureKeys = true;
-    this.hud.showKeyBar(this.keyBarOn);
+    this.setPlay('play');
     // En local el reloj sigue a la simulación; en red lo fija el `start` del servidor (OnlineSession).
     if (!this.online) this.clock.epoch = performance.now() - this.sim.now;
     this.onServeReady(this.sim.state.server);
@@ -323,7 +341,10 @@ export class Game {
     this.paused = true;
     this.input.captureKeys = false;
     this.hud.showKeyBar(false);
-    this.hud.showPause(() => this.resume());
+    this.hud.showPause(
+      () => this.resume(),
+      () => this.showMenu(),
+    );
   }
 
   private resume(): void {
@@ -336,6 +357,9 @@ export class Game {
   }
 
   private onKey(e: KeyboardEvent): void {
+    this.roomFlow.onKey(e);
+    // Escribiendo en el lobby (nombre, código) las letras no son atajos.
+    if (e.target instanceof HTMLInputElement) return;
     if (e.key === 'Escape' && this.calibration) {
       this.cancelCalibration();
     } else if (e.key === 'Escape' && this.running && !this.online) {
@@ -373,6 +397,7 @@ export class Game {
 
   private frame = (now: number): void => {
     requestAnimationFrame(this.frame);
+    this.roomFlow.update(now);
     const dtFrame = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 1 / 60;
     this.lastFrame = now;
     this.fps = this.fps * 0.95 + (1 / Math.max(dtFrame, 1e-3)) * 0.05;
@@ -409,7 +434,8 @@ export class Game {
     const old = this.prev;
     this.prev = this.curr;
     this.curr = this.snapshot(old);
-    for (const e of events) this.onEvent(e);
+    // En la cuenta atrás del inicio el rally del warm-up ya no cuenta: ni se oye ni se ve.
+    if (!this.roomFlow.muted) for (const e of events) this.onEvent(e);
   }
 
   private emptySnapshot(): Snapshot {
@@ -505,7 +531,8 @@ export class Game {
         this.bounceMarker = null;
         break;
       case 'gameOver':
-        this.onGameOver(e.winner, e.score);
+        if (this.roomFlow.active) this.roomFlow.onGameOver();
+        else this.onGameOver(e.winner, e.score);
         break;
     }
   }
@@ -516,7 +543,7 @@ export class Game {
     this.lastBotShot = null;
     this.humanWhiffedThisRally = false;
     this.hud.setHint(
-      server === HUMAN ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : 'Saca el bot. Coloca la raqueta donde vaya a llegar la bola.',
+      !this.running ? '' : server === HUMAN ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : 'Saca el bot. Coloca la raqueta donde vaya a llegar la bola.',
     );
   }
 
@@ -595,9 +622,7 @@ export class Game {
 
   private onGameOver(winner: Side, score: [number, number]): void {
     const st = this.sim.state.stats[HUMAN];
-    this.running = false;
-    this.hud.showKeyBar(false);
-    this.hud.setHint('');
+    this.setPlay('off');
     this.hud.showGameOver(
       {
         won: winner === HUMAN,
@@ -612,6 +637,7 @@ export class Game {
       this.difficulty,
       this.labels(),
       (d) => this.start(d),
+      () => this.showMenu(),
     );
   }
 
@@ -750,7 +776,7 @@ export class Game {
         x: lerp(this.prev.ball.x, this.curr.ball.x),
         y: lerp(this.prev.ball.y, this.curr.ball.y),
         z: lerp(this.prev.ball.z, this.curr.ball.z),
-        visible: s.phase !== 'gameOver' && !(s.phase === 'pointOver' && this.sim.now - s.phaseStartMs > this.cfg.rules.pointDelayMs * 0.75),
+        visible: s.phase !== 'gameOver' && !this.roomFlow.muted && !(s.phase === 'pointOver' && this.sim.now - s.phaseStartMs > this.cfg.rules.pointDelayMs * 0.75),
         spin: s.ball.spin,
         trail: inPlay ? this.trailStyle() : null,
       },
@@ -762,9 +788,16 @@ export class Game {
       heldOutline: held ? { color: this.shotColor(held) } : null,
     };
     this.world.render(frame);
-    if (this.online) {
-      const st = this.online.stats;
-      this.hud.setPings([st.myPing, st.rivalPing], [pingLevel(st.myPing, this.cfg), pingLevel(st.rivalPing, this.cfg)]);
+    const o = this.online;
+    if (o) {
+      // Por lado, como los nombres del marcador; ocultos hasta que hay partida.
+      const st = o.stats;
+      const rival = o.side === 0 ? 1 : 0;
+      this.pingVals[o.side] = st.myPing;
+      this.pingVals[rival] = st.rivalPing;
+      this.pingLvls[o.side] = pingLevel(st.myPing, this.cfg);
+      this.pingLvls[rival] = pingLevel(st.rivalPing, this.cfg);
+      this.hud.setPings(o.ready ? this.pingVals : null, this.pingLvls);
     }
     // Salto de la bola: mayor desplazamiento entre dos frames mientras está en juego.
     const bs = this.ballStep;
@@ -864,8 +897,10 @@ export class Game {
       difficulty: this.difficulty,
       fps: this.fps,
       maxBallStep: this.ballStep.max,
+      room: this.roomFlow.debug(),
       net: this.online
         ? {
+            side: this.online.side,
             status: this.online.status,
             detail: this.online.detail,
             pings: [this.online.stats.myPing, this.online.stats.rivalPing],

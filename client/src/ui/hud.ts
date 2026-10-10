@@ -1,7 +1,8 @@
 /**
  * HUD en DOM: marcador de tarjetas abatibles, mensajes de golpe junto a la raqueta [§5.2],
  * aviso de fin de punto, barra de teclas de golpe (V0.2b), pantallas de inicio / pausa / fin y panel de datos
- * de precisión.
+ * de precisión. En una sala (V0.4) el marcador lleva los nombres (siempre como texto), el game y los games ganados, y la
+ * capa de pantallas enseña los paneles del lobby y de la sala (lobby.ts, room-ui.ts) con `showPanel`.
  */
 import type { BotDifficulty, PingLevel, ShotType } from '@ppp/shared';
 import { assetUrl, CHARACTERS, type CharacterId, UI_ASSETS } from '../assets/manifest.ts';
@@ -20,11 +21,79 @@ export interface GameOverInfo {
   shots: string;
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+/** Cambia el texto (siempre como texto, nunca HTML) solo si es otro: así la interfaz no toca el DOM sin necesidad. */
+export function setText(node: HTMLElement, text: string): void {
+  if (node.textContent !== text) node.textContent = text;
+}
+
+/** Las tres dificultades del bot (`data-difficulty`: los E2E las pulsan); la actual, destacada. */
+export function difficultyButtons(current: BotDifficulty, labels: Record<BotDifficulty, string>, onPick: (d: BotDifficulty) => void): HTMLElement {
+  const group = el('div', 'diff');
+  for (const d of ['easy', 'medium', 'hard'] as BotDifficulty[]) {
+    const b = button(labels[d], d === current, () => onPick(d));
+    b.dataset.difficulty = d;
+    group.append(b);
+  }
+  return group;
+}
+
+/** Logo (o el título, sin imagen). */
+export function logo(): HTMLElement {
+  const url = assetUrl(UI_ASSETS.logo);
+  if (!url) return el('h1', '', 'Ping Pong PvP');
+  const img = el('img', 'logo');
+  img.src = url;
+  img.alt = 'Ping Pong PvP';
+  return img;
+}
+
+/** Cómo se juega (ratón, teclas de golpe, saque). */
+export function howToPlay(): HTMLElement {
+  const how = el('ul', 'how');
+  for (const line of [
+    'Mueve el ratón: la raqueta te sigue con algo de inercia. Click justo cuando la bola llega al centro: ¡Perfecto!',
+    'Pronto: la bola sale baja y puede ir a la red. Tarde: sale alta y lenta.',
+    'Tipo de golpe: mantén una tecla y haz click. Q slice (curva y va a la banda). W topspin (más rápido, cae antes). E smash (solo con la bola alta). Sin tecla: golpe normal.',
+    'La fuerza sale de tu golpe: ¡Perfecto! = golpe completo; Bien = reducido; pronto, tarde o con el borde = flojo y más arriesgado. Si llegas corriendo, la mitad.',
+    'Cruzar la bola: con la raqueta ya colocada, un gesto lateral seco del ratón al hacer click.',
+    'Bloqueo: mantén Espacio y haz click. Devuelve con la fuerza de la bola que llega; mientras lo mantienes, la raqueta va más lenta.',
+    'Para sacar, click (o espera un segundo) y otro click cuando la bola baje. Tab: barra de teclas. D: datos de precisión. Esc: pausa (contra el bot).',
+  ])
+    how.append(el('li', '', line));
+  return how;
+}
+
+/** Interruptor "¿Por qué fallé?" [§2.2: siempre, desactivable]. */
+export function explainToggle(on: boolean, onToggle: (on: boolean) => void): HTMLElement {
+  const wrap = el('div', 'latency');
+  const b = button(on ? 'Explicar mis errores: sí' : 'Explicar mis errores: no', false, () => {
+    const next = b.dataset.on !== '1';
+    b.dataset.on = next ? '1' : '0';
+    b.textContent = next ? 'Explicar mis errores: sí' : 'Explicar mis errores: no';
+    onToggle(next);
+  }, 'explain');
+  b.dataset.on = on ? '1' : '0';
+  wrap.append(el('p', 'latency-text', 'Al perder un punto por un error tuyo, una frase dice la causa (pronto, bola baja, ángulo, smash bajo…).'), b);
+  return wrap;
+}
+
+/** Botón que no deja pasar el click a la escena. */
+export function button(text: string, primary: boolean, onClick: () => void, action?: string): HTMLButtonElement {
+  const b = el('button', primary ? 'btn primary' : 'btn', text);
+  b.type = 'button';
+  if (action) b.dataset.action = action;
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return b;
 }
 
 class FlipCard {
@@ -45,14 +114,20 @@ class FlipCard {
 }
 
 export class Hud {
-  private readonly root: HTMLElement;
+  /** Capa del HUD (las pantallas de la sala añaden aquí sus avisos). */
+  readonly root: HTMLElement;
   private readonly cards: [FlipCard, FlipCard] = [new FlipCard(), new FlipCard()];
   private readonly serveDots: [HTMLElement, HTMLElement];
   private readonly toast = el('div', 'toast');
   private readonly debug = el('div', 'debug');
   private readonly overlay = el('div', 'overlay');
   private readonly hint = el('div', 'hint');
-  private readonly botLabel = el('span', 'bot-diff');
+  /** Nombre de cada lado y su línea pequeña (la dificultad del bot, «tú» en una sala). */
+  private readonly names: [HTMLElement, HTMLElement] = [el('span', 'player-name', 'Tú'), el('span', 'player-name', 'Bot')];
+  private readonly subs: [HTMLElement, HTMLElement] = [el('span', 'bot-diff'), el('span', 'bot-diff')];
+  private readonly cardsBox = el('div', 'cards');
+  /** Game y games ganados en una sala (§15), bajo las tarjetas. */
+  private readonly games = el('div', 'games');
   private readonly keybar = el('div', 'keybar');
   private readonly keyChips = new Map<ShotType, HTMLElement>();
   private keyActive: ShotType | null = null;
@@ -65,7 +140,7 @@ export class Hud {
   constructor(root: HTMLElement, characters: [CharacterId, CharacterId]) {
     this.root = root;
     const board = el('div', 'scoreboard');
-    const side = (i: 0 | 1, name: string) => {
+    const side = (i: 0 | 1) => {
       const ch = CHARACTERS[characters[i]];
       const wrap = el('div', `side side-${i}`);
       const img = el('img', 'portrait');
@@ -73,8 +148,7 @@ export class Hud {
       img.src = assetUrl(ch.portrait) ?? '';
       img.style.borderColor = ch.color;
       const label = el('div', 'name');
-      label.append(el('span', '', name));
-      if (i === 1) label.append(this.botLabel);
+      label.append(this.names[i], this.subs[i]);
       this.pings[i].hidden = true;
       label.append(this.pings[i]);
       const dot = el('span', 'serve-dot');
@@ -82,12 +156,14 @@ export class Hud {
       wrap.append(img, label, dot);
       return { wrap, dot };
     };
-    const a = side(0, 'Tú');
-    const b = side(1, 'Bot');
+    const a = side(0);
+    const b = side(1);
     this.serveDots = [a.dot, b.dot];
-    const cards = el('div', 'cards');
-    cards.append(this.cards[0].root, this.cards[1].root);
-    board.append(a.wrap, cards, b.wrap);
+    const mid = el('div', 'mid');
+    this.cardsBox.append(this.cards[0].root, this.cards[1].root);
+    this.games.hidden = true;
+    mid.append(this.cardsBox, this.games);
+    board.append(a.wrap, mid, b.wrap);
     this.hint.textContent = 'Mueve el ratón para colocar la raqueta. Click cuando la bola llegue.';
     this.debug.hidden = true;
     // Barra de teclas de golpe (V0.2b): esquina inferior izquierda, nunca sobre la mesa [§5.2]. Cada tecla lleva
@@ -175,7 +251,42 @@ export class Hud {
   }
 
   setBotDifficulty(label: string): void {
-    this.botLabel.textContent = label;
+    setText(this.subs[1], label);
+  }
+
+  /** Nombres de los dos lados (texto, nunca HTML) y su línea pequeña; solo toca el DOM si cambian. */
+  setNames(names: [string, string], subs: [string, string]): void {
+    for (const i of [0, 1] as const) {
+      setText(this.names[i], names[i]);
+      setText(this.subs[i], subs[i]);
+    }
+  }
+
+  /** Tarjetas del marcador visibles (en el warm-up no hay marcador, §14.2). */
+  setScoreVisible(on: boolean): void {
+    if (this.cardsBox.hidden === !on) return;
+    this.cardsBox.hidden = !on;
+    for (const d of this.serveDots) d.hidden = !on;
+  }
+
+  /** «Game 2 · Games 1-0» bajo las tarjetas ('' lo oculta). */
+  setGames(text: string): void {
+    setText(this.games, text);
+    if (this.games.hidden === (text === '')) return;
+    this.games.hidden = text === '';
+    // Con la línea de games el marcador es más alto: el aviso de punto y el de conexión bajan.
+    this.root.classList.toggle('with-games', text !== '');
+  }
+
+  /** Muestra un panel propio (lobby, sala…) en la capa de pantallas; si ya es el que se ve, no toca nada. */
+  showPanel(panel: HTMLElement): void {
+    if (this.overlay.firstChild !== panel || this.overlay.childNodes.length !== 1) this.overlay.replaceChildren(panel);
+    if (this.overlay.className !== 'overlay show') this.overlay.className = 'overlay show';
+  }
+
+  /** ¿Se ve ese panel en la capa de pantallas? */
+  isShowing(panel: HTMLElement): boolean {
+    return this.overlay.className === 'overlay show' && this.overlay.firstChild === panel;
   }
 
   setHint(text: string): void {
@@ -242,27 +353,11 @@ export class Hud {
   }
 
   private difficultyButtons(current: BotDifficulty, labels: Record<BotDifficulty, string>, onPick: (d: BotDifficulty) => void): HTMLElement {
-    const group = el('div', 'diff');
-    for (const d of ['easy', 'medium', 'hard'] as BotDifficulty[]) {
-      const b = el('button', d === current ? 'btn primary' : 'btn', labels[d]);
-      b.dataset.difficulty = d;
-      b.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onPick(d);
-      });
-      group.append(b);
-    }
-    return group;
+    return difficultyButtons(current, labels, onPick);
   }
 
   private button(text: string, primary: boolean, onClick: () => void, id?: string): HTMLButtonElement {
-    const b = el('button', primary ? 'btn primary' : 'btn', text);
-    if (id) b.dataset.action = id;
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    return b;
+    return button(text, primary, onClick, id);
   }
 
   /** Bloque de latencia de la pantalla de inicio (hará de lobby hasta que haya salas en V0.4). */
@@ -325,20 +420,6 @@ export class Hud {
     this.overlay.className = 'overlay show';
   }
 
-  /** Interruptor "¿Por qué fallé?" [§2.2: siempre, desactivable]. */
-  private explainToggle(on: boolean, onToggle: (on: boolean) => void): HTMLElement {
-    const wrap = el('div', 'latency');
-    const b = this.button(on ? 'Explicar mis errores: sí' : 'Explicar mis errores: no', false, () => {
-      const next = b.dataset.on !== '1';
-      b.dataset.on = next ? '1' : '0';
-      b.textContent = next ? 'Explicar mis errores: sí' : 'Explicar mis errores: no';
-      onToggle(next);
-    }, 'explain');
-    b.dataset.on = on ? '1' : '0';
-    wrap.append(el('p', 'latency-text', 'Al perder un punto por un error tuyo, una frase dice la causa (pronto, bola baja, ángulo, smash bajo…).'), b);
-    return wrap;
-  }
-
   showStart(
     current: BotDifficulty,
     labels: Record<BotDifficulty, string>,
@@ -348,15 +429,7 @@ export class Hud {
     online?: string,
   ): void {
     const panel = el('div', 'panel');
-    const logoUrl = assetUrl(UI_ASSETS.logo);
-    if (logoUrl) {
-      const img = el('img', 'logo');
-      img.src = logoUrl;
-      img.alt = 'Ping Pong PvP';
-      panel.append(img);
-    } else {
-      panel.append(el('h1', '', 'Ping Pong PvP'));
-    }
+    panel.append(logo());
     panel.append(el('p', 'lead', online ? 'Un game a 11 contra el bot remoto, por la red. Prototipo V0.3: cada uno golpea en su tiempo.' : 'Un game a 11 contra el bot. Prototipo V0.3 (en local).'));
     if (online) panel.append(el('p', 'latency-text online-info', online));
     panel.append(el('h2', '', 'Elige rival'));
@@ -365,37 +438,24 @@ export class Hud {
       panel.append(el('h2', '', 'Latencia'));
       panel.append(this.latencySection(latency.offsetMs, latency.onCalibrate));
     }
-    if (explain) panel.append(this.explainToggle(explain.on, explain.onToggle));
-    const how = el('ul', 'how');
-    for (const line of [
-      'Mueve el ratón: la raqueta te sigue con algo de inercia. Click justo cuando la bola llega al centro: ¡Perfecto!',
-      'Pronto: la bola sale baja y puede ir a la red. Tarde: sale alta y lenta.',
-      'Tipo de golpe: mantén una tecla y haz click. Q slice (curva y va a la banda). W topspin (más rápido, cae antes). E smash (solo con la bola alta). Sin tecla: golpe normal.',
-      'La fuerza sale de tu golpe: ¡Perfecto! = golpe completo; Bien = reducido; pronto, tarde o con el borde = flojo y más arriesgado. Si llegas corriendo, la mitad.',
-      'Cruzar la bola: con la raqueta ya colocada, un gesto lateral seco del ratón al hacer click.',
-      'Bloqueo: mantén Espacio y haz click. Devuelve con la fuerza de la bola que llega; mientras lo mantienes, la raqueta va más lenta.',
-      'Para sacar, click (o espera un segundo) y otro click cuando la bola baje. Tab: barra de teclas. D: datos de precisión. Esc: pausa.',
-    ])
-      how.append(el('li', '', line));
-    panel.append(how);
+    if (explain) panel.append(explainToggle(explain.on, explain.onToggle));
+    panel.append(howToPlay());
     this.overlay.replaceChildren(panel);
     this.overlay.className = 'overlay show';
   }
 
-  showPause(onResume: () => void): void {
+  showPause(onResume: () => void, onMenu?: () => void): void {
     const panel = el('div', 'panel compact');
     panel.append(el('h2', '', 'Pausa'));
-    const b = el('button', 'btn primary', 'Seguir jugando');
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onResume();
-    });
-    panel.append(b);
+    const row = el('div', 'diff');
+    row.append(this.button('Seguir jugando', true, onResume));
+    if (onMenu) row.append(this.button('Volver al lobby', false, onMenu, 'menu'));
+    panel.append(row);
     this.overlay.replaceChildren(panel);
     this.overlay.className = 'overlay show';
   }
 
-  showGameOver(info: GameOverInfo, current: BotDifficulty, labels: Record<BotDifficulty, string>, onPick: (d: BotDifficulty) => void): void {
+  showGameOver(info: GameOverInfo, current: BotDifficulty, labels: Record<BotDifficulty, string>, onPick: (d: BotDifficulty) => void, onMenu?: () => void): void {
     const panel = el('div', 'panel');
     panel.append(el('h1', 'result', info.won ? 'Has ganado' : 'Ha ganado el bot'));
     const score = el('div', 'final-score');
@@ -415,6 +475,11 @@ export class Hud {
       stats.append(d);
     }
     panel.append(stats, el('h2', '', 'Otra partida'), this.difficultyButtons(current, labels, onPick));
+    if (onMenu) {
+      const row = el('div', 'diff more');
+      row.append(this.button('Volver al lobby', false, onMenu, 'menu'));
+      panel.append(row);
+    }
     this.overlay.replaceChildren(panel);
     this.overlay.className = 'overlay show';
   }
