@@ -1,4 +1,5 @@
 b91efc7 (+ room-bots.ts de Task 8, sin commit)
+script idéntico al de 3d8cfe2; ejecutado con el equipo mantenido despierto (ver cabecera de room-bots.ts)
 node server/scripts/room-bots.ts local 20 standard medium medium 7 0 0 0.1
 room-bots: servidor Node en este proceso (puerto 53824); 20 partidos standard, medium vs medium, semilla 7, ping 0/0 ms ±10 %, picos 0, gameSpeed 0.75
 # 5 HGKF: 2-0 (11-2 11-7), primer saque 0, 229 s, 31 puntos, correcciones 0+0, rj 0+0

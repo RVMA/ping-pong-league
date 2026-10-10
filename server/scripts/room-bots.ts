@@ -27,6 +27,13 @@
  *    sale), de todos los golpes de todos los partidos, warm-up incluido.
  * Al final, los criterios de la fase; el código de salida es 1 si alguno falla. Si el proceso se para más de 5 s (el
  * equipo se suspende, p. ej.), los partidos en juego se congelan: la corrida no vale y también sale con 1.
+ *
+ * Corridas largas en Windows (opcional, solo Windows; el script no lo hace por sí mismo): mantener el equipo despierto
+ * con una petición de ejecución, que se suelta al terminar el proceso. Desde PowerShell, p. ej.:
+ *   Add-Type -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);' -Name P -Namespace W
+ *   [W.P]::SetThreadExecutionState(0x80000001) | Out-Null   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+ *   try { node server/scripts/room-bots.ts local 20 standard medium medium 7 100 100 0.1 } finally { [W.P]::SetThreadExecutionState(0x80000000) | Out-Null }
+ * (la petición es por hilo: debe hacerse en el mismo hilo de PowerShell que espera al proceso y soltarse en `finally`).
  */
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -479,6 +486,7 @@ const named = Object.entries(causes)
   .filter(([key]) => !key.endsWith('UNKNOWN'))
   .reduce((s, [, v]) => s + v, 0);
 const diagnosed = Object.values(causes).reduce((s, v) => s + v, 0);
+const unnamedNonToss = Object.entries(undiagnosed).filter(([key, v]) => v > 0 && key !== 'TOSS_MISSED');
 const totalReasons = Object.values(reasons).reduce((s, v) => s + v, 0);
 const cpu = results.flatMap((r) => (r.record ? r.record.authorities.flatMap((a) => a.hitCpuMs) : []));
 const recv = results.flatMap((r) => r.recvMs);
@@ -527,7 +535,7 @@ const criteria: [string, boolean | null][] = [
   [`${finished}/${matches} acabados`, finished === matches],
   ['0 discrepancias', corrections + rj === 0],
   ['golpes/punto ±10 %', ref ? Math.abs(shotsDev) <= SHOTS_TOLERANCE : false],
-  ['100 % de causas con nombre', diagnosed > 0 && named === diagnosed],
+  ['100 % de causas con nombre', diagnosed > 0 && named === diagnosed && unnamedNonToss.length === 0],
   ['saque alternado', serveGamesOk === results.length && serveOk === serveTotal],
   ['marcadores iguales', scoresOk === results.length],
   ['CPU p99 < 1 ms', local ? pct(cpu, 0.99) < MAX_CPU_P99_MS && pct(recv, 0.99) < MAX_CPU_P99_MS : null],

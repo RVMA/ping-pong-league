@@ -1,4 +1,5 @@
 b91efc7 (+ room-bots.ts de Task 8, sin commit)
+script idéntico al de 3d8cfe2; ejecutado con el equipo mantenido despierto (ver cabecera de room-bots.ts)
 node server/scripts/net-bots.ts medium medium 30 7 100 0.1
 medium vs medium (bot remoto), 30 partidos por la red, ping 100 ms ±10 %, gameSpeed 0.75
 golpes/punto: media 6.16 (mediana 4, p90 13), 563 puntos
