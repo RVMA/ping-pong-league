@@ -7,7 +7,7 @@
  * cambia algo. Los nombres y los textos del servidor van siempre como texto (textContent), nunca como HTML.
  */
 import type { PlayerStatsWire } from '@ppp/shared';
-import { button, el, type Hud, setText } from './hud.ts';
+import { button, el, type Hud, setHidden, setText } from './hud.ts';
 
 export interface RoomUiHandlers {
   onReady(): void;
@@ -149,7 +149,7 @@ export class RoomUi {
       this.copyNote.hidden = true;
     }
     setText(this.waitNotice, notice);
-    this.waitNotice.hidden = notice === '';
+    setHidden(this.waitNotice, notice === '');
     this.hud.showPanel(this.waiting);
   }
 
@@ -157,9 +157,10 @@ export class RoomUi {
   showMessage(title: string, text: string, action: 'cancel' | 'lobby'): void {
     setText(this.msgTitle, title);
     setText(this.msgText, text);
-    this.msgText.hidden = text === '';
+    setHidden(this.msgText, text === '');
     setText(this.msgButton, action === 'cancel' ? 'Cancelar' : 'Volver al lobby');
-    this.msgButton.className = action === 'cancel' ? 'btn' : 'btn primary';
+    const cls = action === 'cancel' ? 'btn' : 'btn primary';
+    if (this.msgButton.className !== cls) this.msgButton.className = cls;
     this.hud.showPanel(this.message);
   }
 
@@ -228,7 +229,7 @@ export class RoomUi {
   /** Aviso del timeout del Listo ('' lo oculta). */
   setWarn(text: string): void {
     setText(this.warn, text);
-    this.warn.hidden = text === '';
+    setHidden(this.warn, text === '');
   }
 
   /** Anillo de Shift: 0…1, en RING_STEPS pasos (solo toca el DOM al cambiar de paso). */
@@ -250,18 +251,12 @@ export class RoomUi {
     }
     setText(this.big, big);
     setText(this.sub, sub);
-    this.sub.hidden = sub === '';
+    setHidden(this.sub, sub === '');
     if (this.centerKind !== kind) {
       this.centerKind = kind;
       this.center.className = `room-center ${kind}`;
     }
     if (this.center.hidden) this.center.hidden = false;
-  }
-
-  /** Solo la línea pequeña del centro (relojes que cambian una vez por segundo). */
-  setCenterSub(sub: string): void {
-    setText(this.sub, sub);
-    this.sub.hidden = sub === '';
   }
 
   hideAll(): void {

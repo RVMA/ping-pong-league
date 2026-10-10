@@ -154,6 +154,8 @@ export class OnlineSession implements GameSession {
   private attemptTimer = 0;
   private keepTimer = 0;
   private keepI = 0;
+  /** La vista no saca (ClientMatch.held): se aplica también a las vistas nuevas (cada `welcome` crea una). */
+  private held = false;
 
   constructor(cfg: GameConfig, params: OnlineParams, clock: InputClock) {
     this.cfg = cfg;
@@ -233,9 +235,12 @@ export class OnlineSession implements GameSession {
     setRoomInUrl(null);
   }
 
-  /** La sala está en una fase sin juego: la vista no saca hasta el próximo `start` (ClientMatch.held). */
-  hold(): void {
-    this.match.held = true;
+  /** La vista no saca (fase de sala sin juego o pantalla encima) o vuelve a sacar (ClientMatch.hold); lo decide la sala. */
+  hold(on: boolean): void {
+    this.held = on;
+    // En el reloj de la partida de ahora, no en el de la vista: tras un tirón (calibrando) la vista va atrasada y su
+    // puesta al día no debe sacar con el tiempo pasado.
+    this.match.hold(on, this.ready ? performance.now() - this.clock.epoch : this.match.now);
   }
 
   private setStatus(s: NetStatus, detail = ''): void {
@@ -259,6 +264,7 @@ export class OnlineSession implements GameSession {
     this.ws = ws;
     if (this.cutAt < 0) {
       this.match = new ClientMatch(this.cfg, 0, () => {});
+      this.match.hold(this.held);
       this.setStatus('connecting');
     } else {
       this.attemptTimer = window.setTimeout(() => this.lose(ws), ATTEMPT_MS);
@@ -345,6 +351,7 @@ export class OnlineSession implements GameSession {
         window.clearTimeout(this.attemptTimer);
         this.side = msg.side;
         this.match = new ClientMatch(this.cfg, msg.side, (m) => this.send(m));
+        this.match.hold(this.held);
         this.cutAt = -1;
         this.attempt = 0;
         if (this.route?.kind !== 'bot') {
@@ -416,7 +423,11 @@ export class OnlineSession implements GameSession {
   }
 
   tick(intent: InputIntent): SimEvent[] {
-    return this.match.step(intent);
+    return this.match.step(intent, true);
+  }
+
+  flush(): void {
+    this.match.flushSends();
   }
 
   renderBall(out: Vec3): Vec3 {

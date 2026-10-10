@@ -103,11 +103,6 @@ export class ClientMatch {
   practice = false;
   /** Game en juego según el último `start` (0 en el warm-up y antes del primer `start`). */
   game = 0;
-  /**
-   * Quieta: la sala está en una fase sin juego (cuenta atrás, entre games, pausa, esperando rival) y no se saca, ni solo
-   * ni con click, hasta el próximo `start`, que la suelta. La raqueta y el ping siguen.
-   */
-  held = false;
   readonly stats: NetStats = { myPing: null, rivalPing: null, corrections: 0, correctionKinds: [], brakes: { flights: 0, meanSlowdown: 0, maxSlowdown: 0 }, maxRenderJump: 0, maxRenderJumpAt: 0 };
   private readonly send: (msg: C2S) => void;
   private readonly events: SimEvent[] = [];
@@ -138,6 +133,12 @@ export class ClientMatch {
   private resumed = false;
   /** Hay un `start` esperando a que se vea el punto en pantalla (showingPoint). */
   private startHeld = false;
+  // Quieta (hold) y desde cuándo cuenta el saque automático al soltarla.
+  private isHeld = false;
+  private releasedAt = Number.NEGATIVE_INFINITY;
+  // Envío de la raqueta: cada `padEvery` ticks (paddleHz); `padDue`, toca y aún no ha salido (ticks con deferSends).
+  private readonly padEvery: number;
+  private padDue = false;
   // Raqueta rival (anillo reutilizado).
   private readonly pads: PadSlot[] = Array.from({ length: PAD_RING }, () => ({ n: -1, r: -1, x: 0, z: 0 }));
   private padHead = 0;
@@ -162,6 +163,7 @@ export class ClientMatch {
     this.side = side;
     this.rival = other(side);
     this.send = send;
+    this.padEvery = Math.max(1, Math.round(cfg.sim.tickHz / cfg.net.paddleHz));
     this.ping = new PingTracker(cfg.net.ping.average);
     this.state = {
       tick: 0,
@@ -192,14 +194,33 @@ export class ClientMatch {
     return this.n;
   }
 
+  /**
+   * Quieta: la vista no saca, ni sola ni con click. La raqueta y el ping siguen. Lo decide quien la usa según la sala
+   * (fases sin juego, pantallas encima como las estadísticas del partido), con hold(); un `start` no la cambia.
+   */
+  get held(): boolean {
+    return this.isHeld;
+  }
+
+  /**
+   * Quieta o no; `at`: el instante de la partida en que se decide (por defecto, el del último tick). Al soltarla, el saque
+   * automático cuenta desde `at`: no sale de golpe por el tiempo que estuvo quieta, ni en los ticks de una puesta al día
+   * (la vista atrasada tras calibrar o con la pestaña oculta) que son anteriores a ese instante.
+   */
+  hold(on: boolean, at = this.now): void {
+    if (this.isHeld && !on) this.releasedAt = Math.max(this.now, at);
+    this.isHeld = on;
+  }
+
   /** Mensaje del servidor que llegó en `arrivalMs` (tiempo de esta partida): se aplica en el primer tick que no es anterior. */
   receive(msg: S2C, arrivalMs: number): void {
     this.inbox.push({ msg, at: arrivalMs });
   }
 
-  step(intent: InputIntent): SimEvent[] {
+  /** Un tick (`deferSends`: ver stepWorld). */
+  step(intent: InputIntent, deferSends = false): SimEvent[] {
     this.stepInput(intent);
-    return this.stepWorld();
+    return this.stepWorld(deferSends);
   }
 
   /** Avanza el reloj un tick, mueve tu raqueta y procesa tu click (predicción y envío). */
@@ -224,15 +245,22 @@ export class ClientMatch {
     }
   }
 
-  /** Aplica los mensajes llegados, avanza fases, vuelos, contactos y desenlaces. Devuelve los eventos del tick. */
-  stepWorld(): SimEvent[] {
+  /**
+   * Aplica los mensajes llegados, avanza fases, vuelos, contactos y desenlaces. Devuelve los eventos del tick.
+   * `deferSends`: el estado que toque enviar (la raqueta a paddleHz, el ping) no sale en este tick sino en el próximo
+   * flushSends(), una sola vez y con el estado de entonces. El navegador avanza así los ticks de cada frame: tras un tirón
+   * (calibrando, pestaña oculta, un frame lento) se pone al día con muchos ticks seguidos, y enviar la raqueta en cada
+   * cuarto tick sería una ráfaga (30 por segundo de tirón, todas viejas) que vaciaría el límite de ritmo del servidor.
+   * Los golpes, saques y finales de punto salen siempre en su tick.
+   */
+  stepWorld(deferSends = false): SimEvent[] {
     const s = this.state;
     const t = this.now;
     this.applyInbox(t);
     switch (s.phase) {
       case 'serveHold':
         this.attachBall();
-        if (this.started && !this.held && s.server === this.side && t - s.phaseStartMs >= this.cfg.serve.autoTossMs) this.toss(true);
+        if (this.started && !this.isHeld && s.server === this.side && t - Math.max(s.phaseStartMs, this.releasedAt) >= this.cfg.serve.autoTossMs) this.toss(true);
         break;
       case 'serveToss':
       case 'rally':
@@ -246,10 +274,20 @@ export class ClientMatch {
         break;
     }
     this.updateRivalPaddle();
-    this.sendPaddle(t);
-    this.sendPing(t);
+    if (this.started && s.tick % this.padEvery === 0) this.padDue = true;
+    if (!deferSends) this.flushSends();
     this.trackRender(t);
     return this.events;
+  }
+
+  /** Envía el estado que toque (raqueta, ping) con el del último tick: tras los ticks de un frame con deferSends. */
+  flushSends(): void {
+    const t = this.now;
+    if (this.padDue) {
+      this.padDue = false;
+      this.sendPaddle(t);
+    }
+    this.sendPing(t);
   }
 
   /** Posición de la bola a dibujar: la del vuelo más lo que quede por fundir de una corrección. */
@@ -300,7 +338,7 @@ export class ClientMatch {
     const pad = s.paddles[me];
     if (fire < pad.lockUntil || pad.pending) return;
     if (s.phase === 'serveHold') {
-      if (me === s.server && this.started && !this.held) this.toss(false);
+      if (me === s.server && this.started && !this.isHeld) this.toss(false);
       return;
     }
     if (s.phase === 'serveToss' && me !== s.server) return;
@@ -874,7 +912,6 @@ export class ClientMatch {
     this.practice = practice;
     this.game = msg.g;
     this.started = true;
-    this.held = false;
     this.finished = false;
     this.n = msg.n;
     this.f = -1;
@@ -954,9 +991,6 @@ export class ClientMatch {
   }
 
   private sendPaddle(t: number): void {
-    if (!this.started) return;
-    const every = Math.max(1, Math.round(this.cfg.sim.tickHz / this.cfg.net.paddleHz));
-    if (this.state.tick % every !== 0) return;
     const p = this.state.paddles[this.side].pos;
     const live = this.flight !== null && (this.state.phase === 'serveToss' || this.state.phase === 'rally');
     const r = live ? Math.max(0, Math.round(this.R + (t - this.T0))) : -1;

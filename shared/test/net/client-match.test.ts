@@ -254,12 +254,12 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     expect(c.stats.corrections).toBe(0);
   });
 
-  it('quieta (fase de sala sin juego): no saca, ni sola ni con click, hasta el próximo start; la raqueta y el ping siguen', () => {
+  it('quieta (la decide la sala): no saca, ni sola ni con click, aunque llegue un start; la raqueta y el ping siguen', () => {
     const sent: C2S[] = [];
     const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
     c.receive({ k: 'start', fs: 0, n: 5, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);
     c.step(neutralIntent(1.6));
-    c.held = true;
+    c.hold(true);
     const click = neutralIntent(1.6);
     click.fire = c.now + 4;
     c.step(click);
@@ -269,12 +269,99 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     expect(sent.some((m) => m.k === 'toss')).toBe(false);
     expect(sent.some((m) => m.k === 'p')).toBe(true);
     expect(sent.some((m) => m.k === 'ping')).toBe(true);
-    // El start siguiente la suelta: el saque automático vuelve a contar desde él.
-    c.receive({ k: 'start', fs: 0, n: 6, wu: 0, g: 1, sc: [0, 0], ns: 0 }, c.now);
-    c.step(neutralIntent(1.6));
+    // Un start no la suelta (p. ej. el warm-up tras el partido, con las estadísticas encima): sigue quieta.
+    c.receive({ k: 'start', fs: 0, n: 6, wu: 1, g: 0, sc: [0, 0], ns: 0 }, c.now);
+    for (let i = 0; i < ticks; i++) c.step(click);
+    expect(c.held).toBe(true);
+    expect(c.rally).toBe(6);
+    expect(c.state.phase).toBe('serveHold');
+    expect(sent.some((m) => m.k === 'toss')).toBe(false);
+  });
+
+  it('al soltarla, el saque automático cuenta desde ese momento (no sale de golpe) y el click saca en el acto', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    c.hold(true);
+    c.receive({ k: 'start', fs: 0, n: 6, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);
+    const ticks = Math.ceil((cfg.serve.autoTossMs * 3) / tick);
+    for (let i = 0; i < ticks; i++) c.step(neutralIntent(1.6));
+    expect(sent.some((m) => m.k === 'toss')).toBe(false);
+    c.hold(false);
     expect(c.held).toBe(false);
-    for (let i = 0; i < ticks && !sent.some((m) => m.k === 'toss'); i++) c.step(neutralIntent(1.6));
+    const releasedAt = c.now;
+    let tossAt = -1;
+    for (let i = 0; i < ticks && tossAt < 0; i++) {
+      c.step(neutralIntent(1.6));
+      if (sent.some((m) => m.k === 'toss')) tossAt = c.now;
+    }
     expect(sent.filter((m) => m.k === 'toss')).toMatchObject([{ n: 6, a: 1 }]);
+    expect(tossAt - releasedAt).toBeGreaterThanOrEqual(cfg.serve.autoTossMs);
+    expect(tossAt - releasedAt).toBeLessThan(cfg.serve.autoTossMs + 2 * tick);
+    // Otra vez quieta y suelta: con click se saca en el mismo tick, sin esperar.
+    const c2 = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    sent.length = 0;
+    c2.hold(true);
+    c2.receive({ k: 'start', fs: 0, n: 9, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);
+    for (let i = 0; i < ticks; i++) c2.step(neutralIntent(1.6));
+    c2.hold(false);
+    const click = neutralIntent(1.6);
+    click.fire = c2.now + 4;
+    c2.step(click);
+    expect(c2.state.phase).toBe('serveToss');
+    expect(sent.filter((m) => m.k === 'toss')).toMatchObject([{ n: 9, a: 0 }]);
+  });
+
+  it('soltada mientras la vista va atrasada (calibrando), la puesta al día no saca con el tiempo pasado', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    c.hold(true);
+    c.receive({ k: 'start', fs: 0, n: 4, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);
+    c.step(neutralIntent(1.6));
+    // La vista se para 10 s (calibrando) y se suelta en el reloj de la partida de ahora, no en el de la vista.
+    const now = c.now + 10_000;
+    c.hold(false, now);
+    let tossAt = -1;
+    while (tossAt < 0 && c.now < now + 3000) {
+      c.step(neutralIntent(1.6), true);
+      if (sent.some((m) => m.k === 'toss')) tossAt = c.now;
+    }
+    expect(tossAt).toBeGreaterThanOrEqual(now + cfg.serve.autoTossMs);
+    expect(tossAt).toBeLessThan(now + cfg.serve.autoTossMs + 2 * tick);
+  });
+
+  it('tras un tirón (muchos ticks en un frame) la raqueta sale una sola vez, con su último estado; a 60 fps, a 30 Hz', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    // Saca el rival: aquí solo cuenta lo que envía este cliente del estado (raqueta y ping).
+    c.receive({ k: 'start', fs: 1, n: 3, wu: 1, g: 0, sc: [0, 0], ns: 1 }, 0);
+    const still = neutralIntent(1.6);
+    // Un frame como en el navegador: sus ticks sin enviar el estado y, al acabarlos, un solo envío con el último.
+    const frame = (ticks: number, intent = still) => {
+      for (let i = 0; i < ticks; i++) c.step(intent, true);
+      c.flushSends();
+    };
+    frame(1);
+    // 60 fps (2 ticks por frame) durante 1 s: la raqueta sale a su ritmo de siempre (paddleHz).
+    sent.length = 0;
+    for (let f = 0; f < 60; f++) frame(2);
+    expect(sent.filter((m) => m.k === 'p').length).toBe(cfg.net.paddleHz);
+    // Calibrando 10 s (sin frames de juego) y la puesta al día de golpe, con la raqueta movida: un `p`, no 300.
+    sent.length = 0;
+    const moved = neutralIntent(1.6);
+    moved.target = { x: 0.4, z: 1.2 };
+    frame(Math.round(10_000 / tick), moved);
+    const pads = sent.filter((m) => m.k === 'p');
+    expect(pads.length).toBe(1);
+    const pad = c.state.paddles[0].pos;
+    expect(pads[0]).toMatchObject({ k: 'p', n: 3, x: Math.round(pad.x * 1000), z: Math.round(pad.z * 1000) });
+    expect(Math.round(pad.x * 1000)).not.toBe(0);
+    // Y del ping, como mucho uno: nada que se acerque a la ráfaga de 200 que corta el servidor.
+    expect(sent.filter((m) => m.k === 'ping').length).toBeLessThanOrEqual(1);
+    expect(sent.length).toBeLessThanOrEqual(2);
+    // Sin `flushSends` (el uso de siempre: un tick, un envío), nada cambia.
+    sent.length = 0;
+    for (let i = 0; i < 120; i++) c.step(still);
+    expect(sent.filter((m) => m.k === 'p').length).toBe(cfg.net.paddleHz);
   });
 
   it('en práctica no hay fin de game aunque llegue un pt con ganador', () => {

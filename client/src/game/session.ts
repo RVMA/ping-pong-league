@@ -15,8 +15,13 @@ export interface GameSession {
   readonly ready: boolean;
   /** Prepara un game nuevo contra el bot de esa dificultad. */
   begin(difficulty: BotDifficulty): void;
-  /** Avanza un tick con el intento del jugador; devuelve los eventos del tick. */
+  /** Avanza un tick con el intento del jugador; devuelve los eventos del tick. En red no envía el estado: ver flush. */
   tick(intent: InputIntent): SimEvent[];
+  /**
+   * Tras los ticks de cada frame: en red sale el estado que toque (raqueta, ping), una vez y con el último. Así, tras un
+   * tirón (calibrando, pestaña oculta), la puesta al día no manda una ráfaga de mensajes viejos.
+   */
+  flush(): void;
   /** Posición de la bola a dibujar. */
   renderBall(out: Vec3): Vec3;
   dispose(): void;
@@ -48,6 +53,8 @@ export class LocalSession implements GameSession {
     const bot = this.bot.think(this.sim);
     return this.sim.step([intent, bot]);
   }
+
+  flush(): void {}
 
   renderBall(out: Vec3): Vec3 {
     const b = this.sim.state.ball.pos;

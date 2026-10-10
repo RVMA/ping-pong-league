@@ -87,15 +87,12 @@ export class RoomFlow {
   /** Aviso del lobby o de la sala («Código de sala no válido», «Beto ha salido de la sala»). */
   private notice = '';
   private playMode: PlayMode | null = null;
-  /** La sala está en una fase sin juego: la vista se mantiene quieta (OnlineSession.hold) en cada frame. */
-  private holding = false;
   // Cuenta atrás.
   private digit = -1;
   private goUntil = 0;
   // Entre games.
   private betweenAt = 0;
   private gameShown = false;
-  private betweenUp = false;
   // Fin del partido.
   private endSeen: MatchEndMsg | null = null;
   private end: PendingEnd | null = null;
@@ -194,8 +191,6 @@ export class RoomFlow {
   /** Cada frame: relojes, cifras de la cuenta atrás y anillo. Sin crear objetos; escribe solo si algo cambia. */
   update(now: number): void {
     if (this.stage !== 'room') return;
-    const s = this.session;
-    if (this.holding) s?.hold();
     const allowed = this.readyAllowed();
     if (this.shift.poll(now) && allowed) this.toggleReady();
     this.ui.setRing(allowed ? this.shift.progress(now) : 0);
@@ -207,7 +202,8 @@ export class RoomFlow {
       this.goUntil = 0;
       this.render();
     }
-    if (v && v.phase === 'between' && !this.betweenUp && now - this.betweenAt >= BETWEEN_FALLBACK_MS) {
+    // Una sola vez: tras él, gameShown (aunque un corte o un error tapen el texto de entre games).
+    if (v && v.phase === 'between' && !this.gameShown && now - this.betweenAt >= BETWEEN_FALLBACK_MS) {
       this.gameShown = true;
       this.render();
     }
@@ -288,7 +284,6 @@ export class RoomFlow {
     this.stage = 'lobby';
     this.view = null;
     this.end = null;
-    this.holding = false;
     this.notice = notice;
     this.playMode = null;
     this.tickText = null;
@@ -373,7 +368,13 @@ export class RoomFlow {
     return this.host.calibrating || !s || s.end !== null || s.status === 'connecting' || s.status === 'reconnecting' || this.view === null;
   }
 
+  /**
+   * Cómo está el juego. La vista solo saca (sola o con click) cuando se juega: en las fases sin juego y con una pantalla
+   * encima (sala de espera, estadísticas del partido, errores) se queda quieta (OnlineSession.hold). Se fija en cada
+   * render, así que no depende del orden de los mensajes (`room` antes que `start`) ni lo cambia un `start`.
+   */
   private play(mode: PlayMode): void {
+    this.session?.hold(mode !== 'play');
     if (mode === this.playMode) return;
     this.playMode = mode;
     this.host.setPlay(mode);
@@ -390,7 +391,6 @@ export class RoomFlow {
   private render(): void {
     const ui = this.ui;
     const hud = this.host.hud;
-    this.holding = false;
     if (this.stage === 'off') return;
     if (this.host.calibrating) {
       ui.hideAll();
@@ -434,7 +434,6 @@ export class RoomFlow {
     if (!s) return;
     this.scoreboard(v);
     this.endUp = false;
-    this.betweenUp = false;
     if (s.end && s.end.kind !== 'left') {
       ui.setStrip(false);
       ui.setCenter('', '', 'info');
@@ -447,8 +446,8 @@ export class RoomFlow {
     if (s.status === 'reconnecting') {
       ui.hidePanel();
       ui.setStrip(false);
-      ui.setCenter('Conexión perdida', '', 'info');
-      this.ticker(s.cutAt + this.cfg.room.reconnectMs, (sec) => ui.setCenterSub(`Reconectando… ${clockText(sec)}`));
+      // Las dos líneas juntas: cada reintento vuelve a pintar, y así no borra la línea del reloj para reescribirla.
+      this.ticker(s.cutAt + this.cfg.room.reconnectMs, (sec) => ui.setCenter('Conexión perdida', `Reconectando… ${clockText(sec)}`, 'info'));
       this.play('off');
       return;
     }
@@ -486,7 +485,6 @@ export class RoomFlow {
         ui.setCenter('', '', 'info');
         this.ticker(-1, null);
         ui.showWaiting(v.code, modeText(v.mode, this.cfg), `${location.origin}${location.pathname}?room=${v.code}`, this.notice);
-        this.holding = true;
         this.play('off');
         return;
       case 'warmup':
@@ -501,7 +499,6 @@ export class RoomFlow {
           this.ticker(-1, null);
           const now = performance.now();
           this.showDigit(countdownStep(v.deadlineAt, now), now);
-          this.holding = true;
           this.play('hold');
           return;
         }
@@ -518,7 +515,6 @@ export class RoomFlow {
           ui.setCenter('', '', 'info');
           this.ticker(-1, null);
         }
-        this.holding = away !== null;
         this.play(away === null && s.ready ? 'play' : 'hold');
         return;
       }
@@ -533,22 +529,19 @@ export class RoomFlow {
       case 'between': {
         ui.hidePanel();
         ui.setStrip(false);
-        this.holding = true;
         this.play('hold');
         if (!this.gameShown) {
           ui.setCenter('', '', 'info');
           this.ticker(-1, null);
           return;
         }
-        this.betweenUp = true;
         const done = v.gamesWon[0] + v.gamesWon[1];
         const lg = s.lastGame && s.lastGame.game === done ? s.lastGame : null;
         const w: Side | null = lg ? lg.winner : null;
         const games: [number, number] = w === null ? [v.gamesWon[0], v.gamesWon[1]] : [v.gamesWon[w], v.gamesWon[otherSide(w)]];
         const score: [number, number] | null = lg && w !== null ? [lg.score[w], lg.score[otherSide(w)]] : null;
         const text = w === null ? `Game ${done} · Games ${games[0]}-${games[1]}` : betweenText(done, nameOf(v, w), score, games);
-        ui.setCenter(text, '', 'info');
-        this.ticker(v.deadlineAt, (sec) => ui.setCenterSub(`Game ${done + 1} en ${clockText(sec)}`));
+        this.ticker(v.deadlineAt, (sec) => ui.setCenter(text, `Game ${done + 1} en ${clockText(sec)}`, 'info'));
         return;
       }
       case 'paused': {
@@ -556,7 +549,6 @@ export class RoomFlow {
         ui.setStrip(false);
         const name = away === null ? 'el rival' : awayName;
         this.ticker(v.deadlineAt, (sec) => ui.setCenter(pauseText(name, sec), '', 'info'));
-        this.holding = true;
         this.play('hold');
         return;
       }

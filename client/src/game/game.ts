@@ -421,6 +421,8 @@ export class Game implements RoomHost {
         gameNow = now - this.clock.epoch;
       }
       while (this.sim.now + tick <= gameNow) this.tick();
+      // En red, lo que se envía del estado (raqueta, ping) sale una vez por frame, con el último tick: tras un tirón, sin ráfaga.
+      this.session.flush();
       alpha = Math.max(0, Math.min(1, (gameNow - this.sim.now) / tick));
     }
     this.render(alpha, dtFrame);

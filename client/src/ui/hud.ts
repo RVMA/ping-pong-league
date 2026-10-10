@@ -33,6 +33,11 @@ export function setText(node: HTMLElement, text: string): void {
   if (node.textContent !== text) node.textContent = text;
 }
 
+/** Oculta o enseña solo si cambia (poner `hidden` al valor que ya tiene también es una escritura en el DOM). */
+export function setHidden(node: HTMLElement, hidden: boolean): void {
+  if (node.hidden !== hidden) node.hidden = hidden;
+}
+
 /** Las tres dificultades del bot (`data-difficulty`: los E2E las pulsan); la actual, destacada. */
 export function difficultyButtons(current: BotDifficulty, labels: Record<BotDifficulty, string>, onPick: (d: BotDifficulty) => void): HTMLElement {
   const group = el('div', 'diff');
@@ -194,7 +199,7 @@ export class Hud {
     for (const i of [0, 1] as const) {
       const node = this.pings[i];
       if (!values) {
-        node.hidden = true;
+        setHidden(node, true);
         continue;
       }
       const v = values[i];
@@ -206,10 +211,11 @@ export class Hud {
         node.title = levels[i] === 'bad' ? 'Ping alto' : levels[i] === 'fair' ? 'Ping medio' : levels[i] === 'good' ? 'Ping bajo' : 'Midiendo';
         this.pingText[i] = text;
       }
-      node.hidden = false;
+      setHidden(node, false);
       if (levels[i] === 'bad') warn = true;
     }
-    this.netWarn.hidden = !warn;
+    // Se llama en cada frame: solo escribe si algo cambia.
+    setHidden(this.netWarn, !warn);
   }
 
   /** Pantalla de conexión (conectando, error, conexión perdida) con un botón opcional para volver al menú. */
