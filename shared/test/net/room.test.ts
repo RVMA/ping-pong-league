@@ -3,7 +3,7 @@ import { type MatchMode, makeConfig } from '../../src/config.ts';
 import { configHash } from '../../src/net/config-hash.ts';
 import { matchStats } from '../../src/net/match-stats.ts';
 import { type C2S, type HelloMsg, type MatchEndMsg, type PointMsg, PROTOCOL_VERSION, type RoomMsg, type S2C, type StartMsg } from '../../src/net/protocol.ts';
-import { RoomCore } from '../../src/net/room.ts';
+import { RoomCore, type RoomRetain } from '../../src/net/room.ts';
 import { cleanName } from '../../src/net/route.ts';
 import type { GameAuthority, GameStart, MatchRecord } from '../../src/net/server-match.ts';
 import type { Side } from '../../src/types.ts';
@@ -170,10 +170,16 @@ function lastRoom(out: Out[], to: Side): RoomMsg {
   return r[r.length - 1];
 }
 
+interface SetupOptions {
+  mode?: MatchMode;
+  random?: number[];
+  retain?: RoomRetain;
+}
+
 /** Resumen del orden: «0:room», «1:drop»… */
 const order = (out: Out[]): string[] => out.map((o) => ('msg' in o ? `${o.to}:${o.msg.k}` : `${o.to}:drop`));
 
-function setup(o: { mode?: MatchMode; random?: number[] } = {}) {
+function setup(o: SetupOptions = {}) {
   const out: Out[] = [];
   const all: Out[] = [];
   const fakes: FakeAuthority[] = [];
@@ -184,6 +190,7 @@ function setup(o: { mode?: MatchMode; random?: number[] } = {}) {
     cfg,
     code: 'ABCD',
     mode: o.mode ?? 'standard',
+    retain: o.retain,
     send: (to, msg) => {
       out.push({ to, msg });
       all.push({ to, msg });
@@ -212,7 +219,7 @@ function setup(o: { mode?: MatchMode; random?: number[] } = {}) {
 }
 
 /** Dos jugadores (Ana en el 0, Bea en el 1) en el warm-up a t = 0. */
-function warm(o: { mode?: MatchMode; random?: number[] } = {}) {
+function warm(o: SetupOptions = {}) {
   const t = setup(o);
   const a = t.room.join(hello('Ana'), 0);
   const b = t.room.join(hello('Bea'), 0);
@@ -223,7 +230,7 @@ function warm(o: { mode?: MatchMode; random?: number[] } = {}) {
 }
 
 /** Warm-up con un punto y un rechazo (no cuentan en el partido), Listos a 1000 y 2000, y el game 1 a t = 5000. */
-function toMatch(o: { mode?: MatchMode; random?: number[] } = {}) {
+function toMatch(o: SetupOptions = {}) {
   const t = warm(o);
   const practice = t.auth();
   t.act(500, () => practice.emitPoint(1));
@@ -935,5 +942,102 @@ describe('RoomCore: la sala (V0.4) [§14]', () => {
     t.room.receive(0, rdy(1), 20);
     expect(t.take()).toEqual([]);
     expect(t.room.phase).toBe('waiting');
+  });
+
+  it('(m) rdy y rt sin cambio (el mismo valor que ya tiene) no generan eventos ni room, en el warm-up ni en el partido', () => {
+    const t = warm();
+    t.room.receive(0, rdy(1), 100);
+    t.room.receive(1, { k: 'rt', on: 1 }, 100);
+    t.take();
+    const before = t.events().length;
+    for (let i = 0; i < 100; i++) {
+      const now = 200 + i;
+      t.room.receive(0, rdy(1), now);
+      t.room.receive(1, rdy(0), now);
+      t.room.receive(1, { k: 'rt', on: 1 }, now);
+      t.room.receive(0, { k: 'rt', on: 0 }, now);
+    }
+    expect(t.take()).toEqual([]);
+    expect(t.events()).toHaveLength(before);
+
+    const m = toMatch();
+    const inMatch = m.events().length;
+    for (let i = 0; i < 100; i++) {
+      m.room.receive(i % 2 === 0 ? 0 : 1, rdy(i % 2 === 0 ? 1 : 0), 6000 + i);
+      m.room.receive(i % 2 === 0 ? 1 : 0, { k: 'rt', on: i % 2 === 0 ? 1 : 0 }, 6000 + i);
+    }
+    expect(m.take()).toEqual([]);
+    expect(m.events()).toHaveLength(inMatch);
+  });
+
+  it('(o) retain (sala de vida larga, el Durable Object): registro acotado y los mismos mensajes, mend incluido', () => {
+    const retain: RoomRetain = { events: 8, matches: 2, perGame: 3 };
+    const hitOf = (n: number, player: Side, tier: 'PERFECT' | 'GOOD'): MatchRecord['hits'][number] => ({ n, f: 0, player, tier, type: 'NORMAL', dtMs: 0, serve: false });
+    /** Warm-up con golpes, puntos y rechazos, 40 cambios de la prueba de lectura y tres partidos Rápidos. */
+    const session = (r?: RoomRetain) => {
+      const t = warm({ mode: 'quick', retain: r });
+      const p = t.auth();
+      p.record.hits.push(hitOf(0, 0, 'PERFECT'), hitOf(0, 1, 'GOOD'));
+      p.record.rejected.push({ from: 1, kind: 'hit', why: 'reach' });
+      p.record.ignored.push({ from: 0, kind: 'end', why: 'past' });
+      p.record.hitCpuMs.push(0.1, 0.2);
+      t.act(500, () => p.emitPoint(1));
+      for (let i = 0; i < 40; i++) t.room.receive(1, { k: 'rt', on: i % 2 === 0 ? 1 : 0 }, 600 + i);
+      let now = 1000;
+      for (let k = 0; k < 3; k++) {
+        t.room.receive(0, rdy(1), now);
+        t.room.receive(1, rdy(1), now);
+        now += cfg.room.countdownMs;
+        t.room.poll(now);
+        const g = t.auth();
+        g.record.hits.push(hitOf(g.rally, 0, 'PERFECT'), hitOf(g.rally, 1, 'GOOD'), hitOf(g.rally, 0, 'PERFECT'));
+        g.record.rejected.push({ from: 1, kind: 'hit', why: 'reach' });
+        g.record.hitCpuMs.push(0.1, 0.2);
+        now += 1000;
+        t.act(now, () => g.emitPoint(0));
+        now += 1000;
+        t.act(now, () => g.emitGameOver(k === 1 ? 1 : 0));
+      }
+      return t;
+    };
+    const full = session();
+    const lean = session(retain);
+
+    expect(lean.all).toEqual(full.all);
+    expect(sent(lean.all, 0, 'mend')).toHaveLength(3);
+    expect(sent(lean.all, 1, 'mend')[0]).toEqual(expect.objectContaining({ st: [{ pf: 100, ms: 2, ne: 0, pts: 2 }, { pf: 0, ms: 0, ne: 0, pts: 0 }], rj: [0, 1] }));
+
+    // Sin retain (Node, tests, room-bots) lo guarda todo; con retain, anillos de eventos y partidos y solo la última autoridad.
+    expect(full.room.record.events.length).toBeGreaterThan(40);
+    expect(lean.room.record.events).toEqual(full.room.record.events.slice(-retain.events));
+    expect(full.room.record.matches).toHaveLength(3);
+    expect(lean.room.record.matches).toEqual(full.room.record.matches.slice(-retain.matches));
+    expect(full.room.record.authorities).toHaveLength(7);
+    expect(lean.room.record.authorities).toEqual([lean.auth().record]);
+
+    // El registro del warm-up no cuenta en las estadísticas: con retain queda vacío.
+    expect(full.fakes[0].record.hits).toHaveLength(2);
+    expect(full.fakes[0].record.points).toHaveLength(1);
+    expect(lean.fakes[0].record).toEqual({ points: [], hits: [], rejected: [], ignored: [], hitCpuMs: [], winner: null });
+    // Los de los games guardan golpes y puntos (las estadísticas del partido).
+    expect(lean.fakes[1].record).toEqual(full.fakes[1].record);
+  });
+
+  it('(o) retain: cada game guarda todos sus golpes y puntos y como mucho perGame entradas de cada lista de diagnóstico (rj se satura ahí)', () => {
+    const t = toMatch({ mode: 'quick', retain: { events: 64, matches: 4, perGame: 3 } });
+    const g = t.auth();
+    for (let i = 0; i < 10; i++) {
+      g.record.hits.push({ n: 2, f: i, player: 0, tier: 'GOOD', type: 'NORMAL', dtMs: 0, serve: i === 0 });
+      g.record.rejected.push({ from: 1, kind: 'end', why: 'stale' });
+      g.record.ignored.push({ from: 1, kind: 'end', why: 'past' });
+      g.record.hitCpuMs.push(i);
+      t.room.receive(1, pad(2), 6000 + i);
+    }
+    expect(g.record.hits).toHaveLength(10);
+    expect(g.record.rejected).toHaveLength(3);
+    expect(g.record.ignored).toHaveLength(3);
+    expect(g.record.hitCpuMs).toEqual([0, 1, 2]);
+    t.act(9000, () => g.emitGameOver(0));
+    expect(sent(t.take(), 0, 'mend')).toEqual([expect.objectContaining({ rj: [0, 3] })]);
   });
 });

@@ -45,10 +45,25 @@ export interface RoomDeps {
   /** Fábrica de la autoridad de cada game (por defecto ServerMatch; un falso en los tests). */
   makeAuthority?(send: (to: Side, msg: S2C) => void): GameAuthority;
   log?(line: string): void;
+  /** Registro acotado, para una sala que vive horas (el Durable Object). Sin esto, `record` lo guarda todo. */
+  retain?: RoomRetain;
+}
+
+/**
+ * Topes del registro con `retain` (se aplican al final de cada llamada): `record.events` y `record.matches` se quedan con
+ * los últimos; `record.authorities`, solo con la última autoridad; el registro del warm-up se vacía (no cuenta en las
+ * estadísticas) y el de cada game guarda todos sus golpes y puntos (las estadísticas del partido) y las primeras
+ * `perGame` entradas de cada lista de diagnóstico (rechazos, ignorados, CPU por golpe): el `rj` del `mend` se satura ahí.
+ */
+export interface RoomRetain {
+  events: number;
+  matches: number;
+  perGame: number;
 }
 
 export type JoinResult = { ok: true; side: Side; resumed: boolean } | { ok: false; err: ErrCode };
 
+/** Lo que queda registrado de la sala (diagnóstico, room-bots y tests); con `RoomDeps.retain`, acotado. */
 export interface RoomRecord {
   /** Un partido por fila: modo, primer saque, ganador, motivo y sus games acabados. */
   matches: MatchRow[];
@@ -73,6 +88,16 @@ const INF = Number.POSITIVE_INFINITY;
 const MAX_STEPS = 32;
 
 const other = (s: Side): Side => (s === 0 ? 1 : 0);
+
+/** Deja en la lista sus `max` últimos elementos. */
+function keepLast<T>(list: T[], max: number): void {
+  if (list.length > max) list.splice(0, list.length - max);
+}
+
+/** Deja en la lista sus `max` primeros elementos. */
+function keepFirst<T>(list: T[], max: number): void {
+  if (list.length > max) list.length = max;
+}
 
 export class RoomCore {
   readonly code: string;
@@ -142,6 +167,7 @@ export class RoomCore {
     const known = hello.tk === undefined ? null : this.seats.sideOfToken(hello.tk);
     const res = known === null ? this.enter(hello) : this.rejoin(known, hello);
     this.syncRoom();
+    this.trim();
     return res;
   }
 
@@ -178,6 +204,7 @@ export class RoomCore {
       // waiting y between: solo la reserva (el game siguiente empieza en pausa si sigue fuera).
     }
     this.syncRoom();
+    this.trim();
   }
 
   receive(side: Side, msg: C2S, now: number): void {
@@ -210,12 +237,14 @@ export class RoomCore {
       // hello y again: nada dentro de una sala.
     }
     this.syncRoom();
+    this.trim();
   }
 
   /** Atiende los plazos vencidos (lo llama el temporizador del servidor a `nextDeadline()`). */
   poll(now: number): void {
     this.begin(now);
     this.syncRoom();
+    this.trim();
   }
 
   /** El plazo más cercano (Infinity si no hay ninguno). */
@@ -609,6 +638,31 @@ export class RoomCore {
       default:
         return ['', INF];
     }
+  }
+
+  // ——— Registro ———
+
+  /** Con `retain`, deja el registro dentro de sus topes (sin `retain`, nada). */
+  private trim(): void {
+    const r = this.deps.retain;
+    if (!r) return;
+    keepLast(this.record.events, r.events);
+    keepLast(this.record.matches, r.matches);
+    keepLast(this.record.authorities, 1);
+    const a = this.auth?.record;
+    if (!a) return;
+    if (this.match === null) {
+      // La autoridad en curso es la del warm-up.
+      a.points.length = 0;
+      a.hits.length = 0;
+      a.rejected.length = 0;
+      a.ignored.length = 0;
+      a.hitCpuMs.length = 0;
+      return;
+    }
+    keepFirst(a.rejected, r.perGame);
+    keepFirst(a.ignored, r.perGame);
+    keepFirst(a.hitCpuMs, r.perGame);
   }
 
   private event(what: string): void {
