@@ -11,7 +11,7 @@ import { button, el, type Hud, setHidden, setText } from './hud.ts';
 
 export interface RoomUiHandlers {
   onReady(): void;
-  /** Prueba de lectura (Task 12; el botón está oculto hasta entonces). */
+  /** «Prueba de lectura» / «Dejar la prueba» (§13.1). */
   onReadTest(): void;
   onLeave(): void;
   onCalibrate(): void;
@@ -73,6 +73,8 @@ export class RoomUi {
   private readonly stripTitle = el('div', 'strip-title');
   private readonly chips: [ChipNodes, ChipNodes];
   private readonly warn = el('div', 'strip-warn');
+  /** Aviso de la prueba de lectura del rival (§13.1): «Ana está haciendo la prueba de lectura: mezcla golpes». */
+  private readonly readNote = el('div', 'strip-read');
   private readonly ring = el('span', 'ready-ring');
   private readonly readyBtn: HTMLButtonElement;
   private readonly readTestBtn: HTMLButtonElement;
@@ -114,10 +116,11 @@ export class RoomUi {
     this.readyBtn = this.stripButton('Listo', true, () => handlers.onReady(), 'ready');
     this.readTestBtn = this.stripButton('Prueba de lectura', false, () => handlers.onReadTest(), 'read-test');
     this.readTestBtn.hidden = true;
+    this.readNote.hidden = true;
     const stripActions = el('div', 'strip-actions');
     stripActions.append(this.ring, this.readyBtn, this.readTestBtn, this.stripButton('Salir', false, () => handlers.onLeave(), 'leave'));
     this.warn.hidden = true;
-    this.strip.append(this.stripTitle, players, this.warn, stripActions);
+    this.strip.append(this.stripTitle, players, this.warn, this.readNote, stripActions);
     this.strip.hidden = true;
     this.center.append(this.big, this.sub);
     this.center.hidden = true;
@@ -224,6 +227,24 @@ export class RoomUi {
     setText(n.state, c.away ? 'desconectado' : c.ready ? 'Listo' : 'sin Listo');
     const cls = `ready-chip${c.ready ? ' on' : ''}${c.away ? ' away' : ''}`;
     if (n.root.className !== cls) n.root.className = cls;
+  }
+
+  /** Listo disponible (no en la prueba de lectura ni con su resultado encima). */
+  setReadyEnabled(on: boolean): void {
+    if (this.readyBtn.disabled === on) this.readyBtn.disabled = !on;
+  }
+
+  /** Botón de la prueba de lectura: visible en el warm-up; «Dejar la prueba» mientras dura. */
+  setReadTest(visible: boolean, running: boolean, enabled: boolean): void {
+    setHidden(this.readTestBtn, !visible);
+    setText(this.readTestBtn, running ? 'Dejar la prueba' : 'Prueba de lectura');
+    if (this.readTestBtn.disabled === enabled) this.readTestBtn.disabled = !enabled;
+  }
+
+  /** Aviso de la prueba de lectura del rival ('' lo oculta). */
+  setReadNote(text: string): void {
+    setText(this.readNote, text);
+    setHidden(this.readNote, text === '');
   }
 
   /** Aviso del timeout del Listo ('' lo oculta). */

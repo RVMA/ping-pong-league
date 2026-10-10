@@ -53,6 +53,11 @@ export interface BotDifficultyConfig {
    * con teclas, como un humano, y la potencia sale de la calidad que saca (`quality`), no de un rango propio.
    */
   shots: { topspin: number; slice: number; smash: number; badSmash: number; block: number };
+  /**
+   * Los golpes débiles, siempre tarde (bola alta y lenta, nunca pronto a la red): la devolución automática de la prueba
+   * de lectura (§13.1, «a veces una bola alta, para que el rival pueda hacer smash»). Ninguna dificultad lo usa.
+   */
+  lateWeak?: boolean;
 }
 
 export const DEFAULT_CONFIG = {

@@ -4,7 +4,7 @@
  * con números cuando ayudan a entenderla (ms de timing, cm sobre la cinta). El rival es «el bot» (en local y contra el
  * bot remoto) o «el rival» (en una sala, V0.4).
  */
-import { type PointReason, type PowerLevel, type ShotType, SIDE_TEXT, type StrokeNote, type WhyResult } from '@ppp/shared';
+import { type PointReason, type PowerLevel, READ_ANSWERS, type ReadAnswer, type ReadResult, type ShotType, SIDE_TEXT, type StrokeNote, type WhyResult } from '@ppp/shared';
 
 /** Cómo se nombra al rival en los textos: «el bot» o «el rival» (los dos con «el»: «del bot», «del rival»). */
 export type RivalNoun = 'bot' | 'rival';
@@ -165,3 +165,35 @@ export const SHOT_LABEL: Record<ShotType, string> = {
   SMASH: 'Smash',
   BLOCK: 'Bloqueo',
 };
+
+// ——— Prueba de lectura (§13.1) ———
+
+/** Leyenda de la prueba: tecla, nombre y respuesta, en el orden de las teclas (1 Normal · 2 Topspin · … · 5 Bloqueo). */
+export const READ_LEGEND: readonly (readonly [string, string, ReadAnswer])[] = READ_ANSWERS.map((a, i) => [String(i + 1), SHOT_LABEL[a], a] as const);
+
+/** Resultado en grande («80 %», «—» sin respuestas) y la línea de debajo: aciertos sobre las respondidas y las que faltaron. */
+export function readSummary(r: ReadResult): { pct: string; line: string } {
+  const missing = `Sin respuesta: ${r.asked - r.answered} de ${r.asked}.`;
+  if (!r.answered) return { pct: '—', line: `No nombraste ningún golpe. ${missing}` };
+  return { pct: `${Math.round(r.pct)} %`, line: `Acertaste ${r.correct} de los ${r.answered} golpes que nombraste. ${missing}` };
+}
+
+/** En qué te confundes: «Topspin: dijiste Normal 2 de 3 veces.», de la más repetida a la menos (como mucho `max`). */
+export function readConfusions(r: ReadResult, max = 3): string[] {
+  const out: { n: number; text: string }[] = [];
+  for (const real of READ_ANSWERS) {
+    const row = r.confusion[real];
+    let total = row.NONE;
+    for (const a of READ_ANSWERS) total += row[a];
+    for (const said of READ_ANSWERS) {
+      const n = row[said];
+      if (said !== real && n > 0) out.push({ n, text: `${SHOT_LABEL[real]}: dijiste ${SHOT_LABEL[said]} ${n} de ${total} veces.` });
+    }
+  }
+  // Orden estable: a igual número, el de la tabla (golpe real y luego respuesta).
+  return out
+    .map((c, i) => ({ ...c, i }))
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .slice(0, max)
+    .map((c) => c.text);
+}

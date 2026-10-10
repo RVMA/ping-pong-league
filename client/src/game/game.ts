@@ -9,6 +9,7 @@ import {
   diagnose,
   type GameConfig,
   type HitEvaluation,
+  type InputIntent,
   makeConfig,
   type PathSample,
   predictPath,
@@ -35,7 +36,9 @@ import { type FeedbackKind, Hud } from '../ui/hud.ts';
 import { PrecisionStats } from '../ui/precision-stats.ts';
 import { keyMissText, pointText, powerLevelText, SHOT_LABEL, strokeText } from '../ui/texts.ts';
 import { type NetStatus, OnlineSession } from '../net/online-session.ts';
+import { type AutoPlayer, PilotSeat } from './auto-player.ts';
 import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration.ts';
+import { ReadFlow } from './read-flow.ts';
 import { type LobbyInfo, type PlayMode, type RoomHost, RoomFlow } from './room-flow.ts';
 import { type GameSession, LocalSession, type SessionView } from './session.ts';
 import { loadExplain, loadKeyBar, saveExplain, saveKeyBar, type Settings } from './settings.ts';
@@ -95,6 +98,10 @@ export class Game implements RoomHost {
   private readonly local: LocalSession;
   /** Lobby, sala y su flujo (V0.4). */
   readonly roomFlow: RoomFlow;
+  /** Prueba de lectura (§13.1). */
+  readonly read: ReadFlow;
+  /** Quién mueve tu raqueta: el lector de la prueba de lectura, el piloto de `?autoplay=` o el ratón. */
+  private readonly pilots: PilotSeat;
   private readonly onlineParams: Settings['online'];
   private difficulty: BotDifficulty;
   readonly clock = { epoch: 0 };
@@ -156,6 +163,19 @@ export class Game implements RoomHost {
     this.world = new World(canvas, this.cfg, CHARACTERS);
     this.hud = new Hud(hudRoot, CHARACTERS);
     this.input = new MouseTranslator(canvas, this.world.camera, this.cfg.world.tableHeight + this.cfg.presentation.cursorPlaneHeight, this.clock, 0);
+    this.pilots = new PilotSeat(this.cfg, settings.autoplay, (settings.seed * 31 + 17) >>> 0);
+    this.read = new ReadFlow(
+      {
+        cfg: this.cfg,
+        hud: this.hud,
+        setReader: (on) => this.pilots.setReading(on),
+        playLocal: () => this.start(this.difficulty),
+        stopLocal: () => this.setPlay('off'),
+        toMenu: () => this.showMenu(),
+        rivalLabel: () => `El bot (${this.cfg.bot.difficulties[this.difficulty].label})`,
+      },
+      hudRoot,
+    );
     this.roomFlow = new RoomFlow(this, settings);
     this.curr = this.snapshot(this.emptySnapshot());
     this.prev = this.snapshot(this.emptySnapshot());
@@ -186,10 +206,12 @@ export class Game implements RoomHost {
     const { latencyOffsetMin, latencyOffsetMax } = this.cfg.input;
     this.latencyOffset = stored === null ? null : Math.max(latencyOffsetMin, Math.min(latencyOffsetMax, stored));
     this.input.latencyOffsetMs = this.latencyOffset ?? 0;
-    this.online?.setLatencyOffset(this.latencyOffset ?? 0);
+    this.online?.setLatencyOffset(this.netOffset);
     this.input.onShotKeyDown = (key, perf) => this.onShotKeyDown(key, perf);
 
-    if (settings.autostart) this.start(this.difficulty);
+    // `?read=1`: la prueba de lectura contra el bot en local (en una sala va con su botón).
+    if (settings.read && !this.onlineParams && !settings.room && !settings.create) this.read.intro(settings.autostart);
+    else if (settings.autostart) this.start(this.difficulty);
     else if (this.onlineParams) this.showMenu();
     else this.roomFlow.boot();
     requestAnimationFrame(this.frame);
@@ -202,6 +224,7 @@ export class Game implements RoomHost {
 
   /** Fuera del juego: el lobby o la sala (V0.4); con ?online=1, la pantalla de inicio de V0.3 contra el bot remoto. */
   private showMenu(): void {
+    this.read.stop();
     if (!this.onlineParams) return this.roomFlow.home();
     this.setPlay('off');
     const info = this.lobbyInfo();
@@ -220,7 +243,17 @@ export class Game implements RoomHost {
   /** La sesión en red de la sala pasa a ser la del juego (null: vuelve la local). */
   useNet(session: OnlineSession | null): void {
     this.online = session;
-    session?.setLatencyOffset(this.latencyOffset ?? 0);
+    session?.setLatencyOffset(this.netOffset);
+  }
+
+  /** Desfase que se declara al servidor: el calibrado; con `?autoplay=`, 0 (los clicks del piloto no tienen retardo). */
+  private get netOffset(): number {
+    return this.pilots.autoplaying ? 0 : (this.latencyOffset ?? 0);
+  }
+
+  /** El piloto que mueve tu raqueta (null: el ratón). */
+  private get pilot(): AutoPlayer | null {
+    return this.pilots.pilot;
   }
 
   /** Se juega ('play'), se mueve la raqueta sin golpear ('hold', fases de sala sin juego) o hay una pantalla encima. */
@@ -366,6 +399,7 @@ export class Game implements RoomHost {
 
   private onKey(e: KeyboardEvent): void {
     this.roomFlow.onKey(e);
+    this.read.onKey(e);
     // Escribiendo en el lobby (nombre, código) las letras no son atajos.
     if (e.target instanceof HTMLInputElement) return;
     if (e.key === 'Escape' && this.calibration) {
@@ -450,6 +484,7 @@ export class Game implements RoomHost {
       this.me = side;
       this.hud.setLocalSide(side);
       this.bounceMarker = null;
+      this.pilots.setSide(side);
     }
     this.world.setViewSide(view);
     // Tras la cámara: el cursor se vuelve a proyectar con ella.
@@ -458,7 +493,7 @@ export class Game implements RoomHost {
 
   private tick(): void {
     const tickEnd = this.sim.now + this.sim.tickMs;
-    const human = this.input.intentFor(tickEnd);
+    const human = this.pilot ? this.pilotIntent(this.pilot) : this.input.intentFor(tickEnd);
     const events = this.session.tick(human);
     // Instantáneas reutilizadas (sin asignar memoria por tick): la anterior pasa a ser la actual.
     const old = this.prev;
@@ -466,6 +501,15 @@ export class Game implements RoomHost {
     this.curr = this.snapshot(old);
     // En la cuenta atrás del inicio el rally del warm-up ya no cuenta: ni se oye ni se ve.
     if (!this.roomFlow.muted) for (const e of events) this.onEvent(e);
+  }
+
+  /** El intento del piloto, con las reglas del ratón: sin clicks cuando no se juega ('hold', pantallas encima). */
+  private pilotIntent(pilot: AutoPlayer): InputIntent {
+    const intent = pilot.intent(this.sim);
+    if (!this.input.enabled) intent.fire = undefined;
+    // Los clicks del ratón no cuentan mientras conduce el piloto.
+    this.input.clearFires();
+    return intent;
   }
 
   private emptySnapshot(): Snapshot {
@@ -489,6 +533,7 @@ export class Game implements RoomHost {
     this.log.push({ t: now, e });
     if (this.log.length > 400) this.log.shift();
     const fb = this.cfg.feedback;
+    this.read.onEvent(e, this.me);
     switch (e.type) {
       case 'serveReady':
         this.onServeReady(e.server);
@@ -504,7 +549,7 @@ export class Game implements RoomHost {
           this.lastHumanEval = e.evaluation;
           this.lastHumanAim = e.aimFactor;
           this.lastSwing = { shot: e.shot, power: e.power, keys: e.keys, raw: e.rawSwing, aimFactor: e.aimFactor };
-          this.humanClick = this.input.lastFire;
+          this.humanClick = this.pilot ? null : this.input.lastFire;
           this.precision.add({ evaluation: e.evaluation, aimFactor: e.aimFactor });
         }
         break;
@@ -546,8 +591,9 @@ export class Game implements RoomHost {
       case 'point': {
         const mine = e.winner === this.me;
         this.audio.play(mine ? 'point_win' : 'point_lose', { volume: 0.7 });
+        // En la prueba de lectura no hay «¿por qué?»: diría el golpe del rival (§13.1: nada por golpe mientras dura).
         const why =
-          !mine && this.explain
+          !mine && this.explain && !this.read.running
             ? diagnose({ reason: e.reason, lastHit: this.lastHumanHit, whiff: this.lastHumanWhiff, whiffed: this.humanWhiffedThisRally }, this.cfg)
             : null;
         const rival = this.roomFlow.active ? 'rival' : 'bot';
@@ -563,7 +609,7 @@ export class Game implements RoomHost {
         break;
       case 'gameOver':
         if (this.roomFlow.active) this.roomFlow.onGameOver();
-        else this.onGameOver(e.winner, e.score);
+        else if (!this.read.onLocalGameOver()) this.onGameOver(e.winner, e.score);
         break;
     }
   }
@@ -575,7 +621,7 @@ export class Game implements RoomHost {
     this.humanWhiffedThisRally = false;
     const rival = this.roomFlow.active ? 'el rival' : 'el bot';
     this.hud.setHint(
-      !this.running ? '' : server === this.me ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : `Saca ${rival}. Coloca la raqueta donde vaya a llegar la bola.`,
+      !this.running || this.pilot ? '' : server === this.me ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : `Saca ${rival}. Coloca la raqueta donde vaya a llegar la bola.`,
     );
   }
 
@@ -791,9 +837,9 @@ export class Game implements RoomHost {
       p.flash = fx.flash;
     }
 
-    // Marcador del cursor: el objetivo va en coordenadas del jugador local; se dibuja en las del mundo.
+    // Marcador del cursor: el objetivo va en coordenadas del jugador local; se dibuja en las del mundo (no con el piloto).
     frame.target = null;
-    if (this.running && !this.paused) {
+    if (this.running && !this.paused && !this.pilot) {
       const t = this.input.currentTarget;
       const pc = this.cfg.paddle;
       const sg = sideSign(this.me);
@@ -952,6 +998,9 @@ export class Game implements RoomHost {
       side: this.me,
       viewSide: this.world.viewSide,
       room: this.roomFlow.debug(),
+      read: this.read.debug(),
+      /** Quién mueve tu raqueta: el piloto (su perfil y lado) o null (el ratón). */
+      pilot: this.pilot ? { label: this.pilot.profile.label, side: this.pilot.side } : null,
       net: this.online
         ? {
             side: this.online.side,

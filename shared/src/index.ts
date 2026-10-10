@@ -11,4 +11,5 @@ export * from './rules.ts';
 export * from './sim.ts';
 export * from './bot.ts';
 export * from './why.ts';
+export * from './read-test.ts';
 export * from './net/index.ts';

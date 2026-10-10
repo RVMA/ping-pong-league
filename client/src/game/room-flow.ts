@@ -9,6 +9,8 @@
  *  - Cuenta atrás 3-2-1-GO con sus sonidos (`countdown`, `go`) y «Reanudando» si es tras una pausa; en la del inicio el
  *    rally del warm-up, ya cortado por el servidor, no se ve ni se oye.
  *  - Estadísticas del partido encima del warm-up hasta «Seguir», después de ver el último punto.
+ *  - Prueba de lectura en el warm-up (§13.1): el botón la empieza (`rt 1`; mientras dura no hay Listo) o la deja; al
+ *    acabar o al salir del warm-up, `rt 0`. Al rival le sale «Ana está haciendo la prueba de lectura: mezcla golpes».
  * La interfaz solo se toca cuando cambia algo: render() corre con cada mensaje de sala o cambio de conexión; update() corre
  * en cada frame, sin crear objetos, y solo escribe cuando cambia un segundo de un reloj, una cifra o un paso del anillo.
  */
@@ -19,7 +21,8 @@ import { OnlineSession, type RoomView, type SessionRoute, setRoomInUrl } from '.
 import type { Hud } from '../ui/hud.ts';
 import { Lobby } from '../ui/lobby.ts';
 import { type EndInfo, type ReadyChip, RoomUi } from '../ui/room-ui.ts';
-import { betweenText, clockText, countdownStep, gamesLine, modeText, nameOf, otherSide, pauseText, ReadyHold, readyWarnText, secondsLeft } from './room-logic.ts';
+import type { ReadFlow, ReadRoomChange } from './read-flow.ts';
+import { betweenText, clockText, countdownStep, gamesLine, modeText, nameOf, otherSide, pauseText, readFlagToSend, readNoticeText, ReadyHold, readyWarnText, secondsLeft } from './room-logic.ts';
 import { loadName, saveName, type Settings } from './settings.ts';
 import { mineFirst } from './view-side.ts';
 
@@ -42,6 +45,8 @@ export interface RoomHost {
   readonly audio: AudioManager;
   readonly clock: InputClock;
   readonly calibrating: boolean;
+  /** Prueba de lectura (§13.1). */
+  readonly read: ReadFlow;
   lobbyInfo(): LobbyInfo;
   /** La sesión en red de la sala pasa a ser la del juego (null: vuelve la local). */
   useNet(session: OnlineSession | null): void;
@@ -102,6 +107,8 @@ export class RoomFlow {
   private tickDeadline = -1;
   private tickSecond = -1;
   private tickText: ((seconds: number) => void) | null = null;
+  /** Último `rt` mandado en esta conexión (null tras cada `welcome`: la sala lo borra al volver). */
+  private rtSent: boolean | null = null;
 
   constructor(host: RoomHost, settings: Settings) {
     this.host = host;
@@ -125,7 +132,7 @@ export class RoomFlow {
         void this.host.audio.unlock();
         this.toggleReady();
       },
-      onReadTest: () => {},
+      onReadTest: () => this.toggleReadTest(),
       onLeave: () => this.leave(),
       onCalibrate: () => this.host.startCalibration(),
       onContinue: () => {
@@ -134,6 +141,7 @@ export class RoomFlow {
       },
       onLobby: () => this.toLobby(''),
     });
+    host.read.onRoomChange = (c) => this.onReadChange(c);
     // Sin foco en la ventana no llega el keyup de Shift: la pulsación se cancela.
     window.addEventListener('blur', () => this.shift.up());
   }
@@ -240,6 +248,8 @@ export class RoomFlow {
       matchEnd: this.endUp,
       notice: this.notice,
       playMode: this.playMode,
+      /** Prueba de lectura de cada lado, según la sala. */
+      rt: v ? v.players.map((p) => (p ? p.rt === 1 : null)) : null,
     };
   }
 
@@ -248,7 +258,11 @@ export class RoomFlow {
   private net(): OnlineSession {
     if (this.session) return this.session;
     const s = new OnlineSession(this.cfg, { ...this.settings.latency, seed: this.settings.seed }, this.host.clock);
-    s.onStatus = () => this.render();
+    s.onStatus = (st) => {
+      // Conexión nueva (`welcome`): la sala ya no tiene nuestro `rt`.
+      if (st === 'waiting') this.rtSent = null;
+      this.render();
+    };
     s.onRoom = (v) => this.onRoom(v);
     this.session = s;
     return s;
@@ -281,6 +295,7 @@ export class RoomFlow {
     this.session?.dispose();
     setRoomInUrl(null);
     this.host.useNet(null);
+    this.host.read.stop();
     this.shift.up();
     this.stage = 'lobby';
     this.view = null;
@@ -321,6 +336,7 @@ export class RoomFlow {
     if (gone && !v.players[rival]) this.notice = `${gone.nm} ha salido de la sala`;
     else if (v.players[rival]) this.notice = '';
     if (!prev || prev.phase !== v.phase) this.onPhase(prev?.phase ?? null, v.phase, now);
+    this.syncReadTest(v);
     // Llegó el rival mientras calibrabas: la calibración se corta (no se calibra en el warm-up, §3.7) y se vuelve aquí.
     if (this.host.calibrating && v.phase !== 'waiting') this.host.cancelCalibration();
     else this.render();
@@ -350,7 +366,7 @@ export class RoomFlow {
   /** Se puede cambiar el Listo: en el warm-up y en la cuenta atrás del inicio (para quitarlo), sin pantallas encima. */
   private readyAllowed(): boolean {
     const v = this.view;
-    if (this.stage !== 'room' || !v || this.blocked() || this.endUp) return false;
+    if (this.stage !== 'room' || !v || this.blocked() || this.endUp || this.host.read.inRoom || this.host.read.resultUp) return false;
     return v.phase === 'warmup' || (v.phase === 'countdown' && !this.resume);
   }
 
@@ -359,6 +375,53 @@ export class RoomFlow {
     const s = this.session;
     if (!v || !s || !this.readyAllowed()) return;
     s.sendReady(v.players[v.side]?.r !== 1);
+  }
+
+  // ——— Prueba de lectura (§13.1) ———
+
+  /** Se puede empezar: en el warm-up jugando (con el rival), sin tu Listo y sin pantallas encima. */
+  private readTestAllowed(): boolean {
+    const v = this.view;
+    const s = this.session;
+    if (this.stage !== 'room' || !v || !s || this.blocked() || this.endUp || this.host.read.resultUp || v.phase !== 'warmup') return false;
+    const rival = v.players[otherSide(v.side)];
+    return !!rival && rival.c === 1 && s.ready && v.players[v.side]?.r !== 1;
+  }
+
+  private toggleReadTest(): void {
+    if (this.host.read.inRoom) this.stopReadTest();
+    else if (this.readTestAllowed()) {
+      void this.host.audio.unlock();
+      this.host.read.start('room');
+      this.session?.sendReadTest(true);
+      this.rtSent = true;
+    }
+    this.render();
+  }
+
+  /** Deja la prueba sin resultado y lo dice a la sala (fuera del warm-up la sala lo ignora: lo limpia ella). */
+  private stopReadTest(): void {
+    this.host.read.stop();
+    this.session?.sendReadTest(false);
+    this.rtSent = false;
+  }
+
+  /** Con cada `room`: fuera del warm-up la prueba se para; dentro, el aviso `rt` sigue a la prueba (también tras volver). */
+  private syncReadTest(v: RoomView): void {
+    if (this.host.read.inRoom && v.phase !== 'warmup') this.stopReadTest();
+    const send = readFlagToSend(this.host.read.inRoom, v.players[v.side]?.rt === 1, this.rtSent, v.phase);
+    if (send === null) return;
+    this.session?.sendReadTest(send);
+    this.rtSent = send;
+  }
+
+  /** La prueba acabó (sus 30 golpes: `rt 0` y el resultado encima) o se cerró el resultado. */
+  private onReadChange(c: ReadRoomChange): void {
+    if (c === 'done') {
+      this.session?.sendReadTest(false);
+      this.rtSent = false;
+    }
+    this.render();
   }
 
   // ——— Pantallas ———
@@ -435,6 +498,8 @@ export class RoomFlow {
     if (!s) return;
     this.scoreboard(v);
     this.endUp = false;
+    // Sin conexión no hay prueba (al rival, la sala ya le quitó el aviso).
+    if (s.end) this.host.read.stop();
     if (s.end && s.end.kind !== 'left') {
       ui.setStrip(false);
       ui.setCenter('', '', 'info');
@@ -492,9 +557,15 @@ export class RoomFlow {
       case 'countdown': {
         ui.hidePanel();
         const counting = v.phase === 'countdown';
+        const read = this.host.read;
         // La franja con los Listos: en el warm-up y en la cuenta atrás del inicio (para poder quitarlo).
-        ui.setStrip(!counting || !this.resume, counting ? 'Cuenta atrás · mantén Shift para quitar el Listo' : 'Calentamiento · mantén Shift para Listo');
+        const title = counting ? 'Cuenta atrás · mantén Shift para quitar el Listo' : read.inRoom ? 'Prueba de lectura · nombra cada golpe del rival con 1–5' : 'Calentamiento · mantén Shift para Listo';
+        ui.setStrip(!counting || !this.resume, title);
         ui.setChips(this.chip(v, me), this.chip(v, rival));
+        ui.setReadyEnabled(this.readyAllowed());
+        ui.setReadTest(!counting, read.inRoom, read.inRoom || this.readTestAllowed());
+        const rp = v.players[rival];
+        ui.setReadNote(rp?.rt === 1 ? readNoticeText(rp.nm) : '');
         if (counting) {
           ui.setWarn('');
           this.ticker(-1, null);
@@ -516,7 +587,8 @@ export class RoomFlow {
           ui.setCenter('', '', 'info');
           this.ticker(-1, null);
         }
-        this.play(away === null && s.ready ? 'play' : 'hold');
+        // Con el resultado de la prueba encima, la vista no saca (como con las estadísticas del partido).
+        this.play(read.resultUp ? 'off' : away === null && s.ready ? 'play' : 'hold');
         return;
       }
       case 'match':

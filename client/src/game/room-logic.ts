@@ -159,3 +159,20 @@ export function pauseText(name: string, seconds: number): string {
 export function readyWarnText(iAmLate: boolean, lateName: string, seconds: number): string {
   return iAmLate ? `Da a Listo en ${clockText(seconds)} o saldrás de la sala` : `${lateName} tiene ${clockText(seconds)} para dar a Listo`;
 }
+
+// ——— Prueba de lectura (§13.1) ———
+
+/** Aviso al rival de quien hace la prueba: le pide que mezcle golpes. */
+export function readNoticeText(name: string): string {
+  return `${name} está haciendo la prueba de lectura: mezcla golpes`;
+}
+
+/**
+ * El aviso `rt` que toca mandar (o null): el que quieres (`want`, la prueba en marcha) si la sala muestra otro (`has`) y
+ * no se mandó ya en esta conexión (`sent`; null tras cada `welcome`: la sala lo borra al volver). Solo en el warm-up: en
+ * las demás fases la sala lo ignora.
+ */
+export function readFlagToSend(want: boolean, has: boolean, sent: boolean | null, phase: RoomPhase): boolean | null {
+  if (phase !== 'warmup' || want === has || sent === want) return null;
+  return want;
+}

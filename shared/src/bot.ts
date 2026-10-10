@@ -118,6 +118,8 @@ export class Bot {
   /** Error de timing (ms) y de posición (fracción del radio) para una calidad. */
   private sampleError(tier: Tier): { dtMs: number; pos: number } {
     const band = this.cfg.bot.bands[tier];
+    // Débil y tarde (lateWeak, prueba de lectura): bola alta y lenta. Sin sign(): el resto de perfiles no cambia su azar.
+    if (tier === 'weak' && this.diff.lateWeak) return { dtMs: this.rand(band.dtMs[0], band.dtMs[1]), pos: this.rand(band.pos[0], band.pos[1]) };
     // En GOOD el error puede venir del timing o de la posición, no de ambos al máximo.
     if (tier === 'good' && this.rng() < 0.5) {
       return { dtMs: this.sign() * this.rand(0, 18), pos: this.rand(band.pos[0], band.pos[1]) };

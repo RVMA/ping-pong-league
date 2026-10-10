@@ -472,6 +472,20 @@ body {
   outline-offset: 2px;
 }
 
+/* Botón no disponible ahora (el Listo durante la prueba de lectura, la prueba con tu Listo puesto). */
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn:disabled:hover {
+  background: transparent;
+}
+
+.btn.primary:disabled:hover {
+  background: var(--line);
+}
+
 .final-score {
   display: flex;
   gap: 8px;
@@ -1049,5 +1063,138 @@ body {
   .room-center.info .center-big {
     font-size: 22px;
     white-space: normal;
+  }
+}
+
+/* ——— Prueba de lectura (§13.1): leyenda discreta abajo en el centro (sustituye a la barra de teclas) ——— */
+#hud.reading .keybar {
+  display: none;
+}
+
+.read-legend {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  font-size: 15px;
+}
+
+.read-legend[hidden] {
+  display: none;
+}
+
+.read-title {
+  font-weight: 600;
+  color: var(--line);
+}
+
+.read-progress {
+  margin-right: 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* La tecla ya dada para el golpe en vuelo: solo que se registró (sin acierto ni fallo). */
+.read-key.on {
+  border-color: var(--line);
+  color: var(--line);
+}
+
+.strip-read {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--shot-block);
+}
+
+.read-score {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.read-pct {
+  font-family: var(--font-fb);
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--gold);
+}
+
+.read-pct-label {
+  font-size: 20px;
+  color: var(--muted);
+}
+
+.read-table {
+  margin-top: 16px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.read-table th {
+  padding: 0 0 6px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.read-table td {
+  padding: 3px 0 3px 14px;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.read-table .k {
+  padding-left: 0;
+  text-align: left;
+}
+
+.read-table td.k {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--line);
+}
+
+.read-table td.ok {
+  color: var(--win);
+}
+
+.read-table td.bad {
+  color: var(--lose);
+}
+
+.read-table td.none {
+  color: var(--gold);
+}
+
+.read-table td.zero {
+  color: rgba(243, 246, 250, 0.3);
+}
+
+.read-panel > .read-table + h2 {
+  margin-top: 18px;
+}
+
+.read-panel > .diff {
+  margin-top: 18px;
+}
+
+@media (max-width: 640px) {
+  .read-table th,
+  .read-table td {
+    padding-left: 8px;
+    font-size: 14px;
   }
 }
