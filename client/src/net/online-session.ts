@@ -130,7 +130,7 @@ export class OnlineSession implements GameSession {
   room: RoomView | null = null;
   /** Último game acabado según el servidor (al llegar su último `pt`): «Game 1 para Ana · 11-7». */
   lastGame: { game: number; winner: Side; score: [number, number] } | null = null;
-  /** Mi lado (el del último `welcome`). */
+  /** Mi lado (el del último `welcome`; antes del primero, el guardado de esta pestaña para esa sala, o 0). */
   side: Side = 0;
   /** performance.now() del corte de la conexión (−1 sin corte). */
   cutAt = -1;
@@ -181,6 +181,11 @@ export class OnlineSession implements GameSession {
     return this.match.finished;
   }
 
+  /** La vista está en práctica (el warm-up de una sala: sin marcador). */
+  get practice(): boolean {
+    return this.match.practice;
+  }
+
   /** Desfase de latencia calibrado que se declara al servidor (los clicks ya llegan corregidos). */
   setLatencyOffset(ms: number): void {
     this.latencyOffset = ms;
@@ -211,7 +216,10 @@ export class OnlineSession implements GameSession {
     this.lastEnd = null;
     this.lastGame = null;
     this.code = route.kind === 'join' ? route.code : null;
-    this.token = route.kind === 'join' ? (loadRoomToken(route.code)?.tk ?? null) : null;
+    const saved = route.kind === 'join' ? loadRoomToken(route.code) : null;
+    this.token = saved?.tk ?? null;
+    // Hasta el `welcome`, el lado guardado de esta pestaña (al recargar, la mesa ya se ve desde su extremo) o el 0.
+    this.side = saved?.side ?? 0;
     this.open();
   }
 

@@ -10,6 +10,8 @@ export type SessionView = Pick<Simulation, 'cfg' | 'env' | 'dt' | 'tickMs' | 'no
 
 export interface GameSession {
   readonly online: boolean;
+  /** Lado del jugador local: 0 en local y contra el bot remoto; en una sala, el del `welcome` (V0.4). */
+  readonly side: Side;
   readonly sim: SessionView;
   /** Ya se puede jugar (online: tras el `start` del servidor). */
   readonly ready: boolean;
@@ -33,6 +35,7 @@ const BOT: Side = 1;
 /** Partida local (V0.1–V0.2): Simulation + Bot en este navegador. */
 export class LocalSession implements GameSession {
   readonly online = false;
+  readonly side = HUMAN;
   readonly ready = true;
   readonly sim: Simulation;
   private readonly bot: Bot;

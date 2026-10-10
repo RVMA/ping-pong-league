@@ -3,9 +3,12 @@
  * aviso de fin de punto, barra de teclas de golpe (V0.2b), pantallas de inicio / pausa / fin y panel de datos
  * de precisión. En una sala (V0.4) el marcador lleva los nombres (siempre como texto), el game y los games ganados, y la
  * capa de pantallas enseña los paneles del lobby y de la sala (lobby.ts, room-ui.ts) con `showPanel`.
+ * El marcador recibe todo por lado (0, 1) y lo coloca como [yo, rival]: «Tú» siempre a la izquierda (§2.1, §15), también
+ * en el lado 1 (setLocalSide).
  */
-import type { BotDifficulty, PingLevel, ShotType } from '@ppp/shared';
+import type { BotDifficulty, PingLevel, ShotType, Side } from '@ppp/shared';
 import { assetUrl, CHARACTERS, type CharacterId, UI_ASSETS } from '../assets/manifest.ts';
+import { sideAt } from '../game/view-side.ts';
 
 export type FeedbackKind = 'good' | 'perfect-1' | 'perfect-2' | 'perfect-3' | 'perfect-4' | 'label';
 
@@ -121,8 +124,18 @@ class FlipCard {
 export class Hud {
   /** Capa del HUD (las pantallas de la sala añaden aquí sus avisos). */
   readonly root: HTMLElement;
+  // Casillas del marcador: 0 la izquierda (el jugador local), 1 la derecha (el rival).
   private readonly cards: [FlipCard, FlipCard] = [new FlipCard(), new FlipCard()];
   private readonly serveDots: [HTMLElement, HTMLElement];
+  private readonly portraits: [HTMLImageElement, HTMLImageElement];
+  private readonly characters: [CharacterId, CharacterId];
+  /** Lado del jugador local: el suyo va en la casilla izquierda. */
+  private me: Side = 0;
+  // Lo último recibido, por lado: se recoloca si cambia el lado local.
+  private readonly nameBy: [string, string] = ['Tú', 'Bot'];
+  private readonly subBy: [string, string] = ['', ''];
+  private readonly scoreBy: [number, number] = [0, 0];
+  private serverBy: Side = 0;
   private readonly toast = el('div', 'toast');
   private readonly debug = el('div', 'debug');
   private readonly overlay = el('div', 'overlay');
@@ -140,18 +153,18 @@ export class Hud {
   /** Ping de cada jugador junto a su nombre (solo online) y aviso de conexión inestable [§15.1]. */
   private readonly pings: [HTMLElement, HTMLElement] = [el('span', 'ping'), el('span', 'ping')];
   private readonly netWarn = el('div', 'net-warn', 'Conexión inestable, el timing puede verse afectado');
-  private pingText: [string, string] = ['', ''];
+  /** Ping que se ve en cada casilla (ms redondeados; −1 «… ms»; −2 nada aún) y su nivel: se reescribe solo si cambia. */
+  private readonly pingShown: [number, number] = [-2, -2];
+  private readonly pingLvl: [PingLevel | '', PingLevel | ''] = ['', ''];
 
   constructor(root: HTMLElement, characters: [CharacterId, CharacterId]) {
     this.root = root;
+    this.characters = characters;
     const board = el('div', 'scoreboard');
     const side = (i: 0 | 1) => {
-      const ch = CHARACTERS[characters[i]];
       const wrap = el('div', `side side-${i}`);
       const img = el('img', 'portrait');
       img.alt = '';
-      img.src = assetUrl(ch.portrait) ?? '';
-      img.style.borderColor = ch.color;
       const label = el('div', 'name');
       label.append(this.names[i], this.subs[i]);
       this.pings[i].hidden = true;
@@ -159,11 +172,13 @@ export class Hud {
       const dot = el('span', 'serve-dot');
       dot.title = 'Saca';
       wrap.append(img, label, dot);
-      return { wrap, dot };
+      return { wrap, dot, img };
     };
     const a = side(0);
     const b = side(1);
     this.serveDots = [a.dot, b.dot];
+    this.portraits = [a.img, b.img];
+    this.placePortraits();
     const mid = el('div', 'mid');
     this.cardsBox.append(this.cards[0].root, this.cards[1].root);
     this.games.hidden = true;
@@ -191,30 +206,55 @@ export class Hud {
   }
 
   /**
-   * Ping de los dos jugadores [§15.1] (media de las últimas 5 medidas), con su color y siempre con el número [§19]:
-   * < 60 ms verde, 60–120 amarillo, > 120 rojo y aviso. null = modo local (se oculta).
+   * Lado del jugador local (el de la sesión): su retrato, nombre, tarjeta, saque y ping van a la izquierda y los del
+   * rival a la derecha. Recoloca lo ya recibido; solo al cambiar de lado.
    */
-  setPings(values: [number | null, number | null] | null, levels: [PingLevel, PingLevel]): void {
+  setLocalSide(me: Side): void {
+    if (me === this.me) return;
+    this.me = me;
+    this.placePortraits();
+    this.pingShown[0] = -2;
+    this.pingShown[1] = -2;
+    this.applyNames();
+    this.applyScore();
+  }
+
+  private placePortraits(): void {
+    for (const seat of [0, 1] as const) {
+      const ch = CHARACTERS[this.characters[sideAt(seat, this.me)]];
+      this.portraits[seat].src = assetUrl(ch.portrait) ?? '';
+      this.portraits[seat].style.borderColor = ch.color;
+    }
+  }
+
+  /**
+   * Ping de los dos jugadores, por lado [§15.1] (media de las últimas 5 medidas), con su color y siempre con el número
+   * [§19]: < 60 ms verde, 60–120 amarillo, > 120 rojo y aviso. null = modo local (se oculta). Se llama en cada frame:
+   * no crea objetos y solo escribe en el DOM si cambia la cifra o el nivel.
+   */
+  setPings(values: readonly [number | null, number | null] | null, levels: readonly [PingLevel, PingLevel]): void {
     let warn = false;
-    for (const i of [0, 1] as const) {
-      const node = this.pings[i];
+    for (let i = 0; i < 2; i++) {
+      const seat = i as 0 | 1;
+      const node = this.pings[seat];
       if (!values) {
         setHidden(node, true);
         continue;
       }
-      const v = values[i];
-      const text = v === null ? '… ms' : `${Math.round(v)} ms`;
-      const cls = `ping ping-${levels[i]}`;
-      if (text !== this.pingText[i] || node.className !== cls) {
-        node.textContent = text;
-        node.className = cls;
-        node.title = levels[i] === 'bad' ? 'Ping alto' : levels[i] === 'fair' ? 'Ping medio' : levels[i] === 'good' ? 'Ping bajo' : 'Midiendo';
-        this.pingText[i] = text;
+      const side = sideAt(seat, this.me);
+      const v = values[side];
+      const shown = v === null ? -1 : Math.round(v);
+      const lvl = levels[side];
+      if (shown !== this.pingShown[seat] || lvl !== this.pingLvl[seat]) {
+        this.pingShown[seat] = shown;
+        this.pingLvl[seat] = lvl;
+        node.textContent = shown < 0 ? '… ms' : `${shown} ms`;
+        node.className = `ping ping-${lvl}`;
+        node.title = lvl === 'bad' ? 'Ping alto' : lvl === 'fair' ? 'Ping medio' : lvl === 'good' ? 'Ping bajo' : 'Midiendo';
       }
       setHidden(node, false);
-      if (levels[i] === 'bad') warn = true;
+      if (lvl === 'bad') warn = true;
     }
-    // Se llama en cada frame: solo escribe si algo cambia.
     setHidden(this.netWarn, !warn);
   }
 
@@ -249,22 +289,42 @@ export class Hud {
     return this.keyActive;
   }
 
-  setScore(score: [number, number], server: 0 | 1): void {
-    this.cards[0].set(score[0]);
-    this.cards[1].set(score[1]);
-    this.serveDots[0].classList.toggle('on', server === 0);
-    this.serveDots[1].classList.toggle('on', server === 1);
+  /** Marcador y quién saca, por lado. */
+  setScore(score: readonly [number, number], server: Side): void {
+    this.scoreBy[0] = score[0];
+    this.scoreBy[1] = score[1];
+    this.serverBy = server;
+    this.applyScore();
   }
 
+  private applyScore(): void {
+    for (const seat of [0, 1] as const) {
+      const side = sideAt(seat, this.me);
+      this.cards[seat].set(this.scoreBy[side]);
+      this.serveDots[seat].classList.toggle('on', this.serverBy === side);
+    }
+  }
+
+  /** Línea pequeña del bot (el lado 1 en local). */
   setBotDifficulty(label: string): void {
-    setText(this.subs[1], label);
+    this.subBy[1] = label;
+    this.applyNames();
   }
 
-  /** Nombres de los dos lados (texto, nunca HTML) y su línea pequeña; solo toca el DOM si cambian. */
-  setNames(names: [string, string], subs: [string, string]): void {
-    for (const i of [0, 1] as const) {
-      setText(this.names[i], names[i]);
-      setText(this.subs[i], subs[i]);
+  /** Nombres de los dos lados (texto, nunca HTML) y su línea pequeña, por lado; solo toca el DOM si cambian. */
+  setNames(names: readonly [string, string], subs: readonly [string, string]): void {
+    this.nameBy[0] = names[0];
+    this.nameBy[1] = names[1];
+    this.subBy[0] = subs[0];
+    this.subBy[1] = subs[1];
+    this.applyNames();
+  }
+
+  private applyNames(): void {
+    for (const seat of [0, 1] as const) {
+      const side = sideAt(seat, this.me);
+      setText(this.names[seat], this.nameBy[side]);
+      setText(this.subs[seat], this.subBy[side]);
     }
   }
 

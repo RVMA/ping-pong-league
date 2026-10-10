@@ -24,11 +24,17 @@ export function worldSpin(rel: RelSpin, dirX: number, dirZ: number): Vec3 {
   return { x: rel.top * dirZ, y: -rel.side, z: -rel.top * dirX };
 }
 
-/** Spin relativo a la velocidad horizontal actual de la bola (sin velocidad horizontal, top = 0). */
-export function relativeSpin(spin: Vec3, vel: Vec3): RelSpin {
+/**
+ * Spin relativo a la velocidad horizontal actual de la bola (sin velocidad horizontal, top = 0). `out`: objeto a
+ * rellenar (el render lo reutiliza en cada frame); sin él, uno nuevo.
+ */
+export function relativeSpin(spin: Vec3, vel: Vec3, out?: RelSpin): RelSpin {
   const h = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-  if (h < 1e-6) return { top: 0, side: -spin.y };
-  return { top: (spin.x * vel.z - spin.z * vel.x) / h, side: -spin.y };
+  const top = h < 1e-6 ? 0 : (spin.x * vel.z - spin.z * vel.x) / h;
+  if (!out) return { top, side: -spin.y };
+  out.top = top;
+  out.side = -spin.y;
+  return out;
 }
 
 /** Tipo de efecto dominante (para el trail de color y los textos). Por debajo de `minSpin` rad/s, 'none'. */

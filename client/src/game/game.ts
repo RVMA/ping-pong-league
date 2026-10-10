@@ -30,7 +30,7 @@ import {
 import { AudioManager } from '../audio/audio.ts';
 import type { CharacterId } from '../assets/manifest.ts';
 import { type FireRecord, KEY_NOTE_MS, MouseTranslator, SHOT_KEY_LABEL } from '../input/mouse.ts';
-import { type PaddleFrame, type RenderFrame, World } from '../render/world.ts';
+import { newRenderFrame, World } from '../render/world.ts';
 import { type FeedbackKind, Hud } from '../ui/hud.ts';
 import { PrecisionStats } from '../ui/precision-stats.ts';
 import { keyMissText, pointText, powerLevelText, SHOT_LABEL, strokeText } from '../ui/texts.ts';
@@ -39,10 +39,10 @@ import { Calibration, loadLatencyOffset, saveLatencyOffset } from './calibration
 import { type LobbyInfo, type PlayMode, type RoomHost, RoomFlow } from './room-flow.ts';
 import { type GameSession, LocalSession, type SessionView } from './session.ts';
 import { loadExplain, loadKeyBar, saveExplain, saveKeyBar, type Settings } from './settings.ts';
+import { bounceMarkerShown, tickBudget } from './view-side.ts';
 
 const CHARACTERS: [CharacterId, CharacterId] = ['power', 'defender'];
-const HUMAN: Side = 0;
-const BOT: Side = 1;
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 interface Snapshot {
   ball: { x: number; y: number; z: number };
@@ -98,6 +98,14 @@ export class Game implements RoomHost {
   private readonly onlineParams: Settings['online'];
   private difficulty: BotDifficulty;
   readonly clock = { epoch: 0 };
+  /** Lado del jugador local: el de la sesión (en una sala, el del `welcome`; si no, 0). */
+  private me: Side = 0;
+  /** Lo que se dibuja en cada frame: objetos reutilizados (sin memoria nueva por frame). */
+  private readonly rf = newRenderFrame();
+  private readonly cursorOut = { x: 0, z: 0 };
+  private readonly trailOut = { color: '', alpha: 0 };
+  private readonly relOut = { top: 0, side: 0 };
+  private readonly outlineOut = { color: '' };
   /** Pings por lado para el marcador (reutilizados: sin memoria nueva por frame). */
   private readonly pingVals: [number | null, number | null] = [null, null];
   private readonly pingLvls: [PingLevel, PingLevel] = ['unknown', 'unknown'];
@@ -147,7 +155,7 @@ export class Game implements RoomHost {
     if (this.online) this.online.onStatus = (s, d) => this.onNetStatus(s, d);
     this.world = new World(canvas, this.cfg, CHARACTERS);
     this.hud = new Hud(hudRoot, CHARACTERS);
-    this.input = new MouseTranslator(canvas, this.world.camera, this.cfg.world.tableHeight + this.cfg.presentation.cursorPlaneHeight, this.clock, HUMAN);
+    this.input = new MouseTranslator(canvas, this.world.camera, this.cfg.world.tableHeight + this.cfg.presentation.cursorPlaneHeight, this.clock, 0);
     this.roomFlow = new RoomFlow(this, settings);
     this.curr = this.snapshot(this.emptySnapshot());
     this.prev = this.snapshot(this.emptySnapshot());
@@ -268,7 +276,7 @@ export class Game implements RoomHost {
     const delta = c.click(t);
     if (delta === null) return;
     this.audio.play('hit_good', { volume: 0.7 });
-    this.fx[HUMAN].flash = 0.8;
+    this.fx[0].flash = 0.8;
     const p = this.world.project(c.sweet.x + 0.24, c.sweet.y + 0.16, c.sweet.z);
     const ms = Math.round(delta);
     this.hud.feedback(`${ms > 0 ? '+' : ''}${ms} ms`, 'label', p.x, p.y, 1, 700);
@@ -398,6 +406,7 @@ export class Game implements RoomHost {
   private frame = (now: number): void => {
     requestAnimationFrame(this.frame);
     this.roomFlow.update(now);
+    this.syncSide();
     const dtFrame = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 1 / 60;
     this.lastFrame = now;
     this.fps = this.fps * 0.95 + (1 / Math.max(dtFrame, 1e-3)) * 0.05;
@@ -415,18 +424,37 @@ export class Game implements RoomHost {
       const tick = this.sim.tickMs;
       let gameNow = now - this.clock.epoch;
       // Tirón (pestaña oculta, GC largo): en local se descarta el tiempo en lugar de acelerar; en red no se puede
-      // (el servidor y el rival siguen), así que se recupera.
+      // (el servidor y el rival siguen), así que se recupera: más de 2 s atrás, por tramos de 240 ticks por frame.
       if (!this.online && gameNow - this.sim.now > 250) {
         this.clock.epoch += gameNow - this.sim.now - tick;
         gameNow = now - this.clock.epoch;
       }
-      while (this.sim.now + tick <= gameNow) this.tick();
+      let budget = tickBudget(this.online !== null, gameNow - this.sim.now);
+      while (budget-- > 0 && this.sim.now + tick <= gameNow) this.tick();
       // En red, lo que se envía del estado (raqueta, ping) sale una vez por frame, con el último tick: tras un tirón, sin ráfaga.
       this.session.flush();
       alpha = Math.max(0, Math.min(1, (gameNow - this.sim.now) / tick));
     }
     this.render(alpha, dtFrame);
   };
+
+  /**
+   * El lado local sale de la sesión (cambia con cada `welcome`): la cámara, el ratón y el marcador lo siguen. Calibrando,
+   * la mesa se ve siempre desde el lado 0 (la bola de la calibración llega a esa raqueta). Solo hace algo si cambia.
+   */
+  private syncSide(): void {
+    const side = this.session.side;
+    const view: Side = this.calibration ? 0 : side;
+    if (side === this.me && view === this.world.viewSide) return;
+    if (side !== this.me) {
+      this.me = side;
+      this.hud.setLocalSide(side);
+      this.bounceMarker = null;
+    }
+    this.world.setViewSide(view);
+    // Tras la cámara: el cursor se vuelve a proyectar con ella.
+    this.input.setSide(side);
+  }
 
   private tick(): void {
     const tickEnd = this.sim.now + this.sim.tickMs;
@@ -472,7 +500,7 @@ export class Game implements RoomHost {
       case 'swing': {
         const fx = this.fx[e.player];
         fx.swingStart = Math.max(now, e.contactMs - this.cfg.hit.swingMs / 2);
-        if (e.player === HUMAN) {
+        if (e.player === this.me) {
           this.lastHumanEval = e.evaluation;
           this.lastHumanAim = e.aimFactor;
           this.lastSwing = { shot: e.shot, power: e.power, keys: e.keys, raw: e.rawSwing, aimFactor: e.aimFactor };
@@ -483,9 +511,9 @@ export class Game implements RoomHost {
       }
       case 'whiff':
         this.fx[e.player].swingStart = now;
-        this.audio.play('whiff', { volume: e.player === HUMAN ? 0.8 : 0.45, pan: this.pan(e.player) });
+        this.audio.play('whiff', { volume: e.player === this.me ? 0.8 : 0.45, pan: this.pan(this.sim.state.paddles[e.player].pos.x) });
         this.message(e.player, fb.whiffText, 'label');
-        if (e.player === HUMAN) {
+        if (e.player === this.me) {
           this.lastHumanEval = e.evaluation;
           this.lastHumanAim = null;
           this.lastHumanWhiff = e.evaluation;
@@ -497,32 +525,33 @@ export class Game implements RoomHost {
         this.onHit(e);
         break;
       case 'bounce':
-        this.audio.play('bounce_table', { volume: Math.min(1, 0.25 + e.speed / 5), pan: e.pos.x });
-        if (this.bounceMarker && !this.bounceMarker.landed && e.side === HUMAN) this.bounceMarker.landed = true;
+        this.audio.play('bounce_table', { volume: Math.min(1, 0.25 + e.speed / 5), pan: this.pan(e.pos.x) });
+        if (this.bounceMarker && !this.bounceMarker.landed && e.side === this.me) this.bounceMarker.landed = true;
         if (e.edge) {
-          this.audio.play('edge', { volume: 0.8, pan: e.pos.x });
+          this.audio.play('edge', { volume: 0.8, pan: this.pan(e.pos.x) });
           const q = this.world.project(e.pos.x, e.pos.y + 0.1, e.pos.z);
           this.hud.feedback('¡Canto!', 'label', q.x, q.y, 1, 900);
         }
         this.refreshPrediction();
         break;
       case 'tableSide':
-        this.audio.play('edge', { volume: 0.7, pan: e.pos.x });
+        this.audio.play('edge', { volume: 0.7, pan: this.pan(e.pos.x) });
         break;
       case 'net':
-        this.audio.play('net', { volume: 0.9, pan: e.pos.x });
+        this.audio.play('net', { volume: 0.9, pan: this.pan(e.pos.x) });
         this.refreshPrediction();
         break;
       case 'floor':
         break;
       case 'point': {
-        const mine = e.winner === HUMAN;
+        const mine = e.winner === this.me;
         this.audio.play(mine ? 'point_win' : 'point_lose', { volume: 0.7 });
         const why =
           !mine && this.explain
             ? diagnose({ reason: e.reason, lastHit: this.lastHumanHit, whiff: this.lastHumanWhiff, whiffed: this.humanWhiffedThisRally }, this.cfg)
             : null;
-        const text = pointText({ winner: e.winner, reason: e.reason, why, rivalShot: this.lastBotShot, smashMinAboveTape: this.cfg.shotTypes.smash.minAboveTape });
+        const rival = this.roomFlow.active ? 'rival' : 'bot';
+        const text = pointText({ mine, reason: e.reason, why, rivalShot: this.lastBotShot, smashMinAboveTape: this.cfg.shotTypes.smash.minAboveTape, rival });
         this.hud.showToast(text, mine ? 'win' : 'lose', this.cfg.rules.pointDelayMs);
         this.hud.setScore(e.score, this.sim.state.server);
         this.bounceMarker = null;
@@ -544,8 +573,9 @@ export class Game implements RoomHost {
     this.lastHumanWhiff = null;
     this.lastBotShot = null;
     this.humanWhiffedThisRally = false;
+    const rival = this.roomFlow.active ? 'el rival' : 'el bot';
     this.hud.setHint(
-      !this.running ? '' : server === HUMAN ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : 'Saca el bot. Coloca la raqueta donde vaya a llegar la bola.',
+      !this.running ? '' : server === this.me ? 'Tu saque. Click para lanzar la bola y otro click cuando baje.' : `Saca ${rival}. Coloca la raqueta donde vaya a llegar la bola.`,
     );
   }
 
@@ -554,8 +584,8 @@ export class Game implements RoomHost {
     const fx = this.fx[e.player];
     const pad = this.sim.state.paddles[e.player].pos;
     fx.reach = { x: e.pos.x - pad.x, y: e.pos.y - fx.height, z: e.pos.z - pad.z };
-    const own = e.player === HUMAN;
-    const pan = this.pan(e.player);
+    const own = e.player === this.me;
+    const pan = this.pan(pad.x);
     const volume = own ? 1 : 0.6;
     const reduce = this.cfg.presentation.reduceShakeAndFlash;
 
@@ -611,7 +641,12 @@ export class Game implements RoomHost {
       this.lastBotShot = e.serve ? null : e.targets.type;
     }
     this.refreshPrediction();
-    if (!own && this.cfg.presentation.bounceMarker) this.placeBounceMarker(e.serve);
+    if (!own && this.markerShown()) this.placeBounceMarker(e.serve);
+  }
+
+  /** Marcador de bote (§2.2): en local y contra el bot remoto; en una sala, solo en el warm-up (no en su cuenta atrás). */
+  private markerShown(): boolean {
+    return this.cfg.presentation.bounceMarker && !this.roomFlow.muted && bounceMarkerShown(this.roomFlow.active, this.online?.practice ?? false);
   }
 
   private placeBounceMarker(serve: boolean): void {
@@ -619,15 +654,15 @@ export class Game implements RoomHost {
     predictPath(this.sim.state.ball, this.sim.env, this.sim.dt, this.sim.tickMs, this.sim.now, 2000, contacts);
     const tables = contacts.filter((c) => c.kind === 'table');
     const target = serve ? tables[1] : tables[0];
-    if (target && target.kind === 'table' && target.side === HUMAN) this.bounceMarker = { x: target.pos.x, z: target.pos.z, alpha: 1, landed: false };
+    if (target && target.kind === 'table' && target.side === this.me) this.bounceMarker = { x: target.pos.x, z: target.pos.z, alpha: 1, landed: false };
   }
 
   private onGameOver(winner: Side, score: [number, number]): void {
-    const st = this.sim.state.stats[HUMAN];
+    const st = this.sim.state.stats[this.me];
     this.setPlay('off');
     this.hud.showGameOver(
       {
-        won: winner === HUMAN,
+        won: winner === this.me,
         score,
         perfectPct: st.hits ? (100 * st.perfect) / st.hits : 0,
         maxStreak: st.maxStreak,
@@ -645,8 +680,9 @@ export class Game implements RoomHost {
 
   private message(player: Side, text: string, kind: FeedbackKind, sub?: string): HTMLElement {
     const pad = this.sim.state.paddles[player].pos;
-    const own = player === HUMAN;
-    // Junto a la raqueta, a su lado exterior: nunca en el centro de la pantalla [§5.2].
+    const own = player === this.me;
+    // Junto a la raqueta, a su lado exterior: nunca en el centro de la pantalla [§5.2]. Las dos a la derecha de su
+    // raqueta en la pantalla, también desde el lado 1.
     const p = this.world.project(pad.x + (own ? 0.24 : -0.2) * sideSign(player), this.fx[player].height + 0.16, pad.z);
     const scale = own ? 1 : this.cfg.feedback.opponentScale;
     const dur = kind.startsWith('perfect-4') ? this.cfg.feedback.messageMs * 1.4 : this.cfg.feedback.messageMs;
@@ -675,12 +711,13 @@ export class Game implements RoomHost {
   /** Golpe que saldría ahora con las teclas mantenidas (Space = bloqueo), o null si ninguna. */
   private heldShot(): ShotType | null {
     if (this.input.blocking) return 'BLOCK';
-    const t = shotFromKeys(this.input.heldKeys());
+    const t = shotFromKeys(this.input.heldNow);
     return t === 'NORMAL' ? null : t;
   }
 
-  private pan(player: Side): number {
-    return Math.max(-0.8, Math.min(0.8, this.sim.state.paddles[player].pos.x));
+  /** Panorámica de un sonido en `x` (mundo): según TU pantalla (desde el lado 1, la x del mundo va al revés). */
+  private pan(x: number): number {
+    return Math.max(-0.8, Math.min(0.8, x * sideSign(this.me)));
   }
 
   private refreshPrediction(): void {
@@ -692,18 +729,19 @@ export class Game implements RoomHost {
   private renderCalibration(now: number, dt: number): void {
     const c = this.calibration;
     if (!c) return;
-    // Mismo retraso de dibujo que la partida: el render interpolado va un tick por detrás del tiempo real.
+    // Mismo retraso de dibujo que la partida: el render interpolado va un tick por detrás del tiempo real. Se ve desde el
+    // lado 0 (syncSide): la bola llega a la raqueta 0 y la 1 se queda donde esté.
     const ball = c.ballAt(now - this.sim.tickMs);
-    const fx = this.fx[HUMAN];
+    const fx = this.fx[0];
     fx.flash *= Math.exp(-dt / 0.12);
     fx.height = c.sweet.y;
-    const bot = this.sim.state.paddles[BOT].pos;
+    const bot = this.sim.state.paddles[1].pos;
     const still = { x: 0, y: 0, z: 0 };
     this.world.render({
       ball: ball ? { ...ball, visible: true } : { x: 0, y: -1, z: 0, visible: false },
       paddles: [
         { x: c.sweet.x, y: c.sweet.y, z: c.sweet.z, swing: null, reach: still, flash: fx.flash },
-        { x: bot.x, y: this.fx[BOT].height, z: bot.z, swing: null, reach: still, flash: 0 },
+        { x: bot.x, y: this.fx[1].height, z: bot.z, swing: null, reach: still, flash: 0 },
       ],
       target: null,
       bounceMarker: null,
@@ -730,42 +768,54 @@ export class Game implements RoomHost {
   }
 
   private render(alpha: number, dt: number): void {
-    const lerp = (a: number, b: number) => a + (b - a) * alpha;
     const s = this.sim.state;
     const now = this.sim.now + alpha * this.sim.tickMs;
-    const paddles: PaddleFrame[] = [];
-    for (const side of [0, 1] as Side[]) {
+    const frame = this.rf;
+    const k = 1 - Math.exp(-dt * 14);
+    const decay = Math.exp(-dt / 0.12);
+    for (let i = 0; i < 2; i++) {
+      const side = i as Side;
       const fx = this.fx[side];
-      const x = lerp(this.prev.paddles[side].x, this.curr.paddles[side].x);
-      const z = lerp(this.prev.paddles[side].z, this.curr.paddles[side].z);
-      const k = 1 - Math.exp(-dt * 14);
-      fx.height += (this.targetHeight(side, z) - fx.height) * k;
-      const decay = Math.exp(-dt / 0.12);
+      const p = frame.paddles[side];
+      p.x = lerp(this.prev.paddles[side].x, this.curr.paddles[side].x, alpha);
+      p.z = lerp(this.prev.paddles[side].z, this.curr.paddles[side].z, alpha);
+      fx.height += (this.targetHeight(side, p.z) - fx.height) * k;
       fx.reach.x *= decay;
       fx.reach.y *= decay;
       fx.reach.z *= decay;
-      fx.flash *= Math.exp(-dt / 0.12);
+      fx.flash *= decay;
       const sw = (now - fx.swingStart) / this.cfg.hit.swingMs;
-      paddles.push({ x, y: fx.height, z, swing: sw >= 0 && sw <= 1 ? sw : null, reach: fx.reach, flash: fx.flash });
+      p.y = fx.height;
+      p.swing = sw >= 0 && sw <= 1 ? sw : null;
+      p.reach = fx.reach;
+      p.flash = fx.flash;
     }
 
-    let target: { x: number; z: number } | null = null;
+    // Marcador del cursor: el objetivo va en coordenadas del jugador local; se dibuja en las del mundo.
+    frame.target = null;
     if (this.running && !this.paused) {
       const t = this.input.currentTarget;
       const pc = this.cfg.paddle;
-      target = { x: Math.max(-pc.maxLateral, Math.min(pc.maxLateral, t.x)), z: Math.max(pc.minDepth, Math.min(pc.maxDepth, t.z)) };
+      const sg = sideSign(this.me);
+      this.cursorOut.x = Math.max(-pc.maxLateral, Math.min(pc.maxLateral, t.x)) * sg;
+      this.cursorOut.z = Math.max(pc.minDepth, Math.min(pc.maxDepth, t.z)) * sg;
+      frame.target = this.cursorOut;
     }
 
+    if (this.bounceMarker && !this.markerShown()) this.bounceMarker = null;
     if (this.bounceMarker?.landed) {
       this.bounceMarker.alpha -= dt / 0.35;
       if (this.bounceMarker.alpha <= 0) this.bounceMarker = null;
     }
+    frame.bounceMarker = this.bounceMarker;
 
-    let shake = { x: 0, y: 0 };
+    frame.shake.x = 0;
+    frame.shake.y = 0;
     const pnow = performance.now();
     if (pnow < this.shake.until) {
       const a = this.shake.amp * ((this.shake.until - pnow) / this.cfg.presentation.shakeMs);
-      shake = { x: Math.sin(pnow * 0.09) * a, y: Math.cos(pnow * 0.11) * a };
+      frame.shake.x = Math.sin(pnow * 0.09) * a;
+      frame.shake.y = Math.cos(pnow * 0.11) * a;
     }
 
     const inPlay = s.phase === 'rally' || s.phase === 'serveToss' || s.phase === 'pointOver';
@@ -773,22 +823,16 @@ export class Game implements RoomHost {
     // Solo el jugador local la ve: en multijugador el rival no debe recibir esta señal antes del golpe (§13).
     const held = this.running && !this.paused ? this.heldShot() : null;
     this.hud.setKeyBarActive(held);
-    const frame: RenderFrame = {
-      ball: {
-        x: lerp(this.prev.ball.x, this.curr.ball.x),
-        y: lerp(this.prev.ball.y, this.curr.ball.y),
-        z: lerp(this.prev.ball.z, this.curr.ball.z),
-        visible: s.phase !== 'gameOver' && !this.roomFlow.muted && !(s.phase === 'pointOver' && this.sim.now - s.phaseStartMs > this.cfg.rules.pointDelayMs * 0.75),
-        spin: s.ball.spin,
-        trail: inPlay ? this.trailStyle() : null,
-      },
-      dt,
-      paddles: paddles as [PaddleFrame, PaddleFrame],
-      target,
-      bounceMarker: this.bounceMarker,
-      shake,
-      heldOutline: held ? { color: this.shotColor(held) } : null,
-    };
+    const b = frame.ball;
+    b.x = lerp(this.prev.ball.x, this.curr.ball.x, alpha);
+    b.y = lerp(this.prev.ball.y, this.curr.ball.y, alpha);
+    b.z = lerp(this.prev.ball.z, this.curr.ball.z, alpha);
+    b.visible = s.phase !== 'gameOver' && !this.roomFlow.muted && !(s.phase === 'pointOver' && this.sim.now - s.phaseStartMs > this.cfg.rules.pointDelayMs * 0.75);
+    b.spin = s.ball.spin;
+    b.trail = inPlay ? this.trailStyle() : null;
+    frame.dt = dt;
+    if (held) this.outlineOut.color = this.shotColor(held);
+    frame.heldOutline = held ? this.outlineOut : null;
     this.world.render(frame);
     const o = this.online;
     if (o) {
@@ -813,19 +857,24 @@ export class Game implements RoomHost {
     if (this.hud.debugVisible) this.updateDebug();
   }
 
-  /** Trail de la bola: color por tipo de efecto (spin relativo a su vuelo) e intensidad [§2.2]. */
-  private trailStyle(): { color: string; alpha: number } | null {
+  /** Trail de la bola: color por tipo de efecto (spin relativo a su vuelo) e intensidad [§2.2] (objeto reutilizado). */
+  private trailStyle(): { color: string; alpha: number } {
     const b = this.sim.state.ball;
     const p = this.cfg.presentation;
-    const rel = relativeSpin(b.spin, b.vel);
+    const out = this.trailOut;
+    const rel = relativeSpin(b.spin, b.vel, this.relOut);
     const kind = spinKind(rel, p.trailMinSpin);
     if (kind === 'none') {
       // Sin efecto: solo se marca una bola muy rápida (el smash), en blanco.
       const real = Math.hypot(b.vel.x, b.vel.z) * this.cfg.sim.gameSpeed;
-      return { color: p.trailColors.none, alpha: Math.max(0, Math.min(0.55, (real - 6.5) / 6)) };
+      out.color = p.trailColors.none;
+      out.alpha = Math.max(0, Math.min(0.55, (real - 6.5) / 6));
+      return out;
     }
     const mag = Math.max(Math.abs(rel.top), Math.abs(rel.side));
-    return { color: p.trailColors[kind], alpha: Math.max(0.35, Math.min(0.9, 0.25 + mag / 450)) };
+    out.color = p.trailColors[kind];
+    out.alpha = Math.max(0.35, Math.min(0.9, 0.25 + mag / 450));
+    return out;
   }
 
   private updateDebug(): void {
@@ -852,7 +901,7 @@ export class Game implements RoomHost {
       ['Gesto lateral (cruce)', gestureText],
       ['Spin de salida', spinText],
       ['Bloqueo (Espacio)', this.input.blocking ? 'mantenido' : '—'],
-      ['Bot: último golpe', this.lastBotShot ? SHOT_LABEL[this.lastBotShot] : '—'],
+      ['Rival: último golpe', this.lastBotShot ? SHOT_LABEL[this.lastBotShot] : '—'],
       ['Calibración', this.latencyOffset === null ? 'sin calibrar' : `${this.latencyOffset > 0 ? '+' : ''}${this.latencyOffset} ms`],
       ...this.precision.rows(),
       ['gameSpeed', String(this.cfg.sim.gameSpeed)],
@@ -868,7 +917,7 @@ export class Game implements RoomHost {
     const st = o.stats;
     const ms = (v: number | null) => (v === null ? '…' : `${Math.round(v)} ms`);
     return [
-      ['Ping (tú / bot)', `${ms(st.myPing)} / ${ms(st.rivalPing)}`],
+      ['Ping (tú / rival)', `${ms(st.myPing)} / ${ms(st.rivalPing)}`],
       ['Frenado bola que se aleja', st.brakes.flights ? `media ${Math.round(st.brakes.meanSlowdown * 100)} % · máx ${Math.round(st.brakes.maxSlowdown * 100)} %` : '—'],
       ['Correcciones del servidor', String(st.corrections)],
     ];
@@ -899,6 +948,9 @@ export class Game implements RoomHost {
       difficulty: this.difficulty,
       fps: this.fps,
       maxBallStep: this.ballStep.max,
+      /** Lado del jugador local y lado desde el que se ve la mesa (el 0 calibrando). */
+      side: this.me,
+      viewSide: this.world.viewSide,
       room: this.roomFlow.debug(),
       net: this.online
         ? {

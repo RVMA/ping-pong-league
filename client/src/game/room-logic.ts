@@ -141,6 +141,15 @@ export function betweenText(game: number, winner: string, score: [number, number
   return `Game ${game} para ${winner}${sc} · Games ${games[0]}-${games[1]}`;
 }
 
+/**
+ * Línea del marcador en el partido: «Game 2 · Games 1-0», con los games como [yo, rival] (como las tarjetas: «Tú» a la
+ * izquierda); sin «Games» en un partido de un solo game.
+ */
+export function gamesLine(gamesWon: readonly [number, number], me: Side, showGames: boolean): string {
+  const game = `Game ${gamesWon[0] + gamesWon[1] + 1}`;
+  return showGames ? `${game} · Games ${gamesWon[me]}-${gamesWon[otherSide(me)]}` : game;
+}
+
 /** Pausa por desconexión: «Esperando a Beto… 0:27». */
 export function pauseText(name: string, seconds: number): string {
   return `Esperando a ${name}… ${clockText(seconds)}`;

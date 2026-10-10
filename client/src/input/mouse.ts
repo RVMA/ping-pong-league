@@ -58,7 +58,9 @@ export class MouseTranslator {
   private lastClick: FireRecord | null = null;
   /** Aviso al pulsar una tecla de golpe (etiqueta Q/W/E y performance.now()). */
   onShotKeyDown: ((key: string, perf: number) => void) | null = null;
-  private target = { x: 0, z: 1.7 };
+  private readonly target = { x: 0, z: 1.7 };
+  /** Última posición del puntero (píxeles de la ventana), para volver a proyectarla si cambia la cámara. */
+  private readonly pointer = { x: 0, y: 0, seen: false };
   private readonly raycaster = new THREE.Raycaster();
   private readonly plane: THREE.Plane;
   private readonly hitPoint = new THREE.Vector3();
@@ -66,7 +68,7 @@ export class MouseTranslator {
   private readonly el: HTMLElement;
   private readonly camera: THREE.Camera;
   private readonly clock: InputClock;
-  private readonly side: Side;
+  private side: Side;
   enabled = true;
   /**
    * Desfase de latencia del jugador (ms, calibración P7): se resta al instante de cada click para
@@ -103,6 +105,22 @@ export class MouseTranslator {
   /** ¿Space mantenido ahora? (para el panel y la raqueta). */
   get blocking(): boolean {
     return this.blockHeld;
+  }
+
+  /**
+   * Lado del jugador local (V0.4: el del `welcome`). Con la cámara de ese lado ya puesta, el cursor se vuelve a proyectar
+   * sobre la mesa: el objetivo sale en coordenadas de ESE jugador, con la misma precisión en los dos lados. Como la
+   * cámara del lado 1 está girada 180°, mover el ratón a la derecha lleva la raqueta a la derecha de la pantalla, y el
+   * gesto lateral (swing.vx, en píxeles de pantalla) también va hacia su derecha.
+   */
+  setSide(side: Side): void {
+    this.side = side;
+    if (this.pointer.seen) this.updateTarget(this.pointer.x, this.pointer.y);
+  }
+
+  /** Teclas de golpe mantenidas ahora, sin copiarlas (para leerlas en cada frame sin crear objetos). */
+  get heldNow(): Readonly<ShotKeys> {
+    return this.held;
   }
 
   /** Teclas de golpe mantenidas ahora (solo las pulsadas). */
@@ -142,7 +160,7 @@ export class MouseTranslator {
   };
 
   /** Objetivo actual en coordenadas del jugador (para dibujar el marcador del cursor). */
-  get currentTarget(): { x: number; z: number } {
+  get currentTarget(): Readonly<{ x: number; z: number }> {
     return this.target;
   }
 
@@ -174,15 +192,19 @@ export class MouseTranslator {
   };
 
   private updateTarget(clientX: number, clientY: number): void {
+    this.pointer.x = clientX;
+    this.pointer.y = clientY;
+    this.pointer.seen = true;
     const rect = this.el.getBoundingClientRect();
     this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.camera);
     const sgn = sideSign(this.side);
     if (this.raycaster.ray.intersectPlane(this.plane, this.hitPoint)) {
-      this.target = { x: this.hitPoint.x * sgn, z: this.hitPoint.z * sgn };
+      this.target.x = this.hitPoint.x * sgn;
+      this.target.z = this.hitPoint.z * sgn;
     } else {
       // Cursor por encima del horizonte: hacia la red.
-      this.target = { x: this.target.x, z: 0 };
+      this.target.z = 0;
     }
   }
 

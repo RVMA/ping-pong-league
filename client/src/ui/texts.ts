@@ -1,9 +1,13 @@
 /**
- * Textos de fin de punto desde el punto de vista del jugador humano (lado 0) y "¿por qué fallé?" completo
+ * Textos de fin de punto desde el punto de vista del jugador local (sea cual sea su lado) y "¿por qué fallé?" completo
  * [§2.2]: la causa la diagnostica @ppp/shared (why.ts) a partir del desglose del golpe; aquí solo se redacta,
- * con números cuando ayudan a entenderla (ms de timing, cm sobre la cinta).
+ * con números cuando ayudan a entenderla (ms de timing, cm sobre la cinta). El rival es «el bot» (en local y contra el
+ * bot remoto) o «el rival» (en una sala, V0.4).
  */
-import { type PointReason, type PowerLevel, type ShotType, SIDE_TEXT, type Side, type StrokeNote, type WhyResult } from '@ppp/shared';
+import { type PointReason, type PowerLevel, type ShotType, SIDE_TEXT, type StrokeNote, type WhyResult } from '@ppp/shared';
+
+/** Cómo se nombra al rival en los textos: «el bot» o «el rival» (los dos con «el»: «del bot», «del rival»). */
+export type RivalNoun = 'bot' | 'rival';
 
 const ms = (v: number | undefined) => (v === undefined ? '' : ` (${v > 0 ? '+' : '−'}${Math.round(Math.abs(v))} ms)`);
 const cm = (m: number | undefined) => (m === undefined ? '?' : `${Math.max(0, Math.round(m * 100))}`);
@@ -73,53 +77,58 @@ export function whyText(w: WhyResult, smashMinAboveTape: number): string {
 }
 
 /** Contexto de "no la devolviste": qué hizo la bola del rival. */
-function rivalShotText(shot: ShotType | null): string {
+function rivalShotText(shot: ShotType | null, rival: RivalNoun): string {
   switch (shot) {
     case 'SMASH':
-      return ' Smash del bot: muy rápido.';
+      return ` Smash del ${rival}: muy rápido.`;
     case 'TOPSPIN':
-      return ' Topspin del bot: tras botar sale más rápida y baja.';
+      return ` Topspin del ${rival}: tras botar sale más rápida y baja.`;
     case 'SLICE':
-      return ' Slice del bot: curva al botar.';
+      return ` Slice del ${rival}: curva al botar.`;
     default:
       return '';
   }
 }
 
 export interface PointTextInput {
-  winner: Side;
+  /** El punto es del jugador local. */
+  mine: boolean;
   reason: PointReason;
   /** Diagnóstico del error propio (null si no aplica o si "¿por qué fallé?" está desactivado). */
   why: WhyResult | null;
-  /** Último golpe del bot en el punto (contexto de "no la devolviste"). */
+  /** Último golpe del rival en el punto (contexto de "no la devolviste"). */
   rivalShot: ShotType | null;
   smashMinAboveTape: number;
+  /** «el bot» (por defecto) o «el rival» (en una sala). */
+  rival?: RivalNoun;
 }
 
 export function pointText(p: PointTextInput): string {
-  const mine = p.winner === 0;
+  const mine = p.mine;
+  const r = p.rival ?? 'bot';
+  const El = `El ${r}`;
   const why = p.why ? whyText(p.why, p.smashMinAboveTape) : '';
   switch (p.reason) {
     case 'NET':
-      return mine ? 'Punto. El bot la dejó en la red.' : `Red. ${why}`.trim();
+      return mine ? `Punto. ${El} la dejó en la red.` : `Red. ${why}`.trim();
     case 'OUT':
-      return mine ? 'Punto. La bola del bot salió fuera.' : `Fuera. ${why}`.trim();
+      return mine ? `Punto. La bola del ${r} salió fuera.` : `Fuera. ${why}`.trim();
     case 'OWN_SIDE':
-      return mine ? 'Punto. El bot botó en su propio campo.' : `La bola botó en tu campo. ${why}`.trim();
+      return mine ? `Punto. ${El} botó en su propio campo.` : `La bola botó en tu campo. ${why}`.trim();
     case 'DOUBLE_BOUNCE':
-      return mine ? 'Punto. Doble bote en el campo del bot.' : `Doble bote en tu campo. ${p.why ? why + rivalShotText(p.rivalShot) : ''}`.trim();
+      return mine ? `Punto. Doble bote en el campo del ${r}.` : `Doble bote en tu campo. ${p.why ? why + rivalShotText(p.rivalShot, r) : ''}`.trim();
     case 'MISSED':
-      if (mine) return 'Punto. El bot no la devolvió.';
+      if (mine) return `Punto. ${El} no la devolvió.`;
       if (!p.why) return 'No la devolviste.';
-      return `${why}${p.why.cause === 'NO_CLICK' ? rivalShotText(p.rivalShot) : ''}`.trim();
+      return `${why}${p.why.cause === 'NO_CLICK' ? rivalShotText(p.rivalShot, r) : ''}`.trim();
     case 'VOLLEY':
-      return mine ? 'Punto. El bot golpeó antes del bote.' : 'Golpeaste antes de que botara en tu campo.';
+      return mine ? `Punto. ${El} golpeó antes del bote.` : 'Golpeaste antes de que botara en tu campo.';
     case 'SERVE_FAULT':
-      return mine ? 'Punto. Falta de saque del bot.' : 'Falta de saque.';
+      return mine ? `Punto. Falta de saque del ${r}.` : 'Falta de saque.';
     case 'SIDE':
-      return mine ? 'Punto. La bola del bot tocó el lateral de la mesa.' : why || SIDE_TEXT;
+      return mine ? `Punto. La bola del ${r} tocó el lateral de la mesa.` : why || SIDE_TEXT;
     case 'TOSS_MISSED':
-      return mine ? 'Punto. El bot no golpeó su saque.' : 'No golpeaste el saque.';
+      return mine ? `Punto. ${El} no golpeó su saque.` : 'No golpeaste el saque.';
   }
 }
 

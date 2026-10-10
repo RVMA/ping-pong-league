@@ -1,12 +1,14 @@
 /**
  * Escena 3D: pabellón, mesa, red, bola con sombra vertical, spin visible (logo y costura que giran con el spin
  * real y trail de color por tipo de efecto), raquetas, chispas del golpe (V0.2b), marcador del cursor y marcador
- * de bote. Solo presentación: no decide nada del juego.
+ * de bote. Solo presentación: no decide nada del juego. Se ve desde el extremo del jugador local (V0.4: el lado 1, con
+ * el mundo girado 180°; setViewSide). Todo lo que recibe va en coordenadas del mundo.
  */
 import type { GameConfig, Side } from '@ppp/shared';
 import { sideSign } from '@ppp/shared';
 import * as THREE from 'three';
 import { ARENA_ASSETS, assetUrl, CHARACTERS, type CharacterId } from '../assets/manifest.ts';
+import { viewPoint } from '../game/view-side.ts';
 
 const COLORS = {
   table: 0x24508c,
@@ -17,6 +19,8 @@ const COLORS = {
   ball: 0xfff6e8,
   gold: 0xffd23f,
 };
+/** Opacidad de la raqueta del jugador local (translúcida: deja ver la bola que llega por detrás). */
+const OWN_PADDLE_OPACITY = 0.62;
 
 export interface PaddleFrame {
   x: number;
@@ -43,6 +47,7 @@ export interface RenderFrame {
   /** Segundos reales desde el frame anterior (para integrar el giro de la bola). */
   dt?: number;
   paddles: [PaddleFrame, PaddleFrame];
+  /** Marcador del cursor sobre la mesa (coordenadas del mundo), o null. */
   target: { x: number; z: number } | null;
   bounceMarker: { x: number; z: number; alpha: number } | null;
   shake: { x: number; y: number };
@@ -53,13 +58,30 @@ export interface RenderFrame {
   heldOutline?: { color: string } | null;
 }
 
+/** Un RenderFrame vacío: quien dibuja lo rellena en cada frame (sin memoria nueva por frame). */
+export function newRenderFrame(): RenderFrame {
+  const paddle = (): PaddleFrame => ({ x: 0, y: 0, z: 0, swing: null, reach: { x: 0, y: 0, z: 0 }, flash: 0 });
+  return {
+    ball: { x: 0, y: 0, z: 0, visible: false, spin: { x: 0, y: 0, z: 0 }, trail: null },
+    dt: 0,
+    paddles: [paddle(), paddle()],
+    target: null,
+    bounceMarker: null,
+    shake: { x: 0, y: 0 },
+    heldOutline: null,
+  };
+}
+
 class PaddleView {
   readonly group = new THREE.Group();
   private readonly pivot = new THREE.Group();
   private readonly faceMat: THREE.MeshStandardMaterial;
+  /** Cara, dorso y canto: translúcidos en la raqueta del jugador local (deja ver la bola que llega detrás). */
+  private readonly mats: THREE.MeshStandardMaterial[];
   /** Contorno de la tecla mantenida (V0.2b): una franja transparente pegada al borde, por fuera. */
   private readonly outline: THREE.Mesh;
   private readonly haloMat: THREE.MeshBasicMaterial;
+  private outlineColor = '';
   private readonly side: Side;
 
   constructor(
@@ -83,16 +105,18 @@ class PaddleView {
       tex.wrapS = THREE.RepeatWrapping;
       tex.repeat.x = -1;
     }
-    const opacity = translucent ? 0.62 : 1;
+    const opacity = translucent ? OWN_PADDLE_OPACITY : 1;
     this.faceMat = new THREE.MeshStandardMaterial({ map: tex, color: tex ? 0xffffff : accent, roughness: 0.7, transparent: translucent, opacity, emissive: accent, emissiveIntensity: 0 });
     const backMat = new THREE.MeshStandardMaterial({ color: accent.clone().multiplyScalar(0.45), roughness: 0.8, transparent: translucent, opacity });
     const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.6, transparent: translucent, opacity });
+    this.mats = [this.faceMat, backMat, rimMat];
 
     // Cilindro con el eje en z: la cara circular mira a la red / a la cámara.
     const face = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.012, 48), [rimMat, this.faceMat, backMat]);
-    face.rotation.x = Math.PI / 2;
-    // Para el lado 0 la cara texturizada (tapa superior) mira a la cámara (+z).
-    if (side === 1) face.rotation.x = -Math.PI / 2;
+    // La cara texturizada (tapa superior) mira a su jugador: la del lado 0 a +z; la del lado 1, la misma girada 180°
+    // sobre el eje vertical (desde su cámara se lee igual, no boca abajo).
+    if (side === 0) face.rotation.x = Math.PI / 2;
+    else face.rotation.set(Math.PI / 2, Math.PI, 0, 'YXZ');
     this.pivot.add(face);
 
     // Anillos de referencia del sweet spot (zona PERFECT y GOOD), en el lado que ve el jugador.
@@ -134,7 +158,19 @@ class PaddleView {
     }
     this.faceMat.emissiveIntensity = f.flash * 0.9;
     this.outline.visible = outline !== null;
-    if (outline) this.haloMat.color.set(outline);
+    if (outline && outline !== this.outlineColor) {
+      this.outlineColor = outline;
+      this.haloMat.color.set(outline);
+    }
+  }
+
+  /** Translúcida (la del jugador local) u opaca (la del rival). Solo al cambiar el lado local. */
+  setTranslucent(on: boolean): void {
+    for (const m of this.mats) {
+      m.transparent = on;
+      m.opacity = on ? OWN_PADDLE_OPACITY : 1;
+      m.needsUpdate = true;
+    }
   }
 
   /** ¿Se ve el contorno de la tecla mantenida? (para pruebas automáticas). */
@@ -187,6 +223,7 @@ function ballTexture(): THREE.CanvasTexture {
 class Trail {
   readonly mesh: THREE.Mesh;
   private readonly pts: THREE.Vector3[] = [];
+  private readonly free: THREE.Vector3[] = [];
   private readonly pos: Float32Array;
   private readonly col: Float32Array;
   private readonly geo = new THREE.BufferGeometry();
@@ -216,16 +253,17 @@ class Trail {
   }
 
   clear(): void {
-    this.pts.length = 0;
+    // Los puntos vuelven al montón libre: el trail no crea vectores nuevos en cada frame.
+    while (this.pts.length) this.free.push(this.pts.pop()!);
     this.mesh.visible = false;
   }
 
   update(p: THREE.Vector3, camera: THREE.Camera, color: string, alpha: number): void {
     const last = this.pts[this.pts.length - 1];
     // Un salto grande (saque nuevo, bola recolocada) no es una trayectoria.
-    if (last && last.distanceTo(p) > 0.6) this.pts.length = 0;
-    this.pts.push(p.clone());
-    if (this.pts.length > this.max) this.pts.shift();
+    if (last && last.distanceTo(p) > 0.6) while (this.pts.length) this.free.push(this.pts.pop()!);
+    const slot = this.pts.length >= this.max ? this.pts.shift()! : (this.free.pop() ?? new THREE.Vector3());
+    this.pts.push(slot.copy(p));
     const n = this.pts.length;
     if (n < 2 || alpha <= 0.01) {
       this.mesh.visible = false;
@@ -414,6 +452,9 @@ export class World {
   private readonly basePos: THREE.Vector3;
   private readonly lookAt: THREE.Vector3;
   private readonly sparks: Sparks;
+  /** Pabellón y luces: giran con la cámara del lado 1 para que su extremo se vea igual que el del lado 0. */
+  private readonly stage = new THREE.Group();
+  private side: Side = 0;
 
   constructor(canvas: HTMLCanvasElement, cfg: GameConfig, characters: [CharacterId, CharacterId]) {
     this.cfg = cfg;
@@ -441,10 +482,10 @@ export class World {
     this.scene.add(new THREE.HemisphereLight(0xc8d6ff, COLORS.floor, 0.9));
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(0.8, 6, 2.5);
-    this.scene.add(key);
     const fill = new THREE.DirectionalLight(0x9fb4ff, 0.5);
     fill.position.set(-3, 3, -4);
-    this.scene.add(fill);
+    this.stage.add(key, fill);
+    this.scene.add(this.stage);
 
     this.buildArena();
     this.buildTable();
@@ -497,7 +538,7 @@ export class World {
   private buildArena(): void {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 20), new THREE.MeshStandardMaterial({ color: COLORS.floor, roughness: 0.85 }));
     floor.rotation.x = -Math.PI / 2;
-    this.scene.add(floor);
+    this.stage.add(floor);
     // Vallas bajas del pabellón.
     const barrierMat = new THREE.MeshStandardMaterial({ color: COLORS.surround, roughness: 0.7 });
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0x2f4f8a, roughness: 0.6 });
@@ -506,7 +547,7 @@ export class World {
       b.position.set(x, 0.35, z);
       const s = new THREE.Mesh(new THREE.BoxGeometry(alongX ? len : 0.045, 0.08, alongX ? 0.045 : len), stripeMat);
       s.position.set(x, 0.55, z);
-      this.scene.add(b, s);
+      this.stage.add(b, s);
     };
     addBarrier(0, -6.5, 8, true);
     addBarrier(-4, -1.5, 10, false);
@@ -582,7 +623,33 @@ export class World {
 
   /** ¿Se ve el contorno de la tecla mantenida en la raqueta del jugador? (para pruebas automáticas). */
   get heldOutlineVisible(): boolean {
-    return this.paddles[0].outlined;
+    return this.paddles[this.side].outlined;
+  }
+
+  /** Lado desde el que se ve la mesa (el del jugador local; calibrando, el 0). */
+  get viewSide(): Side {
+    return this.side;
+  }
+
+  /**
+   * Ver la mesa desde el extremo de `side` (V0.4, §2.1 P59). El lado 1 pone la cámara y su punto de mira con x y z
+   * cambiados de signo: el mundo girado 180° sobre el eje vertical, no reflejado (los textos se leen y el slice curva
+   * hacia el mismo lado físico). El pabellón y las luces giran con ella, y la raqueta translúcida y con el contorno de la
+   * tecla mantenida pasa a ser la de ese lado. Solo cuando cambia el lado; el temblor de cámara parte de la base nueva.
+   */
+  setViewSide(side: Side): void {
+    if (side === this.side) return;
+    this.side = side;
+    const cam = this.cfg.presentation.camera;
+    this.basePos.set(...viewPoint(side, cam.pos));
+    this.lookAt.set(...viewPoint(side, cam.lookAt));
+    this.stage.rotation.y = side === 0 ? 0 : Math.PI;
+    this.paddles[0].setTranslucent(side === 0);
+    this.paddles[1].setTranslucent(side === 1);
+    this.camera.position.copy(this.basePos);
+    this.camera.lookAt(this.lookAt);
+    // Al momento, no en el próximo render: el ratón proyecta el cursor con esta cámara en cuanto cambia el lado.
+    this.camera.updateMatrixWorld();
   }
 
   /** Proyecta un punto del mundo a píxeles CSS del canvas. */
@@ -619,8 +686,11 @@ export class World {
     this.shadow.scale.setScalar(r * (1.6 + height * 1.4));
     this.shadowMat.opacity = Math.max(0.45, 0.95 - height * 0.7);
 
-    this.paddles[0].update(f.paddles[0], f.heldOutline ? f.heldOutline.color : null);
-    this.paddles[1].update(f.paddles[1]);
+    // El contorno de la tecla mantenida, solo en la raqueta del jugador local (la del lado desde el que se ve).
+    const me = this.side;
+    const rival = me === 0 ? 1 : 0;
+    this.paddles[me].update(f.paddles[me], f.heldOutline ? f.heldOutline.color : null);
+    this.paddles[rival].update(f.paddles[rival]);
     this.sparks.update(f.dt ?? 1 / 60);
 
     this.target.visible = f.target !== null;

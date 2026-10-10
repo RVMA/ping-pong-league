@@ -19,8 +19,9 @@ import { OnlineSession, type RoomView, type SessionRoute, setRoomInUrl } from '.
 import type { Hud } from '../ui/hud.ts';
 import { Lobby } from '../ui/lobby.ts';
 import { type EndInfo, type ReadyChip, RoomUi } from '../ui/room-ui.ts';
-import { betweenText, clockText, countdownStep, modeText, nameOf, otherSide, pauseText, ReadyHold, readyWarnText, secondsLeft } from './room-logic.ts';
+import { betweenText, clockText, countdownStep, gamesLine, modeText, nameOf, otherSide, pauseText, ReadyHold, readyWarnText, secondsLeft } from './room-logic.ts';
 import { loadName, saveName, type Settings } from './settings.ts';
+import { mineFirst } from './view-side.ts';
 
 /** Cómo está el juego: se juega, se mueve la raqueta sin golpear, o hay una pantalla encima. */
 export type PlayMode = 'off' | 'hold' | 'play';
@@ -493,7 +494,7 @@ export class RoomFlow {
         const counting = v.phase === 'countdown';
         // La franja con los Listos: en el warm-up y en la cuenta atrás del inicio (para poder quitarlo).
         ui.setStrip(!counting || !this.resume, counting ? 'Cuenta atrás · mantén Shift para quitar el Listo' : 'Calentamiento · mantén Shift para Listo');
-        ui.setChips(this.chip(v, 0), this.chip(v, 1));
+        ui.setChips(this.chip(v, me), this.chip(v, rival));
         if (counting) {
           ui.setWarn('');
           this.ticker(-1, null);
@@ -580,13 +581,12 @@ export class RoomFlow {
     const hud = this.host.hud;
     if (!v) return;
     const me = v.side;
+    // Por lado: el Hud pone el del jugador local a la izquierda.
     hud.setNames([v.players[0]?.nm ?? '…', v.players[1]?.nm ?? '…'], [me === 0 ? 'tú' : 'rival', me === 1 ? 'tú' : 'rival']);
     const inMatch = v.phase === 'match' || v.phase === 'between' || v.phase === 'paused' || (v.phase === 'countdown' && this.resume);
     hud.setScoreVisible(inMatch);
-    const gw = v.gamesWon;
-    const games = this.cfg.room.gamesToWin[v.mode] > 1 ? ` · Games ${gw[0]}-${gw[1]}` : '';
-    // Entre games lo dice el aviso del centro (desde el ganador): la línea del marcador (por lado) se oculta.
-    hud.setGames(!inMatch || v.phase === 'between' ? '' : `Game ${gw[0] + gw[1] + 1}${games}`);
+    // Entre games lo dice el aviso del centro (desde el ganador): la línea del marcador ([yo, rival]) se oculta.
+    hud.setGames(!inMatch || v.phase === 'between' ? '' : gamesLine(v.gamesWon, me, this.cfg.room.gamesToWin[v.mode] > 1));
   }
 
   private endInfo(end: PendingEnd): EndInfo {
@@ -595,7 +595,8 @@ export class RoomFlow {
     const l = otherSide(w);
     const title = w === end.side ? 'Has ganado' : `Ha ganado ${end.names[w]}`;
     const abandon = m.why === 'abandon' ? ` · ${end.names[l]} abandonó el partido` : '';
-    return { title, sub: `Games ${m.gw[w]}-${m.gw[l]}${abandon}`, names: end.names, st: m.st };
+    // Título y games desde el ganador; la tabla, como el marcador: tú a la izquierda.
+    return { title, sub: `Games ${m.gw[w]}-${m.gw[l]}${abandon}`, names: mineFirst(end.names, end.side), st: mineFirst(m.st, end.side) };
   }
 
   /** Título y texto del error que cierra la sala. */
