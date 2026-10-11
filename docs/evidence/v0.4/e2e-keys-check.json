@@ -1,0 +1,149 @@
+{
+ "prueba": "client/e2e/keys-check.js (regresión de V0.2b, sin cambios) — local contra el bot Normal (seed 23), teclado y ratón reales con ±30 ms de error con semilla, npm run dev",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado)",
+ "resultado": {
+  "pedidoIgualSalido": {
+   "NORMAL": "9/9",
+   "SLICE": "5/5",
+   "TOPSPIN": "8/8",
+   "SMASH": "3/3",
+   "BLOCK": "5/5"
+  },
+  "tiers": {
+   "NORMAL": {
+    "PERFECT": 7,
+    "GOOD": 2
+   },
+   "SLICE": {
+    "PERFECT": 4,
+    "GOOD": 1
+   },
+   "TOPSPIN": {
+    "PERFECT": 7,
+    "GOOD": 1
+   },
+   "SMASH": {
+    "PERFECT": 2,
+    "GOOD": 1
+   },
+   "BLOCK": {
+    "PERFECT": 4,
+    "GOOD": 1
+   }
+  },
+  "fallosOSinGolpe": 0,
+  "absDtMedioMs": 15.7,
+  "textos": {
+   "NORMAL": {},
+   "SLICE": {
+    "SLICE completo": 4,
+    "SLICE reducido": 1
+   },
+   "TOPSPIN": {
+    "TOPSPIN completo": 7,
+    "TOPSPIN reducido": 1
+   },
+   "SMASH": {
+    "SMASH reducido": 1,
+    "SMASH completo": 2
+   },
+   "BLOCK": {
+    "BLOQUEO": 5
+   }
+  }
+ },
+ "teclaMantenida": [
+  {
+   "key": "KeyW",
+   "bar": "TOPSPIN",
+   "outline": true
+  },
+  {
+   "key": "KeyQ",
+   "bar": "SLICE",
+   "outline": true
+  },
+  {
+   "key": "KeyE",
+   "bar": "SMASH",
+   "outline": true
+  },
+  {
+   "key": "Space",
+   "bar": "BLOCK",
+   "outline": true
+  }
+ ],
+ "alSoltar": {
+  "kb": null,
+  "outline": false
+ },
+ "casosExplicados": [
+  {
+   "want": "LATE_KEY",
+   "text": "NORMAL · pulsaste W después del click"
+  },
+  {
+   "want": "EARLY_RELEASE",
+   "text": "NORMAL · soltaste W antes del click"
+  },
+  {
+   "want": "CHASE",
+   "text": "TOPSPIN flojo · persiguiendo"
+  },
+  {
+   "want": "SMASH_LOW",
+   "text": "SMASH completo · bola baja para el smash",
+   "toast": "Red. Smash con la bola por debajo de la cinta (hacen falta 15 cm por encima)."
+  },
+  {
+   "want": "LATE_TOPSPIN",
+   "dtMs": 92,
+   "tier": "WEAK",
+   "toast": "Fuera. Topspin tarde (+92 ms): se te fue largo."
+  },
+  {
+   "want": "EARLY_SLICE",
+   "dtMs": -67,
+   "tier": "WEAK",
+   "toast": "Fuera. Slice pronto (−67 ms): te pasaste de ángulo."
+  }
+ ],
+ "tab": [
+  {
+   "focus": "BODY",
+   "visible": false,
+   "stored": "0"
+  },
+  {
+   "focus": "BODY",
+   "visible": true,
+   "stored": "1"
+  }
+ ],
+ "trasRecargar": {
+  "visible": false,
+  "saved": false
+ },
+ "reduce1": [
+  {
+   "type": "TOPSPIN",
+   "tier": "PERFECT",
+   "sparks": 0
+  },
+  {
+   "type": "TOPSPIN",
+   "tier": "PERFECT",
+   "sparks": 0
+  },
+  {
+   "type": "TOPSPIN",
+   "tier": "PERFECT",
+   "sparks": 0
+  }
+ ],
+ "v03": "Normal 9/9, slice 5/5, topspin 9/9, bloqueo 4/4; los seis casos con su texto; Tab y reduce=1 como antes; 2 de 3 smash sin evento (tiempos del arnés)",
+ "comparacion": "dentro de V0.3: todos los pedidos salen (ahora también los 3 smash), los seis casos con su texto (topspin +92 ms y slice −67 ms), Tab guarda la preferencia y reduce=1 sin chispas",
+ "capturas": "docs/screenshots/v0.4/regresion/keys-*.png (22; las de docs/screenshots/v0.2b/ restauradas con git)"
+}

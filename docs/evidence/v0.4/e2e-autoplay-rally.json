@@ -1,0 +1,149 @@
+{
+ "prueba": "client/e2e/autoplay-rally.js (regresión de V0.1, sin cambios) — local contra el bot Normal, ratón real, 45 s con errores de timing provocados (saques incluidos), npm run dev",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado)",
+ "rallies": [
+  {
+   "golpes": 3,
+   "fin": "TÚ gana (MISSED)"
+  },
+  {
+   "golpes": 7,
+   "fin": "TÚ gana (MISSED)"
+  },
+  {
+   "golpes": 6,
+   "fin": "TÚ gana (MISSED)"
+  },
+  {
+   "golpes": 11,
+   "fin": "TÚ gana (OUT)"
+  },
+  {
+   "golpes": 12,
+   "fin": "TÚ gana (NET)"
+  }
+ ],
+ "marcador": [
+  5,
+  0
+ ],
+ "fps": 60,
+ "golpesHumano": 20,
+ "fallos": 0,
+ "rachaMax": 4,
+ "dtProvocadoVsMedido": [
+  {
+   "provocadoMs": 0,
+   "medidoMs": 12,
+   "desvioMs": 12
+  },
+  {
+   "provocadoMs": 5,
+   "medidoMs": 7,
+   "desvioMs": 2
+  },
+  {
+   "provocadoMs": -35,
+   "medidoMs": -45,
+   "desvioMs": -10
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": -10,
+   "desvioMs": -10
+  },
+  {
+   "provocadoMs": 45,
+   "medidoMs": 48,
+   "desvioMs": 3
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": 3,
+   "desvioMs": 3
+  },
+  {
+   "provocadoMs": -10,
+   "medidoMs": -11,
+   "desvioMs": -1
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": 12,
+   "desvioMs": 12
+  },
+  {
+   "provocadoMs": 30,
+   "medidoMs": 30,
+   "desvioMs": 0
+  },
+  {
+   "provocadoMs": -50,
+   "medidoMs": -55,
+   "desvioMs": -5
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": -5,
+   "desvioMs": -5
+  },
+  {
+   "provocadoMs": 10,
+   "medidoMs": 11,
+   "desvioMs": 1
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": 12,
+   "desvioMs": 12
+  },
+  {
+   "provocadoMs": 85,
+   "medidoMs": 88,
+   "desvioMs": 3
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": 10,
+   "desvioMs": 10
+  },
+  {
+   "provocadoMs": -20,
+   "medidoMs": -17,
+   "desvioMs": 3
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": 11,
+   "desvioMs": 11
+  },
+  {
+   "provocadoMs": 5,
+   "medidoMs": 17,
+   "desvioMs": 12
+  },
+  {
+   "provocadoMs": -35,
+   "medidoMs": -41,
+   "desvioMs": -6
+  },
+  {
+   "provocadoMs": 0,
+   "medidoMs": 0,
+   "desvioMs": 0
+  }
+ ],
+ "desvio": {
+  "medioMs": 2.4,
+  "absMedioMs": 6.0,
+  "maxAbsMs": 12
+ },
+ "historico": {
+  "v01": "−35 → −31/−43, +85 → +86 (±10 ms)",
+  "v02": "±10 ms y ±13 ms",
+  "v03": "rallies de hasta 13 golpes, ±10 ms, 60 fps"
+ },
+ "comparacion": "dentro de lo de fases anteriores: desvío máximo 12 ms (V0.2 registró ±13 ms); el plan elige el tick (8.3 ms) más cercano a la zona y Playwright añade ±5 ms",
+ "capturas": "docs/screenshots/v0.4/regresion/rally-*.png (6; las de docs/screenshots/ restauradas con git)"
+}
