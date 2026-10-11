@@ -1,0 +1,368 @@
+{
+ "prueba": "client/e2e/room-check.js — npm run dev (Vite 5173 + servidor de juego Node 5180), Chromium (Playwright MCP, con ventana). A = página de Playwright MCP; B = ventana aparte (browser.newContext()): la pestaña de fondo dibujaba a 30 fps (sondeo de 4 s: A [31,30,31,30] fps con B en pestaña; [61,60,60,60] con B en ventana). Los dos con ?autoplay=medium; Shift real mantenido 700 ms para el Listo; clicks reales en el lobby y la sala.",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado)",
+ "segundoJugador": {
+  "usado": "ventana (contexto aparte)",
+  "sondeoPestaña": {
+   "A": [
+    31,
+    30,
+    31,
+    30
+   ],
+   "B": [
+    61,
+    60,
+    60,
+    60
+   ]
+  },
+  "sondeoVentana": {
+   "A": [
+    61,
+    60,
+    60,
+    60
+   ],
+   "B": [
+    61,
+    60,
+    60,
+    60
+   ]
+  }
+ },
+ "partido": {
+  "sala": "PSPR (Rápido)",
+  "urlTrasCrear": "/?room=PSPR&name=Ana&offset=0&autoplay=medium",
+  "nombreHostil": {
+   "url": "<img src=x onerror=alert(1)>",
+   "mostrado": "img src=x onerro",
+   "elementosImgX": {
+    "A": 0,
+    "B": 0
+   },
+   "dialogos": {
+    "A": 0,
+    "B": 0
+   },
+   "chipsA": [
+    "Ana (tú)",
+    "img src=x onerro"
+   ],
+   "chipsB": [
+    "img src=x onerro (tú)",
+    "Ana"
+   ],
+   "cumple": true
+  },
+  "cuentaAtras": "3",
+  "segundos": 149,
+  "marcadores": {
+   "servidorA": "16 puntos",
+   "servidorB": "16 puntos",
+   "iguales": true,
+   "finalA": [
+    11,
+    5
+   ],
+   "finalB": [
+    11,
+    5
+   ],
+   "vistaA": [
+    11,
+    5
+   ],
+   "vistaB": [
+    11,
+    5
+   ],
+   "vistaIgualServidor": true
+  },
+  "mend": {
+   "w": 0,
+   "why": "score",
+   "gw": [
+    1,
+    0
+   ],
+   "st": [
+    {
+     "pf": 27,
+     "ms": 1,
+     "ne": 2,
+     "pts": 11
+    },
+    {
+     "pf": 31,
+     "ms": 2,
+     "ne": 9,
+     "pts": 5
+    }
+   ],
+   "rj": [
+    0,
+    0
+   ],
+   "igualEnLasDos": true
+  },
+  "panelA": {
+   "titulo": "Has ganado",
+   "sub": "Games 1-0",
+   "columnas": [
+    "Ana",
+    "img src=x onerro"
+   ]
+  },
+  "panelB": {
+   "titulo": "Ha ganado Ana",
+   "sub": "Games 1-0",
+   "columnas": [
+    "img src=x onerro",
+    "Ana"
+   ]
+  },
+  "correcciones": {
+   "A": 0,
+   "B": 0
+  },
+  "lados": {
+   "A": {
+    "red": 0,
+    "vista": 0
+   },
+   "B": {
+    "red": 1,
+    "vista": 1
+   }
+  },
+  "pingMostrado": {
+   "A": [
+    21,
+    15
+   ],
+   "B": [
+    15,
+    21
+   ]
+  },
+  "fps": {
+   "A": {
+    "ventanas1s": 148,
+    "rafMedio": 60,
+    "rafMin": 59.1,
+    "juegoMin": 60
+   },
+   "B": {
+    "ventanas1s": 148,
+    "rafMedio": 60,
+    "rafMin": 59.1,
+    "juegoMin": 60
+   }
+  },
+  "trasSeguir": {
+   "A": "warmup, play, Listo [false,false]",
+   "B": "warmup, play, Listo [false,false]"
+  },
+  "cumple": true
+ },
+ "reconexion": {
+  "sala": "CJRE (Estándar)",
+  "antes": {
+   "marcadorA": [
+    2,
+    1
+   ],
+   "marcadorB": [
+    2,
+    1
+   ],
+   "game": 1,
+   "correcciones": {
+    "A": 0,
+    "B": 0
+   }
+  },
+  "recarga": "pageB.reload(); el script principal de B se sirve 1.5 s más tarde (route), como una carga por red: con Vite local la recarga tardaba ~0.16 s y la pausa de A duraba ~180 ms, menos que una captura",
+  "recargaMs": 1928,
+  "deVueltaEnElPartidoMs": 4879,
+  "camino": "disconnect 1 → pause 1 → rejoin 1 → countdown resume → resume (registro del servidor; A vio 'paused')",
+  "fasesVistasPorA": [
+   {
+    "ph": "paused",
+    "ms": 25
+   },
+   {
+    "ph": "countdown",
+    "ms": 1820
+   },
+   {
+    "ph": "match",
+    "ms": 4832
+   }
+  ],
+  "pausaEnA": {
+   "texto": "Esperando a Beto… 0:30",
+   "marcador": [
+    2,
+    1
+   ]
+  },
+  "openAlRoomCountdownMs": 4.8,
+  "openAlWelcomeMs": 4.4,
+  "criterioMs": 1000,
+  "cumple": true,
+  "startDeReanudacion": {
+   "g": 1,
+   "sc": [
+    2,
+    1
+   ],
+   "msTrasOpen": 3017
+  },
+  "vistaDeBAlVolver": [
+   {
+    "g": 1,
+    "sc": [
+     2,
+     1
+    ],
+    "msTrasStart": 27
+   },
+   {
+    "g": 1,
+    "sc": [
+     3,
+     1
+    ],
+    "msTrasStart": 3244
+   }
+  ],
+  "mismoMarcador": true,
+  "cambioDeGame": [
+   "Game 1 para Ana · 11-7 · Games 1-0",
+   "Game 2 en 0:02"
+  ],
+  "segundos": 432,
+  "finalPorGame": {
+   "1": [
+    11,
+    7
+   ],
+   "2": [
+    8,
+    11
+   ],
+   "3": [
+    7,
+    11
+   ]
+  },
+  "iguales": true,
+  "mend": {
+   "w": 1,
+   "why": "score",
+   "gw": [
+    1,
+    2
+   ],
+   "st": [
+    {
+     "pf": 24,
+     "ms": 3,
+     "ne": 13,
+     "pts": 26
+    },
+    {
+     "pf": 27,
+     "ms": 4,
+     "ne": 10,
+     "pts": 29
+    }
+   ],
+   "rj": [
+    0,
+    0
+   ],
+   "igualEnLasDos": true
+  },
+  "correcciones": {
+   "A": 0,
+   "BantesDeRecargar": 0,
+   "BdespuesDeRecargar": 0
+  },
+  "fps": {
+   "A": {
+    "rafMedio": 60,
+    "rafMin": 59.2,
+    "juegoMin": 60
+   },
+   "B": {
+    "rafMedio": 60,
+    "rafMin": 59.2,
+    "juegoMin": 60
+   }
+  }
+ },
+ "abandono": {
+  "sala": "UWBY (Rápido)",
+  "cierre": "pageB.close() en el game 1 (sin leave)",
+  "fasesVistasPorA": [
+   {
+    "ph": "paused",
+    "ms": 1053
+   },
+   {
+    "ph": "waiting",
+    "ms": 30026
+   }
+  ],
+  "mend": {
+   "why": "abandon",
+   "w": 0,
+   "msTrasCerrar": 30025
+  },
+  "criterio": "30 s ± 1 s",
+  "cumple": true,
+  "panelA": {
+   "titulo": "Has ganado",
+   "sub": "Games 0-0 · Beto abandonó el partido"
+  },
+  "trasSeguir": {
+   "fase": "waiting",
+   "aviso": "Beto ha salido de la sala"
+  },
+  "correccionesA": 0
+ },
+ "consola": {
+  "A": {
+   "errores": 0,
+   "avisos": 0,
+   "erroresDePagina": 0,
+   "dialogos": 0
+  },
+  "B-partido": {
+   "errores": 0,
+   "avisos": 0
+  },
+  "B-reconexion": {
+   "errores": 0,
+   "avisos": 0
+  },
+  "B-abandono": {
+   "errores": 0,
+   "avisos": 0
+  }
+ },
+ "capturas": [
+  "lobby.png",
+  "room-waiting.png",
+  "warmup.png",
+  "countdown.png",
+  "match-end.png",
+  "pause.png",
+  "between.png"
+ ]
+}
