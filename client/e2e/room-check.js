@@ -1,7 +1,7 @@
 // Prueba E2E de aceptación de V0.4: salas entre dos jugadores (docs/prompts/fase_v0.4.md, Verificación 3).
-//  - A es la página de Playwright MCP; B, una pestaña de la misma ventana (page.context().newPage()) si su bucle de
-//    dibujo va a ritmo completo; si no (pestaña oculta o frenada), una ventana aparte (browser.newContext()). La
-//    evidencia dice cuál se usó y lo que midió la prueba.
+//  - A es la página de Playwright MCP. Primero se mide una segunda pestaña (page.context().newPage()): con ella
+//    delante, la de fondo sigue «visible» pero dibuja a 30 fps o menos, a veces solo pasados unos segundos; por eso B
+//    juega siempre en una ventana aparte (browser.newContext()). La evidencia guarda lo que midió el sondeo.
 //  - Los dos juegan con el piloto automático (?autoplay=medium): la prueba es del flujo de sala, no de la precisión
 //    (eso es side1-check.js, con ratón y teclado reales).
 //  - Teclas y clicks reales de Playwright para la interfaz: Shift mantenido 700 ms para el Listo, botones del lobby y
@@ -185,8 +185,7 @@ async (page) => {
       return panel ? { title: panel.querySelector('h1')?.textContent ?? '', sub: panel.querySelector('.lead')?.textContent ?? '', rows: [...t.querySelectorAll('tr')].map((tr) => [...tr.children].map((c) => c.textContent)) } : null;
     });
 
-  // B: una pestaña si su bucle va a ritmo completo con A; si no, una ventana aparte.
-  let bMode = null;
+  // B: se mide una pestaña (constancia del freno) y se juega en una ventana aparte.
   let bCtx = null;
   // Frames por segundo durante 4 s (cada segundo por separado): la pestaña de fondo puede ir a 30 fps o menos.
   const probe = (p) =>
@@ -220,22 +219,19 @@ async (page) => {
     const [a, b] = await Promise.all([probe(page), probe(tab)]);
     const tabOk = a.vis === 'visible' && b.vis === 'visible' && a.fps >= 55 && b.fps >= 55;
     await tab.close();
-    if (tabOk) {
-      bMode = 'tab';
-      return { tab: { A: a, B: b }, used: 'tab' };
-    }
-    bMode = 'window';
+    // La pestaña queda medida y anotada, pero B va siempre en una ventana: la pestaña de fondo sigue «visible» y
+    // Chromium la frena a 30 fps (a veces a 1–2), y en 2 de 5 corridas el freno llegó DESPUÉS de los 4 s del sondeo
+    // (A a 26 fps en el partido), así que el sondeo no basta para fiarse de ella.
     bCtx = await browser.newContext({ viewport: VIEW });
     const w = await bCtx.newPage();
     await w.goto(`${base}?offset=0`);
     await w.waitForTimeout(1000);
     const [a2, b2] = await Promise.all([probe(page), probe(w)]);
     await w.close();
-    return { tab: { A: a, B: b }, window: { A: a2, B: b2 }, used: 'window' };
+    return { tab: { A: a, B: b, fullRate: tabOk }, window: { A: a2, B: b2 }, used: 'window' };
   };
   const newB = async (name) => {
-    const p = bMode === 'tab' ? await page.context().newPage() : await bCtx.newPage();
-    if (bMode === 'tab') await p.setViewportSize(VIEW);
+    const p = await bCtx.newPage();
     await p.addInitScript(RECORDER);
     listen(p, name);
     return p;
@@ -280,10 +276,13 @@ async (page) => {
     const [a, b] = await Promise.all([waitFor(page, ok, 8000, 'A de vuelta al warm-up'), waitFor(pageB, ok, 8000, 'B de vuelta al warm-up')]);
     return { A: a.room, B: b.room };
   };
+  // Salen los dos con «Salir» (sin reserva del hueco): B primero; A, cuando ya ve la sala de espera.
   const leaveBoth = async (pageB) => {
     await clickVisible(pageB, 'leave').catch(() => {});
-    await clickVisible(page, 'leave').catch(() => {});
+    await waitFor(page, (s) => s.room.phase === 'waiting', 5000, 'A esperando tras salir B').catch(() => {});
     await page.waitForTimeout(300);
+    await clickVisible(page, 'leave').catch(() => {});
+    await waitFor(page, (s) => s.room.stage === 'lobby', 5000, 'A en el lobby').catch(() => {});
   };
 
   const result = { base, nodeDev, parts, startedAt: new Date().toISOString() };

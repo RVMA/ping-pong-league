@@ -1,0 +1,200 @@
+{
+ "prueba": "client/e2e/room-check.js contra wrangler dev (npm run cf:dev: build + wrangler 4.149.0 en 8787, Worker + un Durable Object por sala, cliente de producción servido por el Worker), base http://localhost:8787/. Sin latencia simulada (el Worker la rechaza) y sin capturas. A = página de Playwright MCP, B = ventana aparte; los dos con ?autoplay=medium; Shift real 700 ms; clicks reales.",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado); room-check.js tal como queda en el commit de esta evidencia",
+ "segundoJugador": {
+  "usado": "ventana",
+  "sondeoPestaña": {
+   "A": [
+    31,
+    30,
+    30,
+    31
+   ],
+   "B": [
+    62,
+    60,
+    60,
+    60
+   ]
+  },
+  "sondeoVentana": {
+   "A": [
+    61,
+    61,
+    60,
+    60
+   ],
+   "B": [
+    61,
+    60,
+    61,
+    60
+   ]
+  }
+ },
+ "partido": {
+  "sala": "LGDX (Rápido)",
+  "nombreHostil": {
+   "mostrado": "img src=x onerro",
+   "elementosImgX": 0,
+   "dialogos": 0,
+   "cumple": true
+  },
+  "segundos": 120,
+  "final": [
+   11,
+   5
+  ],
+  "marcadoresIgualesServidor": true,
+  "vistaIgualServidor": true,
+  "mend": {
+   "w": 0,
+   "why": "score",
+   "gw": [
+    1,
+    0
+   ],
+   "st": [
+    {
+     "pf": 43,
+     "ms": 3,
+     "ne": 2,
+     "pts": 11
+    },
+    {
+     "pf": 28,
+     "ms": 2,
+     "ne": 3,
+     "pts": 5
+    }
+   ],
+   "rj": [
+    0,
+    0
+   ]
+  },
+  "mendIgualEnLasDos": true,
+  "correcciones": {
+   "A": 0,
+   "B": 0
+  },
+  "pingMostrado": {
+   "A": [
+    1.6,
+    1.7
+   ],
+   "B": [
+    1.7,
+    1.6
+   ]
+  },
+  "fps": {
+   "A": {
+    "rafMedio": 60,
+    "rafMin": 59.2,
+    "juegoMin": 60
+   },
+   "B": {
+    "rafMedio": 60,
+    "rafMin": 59.2,
+    "juegoMin": 60
+   }
+  },
+  "trasSeguir": "warmup en las dos",
+  "cumple": true
+ },
+ "reconexion": {
+  "sala": "ACQL (Estándar)",
+  "camino": "disconnect 1 → pause 1 → rejoin 1 → countdown resume → resume",
+  "pausaEnA": {
+   "texto": "Esperando a Beto… 0:30",
+   "marcador": [
+    1,
+    2
+   ],
+   "msTrasRecargar": 22
+  },
+  "openAlRoomCountdownMs": 4.1,
+  "openAlWelcomeMs": 3.7,
+  "criterioMs": 1000,
+  "startDeReanudacion": {
+   "g": 1,
+   "sc": [
+    1,
+    2
+   ]
+  },
+  "vistaDeBAlVolver": {
+   "sc": [
+    1,
+    2
+   ],
+   "msTrasStart": 37
+  },
+  "mismoMarcador": true,
+  "cambioDeGame": [
+   "Game 1 para Ana · 11-9 · Games 1-0",
+   "Game 2 en 0:03"
+  ],
+  "segundos": 567,
+  "finalPorGame": {
+   "1": [
+    11,
+    9
+   ],
+   "2": [
+    4,
+    11
+   ],
+   "3": [
+    15,
+    13
+   ]
+  },
+  "iguales": true,
+  "mendIgualEnLasDos": true,
+  "correcciones": {
+   "A": 0,
+   "BantesDeRecargar": 0,
+   "BdespuesDeRecargar": 0
+  },
+  "fps": {
+   "A": {
+    "rafMedio": 60,
+    "rafMin": 59.1
+   },
+   "B": {
+    "rafMedio": 60,
+    "rafMin": 59.1
+   }
+  },
+  "cumple": true
+ },
+ "abandono": {
+  "sala": "TDMM (Rápido)",
+  "mend": {
+   "why": "abandon",
+   "w": 0,
+   "msTrasCerrar": 30005
+  },
+  "criterio": "30 s ± 1 s",
+  "panelA": "Games 0-0 · Beto abandonó el partido",
+  "trasSeguir": {
+   "fase": "waiting",
+   "aviso": "Beto ha salido de la sala"
+  },
+  "cumple": true
+ },
+ "consola": {
+  "A": 0,
+  "B-partido": 0,
+  "B-reconexion": 0,
+  "B-abandono": 0,
+  "nota": "0 errores, 0 avisos, 0 diálogos"
+ },
+ "registroDeWrangler": "sin errores ni excepciones (tampoco «Network connection lost»); eventos de sala completos y salidas limpias (leave 1, leave 0, closed)",
+ "corridaAnterior": {
+  "resultado": "todos los criterios funcionales iguales (reconexión 51.5 ms, abandono 30.015 s, 0 correcciones, marcadores iguales), pero el sondeo de pestaña dio 60/60 fps y B fue en pestaña: A, de fondo, dibujó a 26 fps en el partido. Por eso room-check.js pone ahora a B siempre en una ventana (el sondeo de pestaña se mide y se anota)."
+ }
+}
