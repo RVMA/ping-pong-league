@@ -1,0 +1,189 @@
+{
+ "prueba": "client/e2e/net-check.js (regresión de V0.3, sin cambios) — Chromium, ratón y teclado reales de Playwright, ±30 ms de error de timing con semilla (misma secuencia en cada ping), 20 golpes por ping contra el bot remoto Normal (seed 11), ?online=1, npm run dev",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado; los scripts de E2E no forman parte del build)",
+ "criterio": {
+  "meanDt0": -0.4,
+  "meanDt100": -0.4,
+  "diferenciaMs": 0,
+  "limiteMs": 10,
+  "cumple": true
+ },
+ "v03": {
+  "meanDt0": 2.2,
+  "meanDt100": -1.1,
+  "diferenciaMs": -3.3,
+  "pedidoIgualSalido": "16/16 en cada ping",
+  "bloqueos": "4/4",
+  "correcciones": 0,
+  "fps": 60
+ },
+ "porPing": {
+  "0": {
+   "meanDtMs": -0.4,
+   "meanAbsDtMs": 18.9,
+   "tiers": {
+    "PERFECT": 13,
+    "GOOD": 7,
+    "WEAK": 0,
+    "WHIFF": 0,
+    "NONE": 0
+   },
+   "pedidoIgualSalido": "16/16",
+   "bloqueos": "4/4",
+   "correcciones": 0,
+   "frenado": {
+    "flights": 20,
+    "mean": 0.064,
+    "max": 0.259
+   },
+   "pingMedido": [
+    22,
+    22
+   ],
+   "saltoRenderMaxM": 0.0185,
+   "pasoBolaMaxPorFrameM": 0.228,
+   "fps": 60,
+   "subidaBps": 826,
+   "bajadaBps": 1027,
+   "golpePropioTrasContactoMaxMs": 9,
+   "dtMs": [
+    5.7,
+    -27.7,
+    -11.4,
+    -18.1,
+    25.8,
+    9.8,
+    2.8,
+    12.3,
+    4.1,
+    -28.5,
+    -34.5,
+    9,
+    9.2,
+    -23.2,
+    14.8,
+    32.9,
+    -38.2,
+    20.8,
+    37.5,
+    -11.6
+   ]
+  },
+  "50": {
+   "meanDtMs": -2.8,
+   "meanAbsDtMs": 15.7,
+   "tiers": {
+    "PERFECT": 16,
+    "GOOD": 4,
+    "WEAK": 0,
+    "WHIFF": 0,
+    "NONE": 0
+   },
+   "pedidoIgualSalido": "16/16",
+   "bloqueos": "4/4",
+   "correcciones": 0,
+   "frenado": {
+    "flights": 20,
+    "mean": 0.177,
+    "max": 0.607
+   },
+   "pingMedido": [
+    66,
+    65
+   ],
+   "saltoRenderMaxM": 0.0155,
+   "pasoBolaMaxPorFrameM": 0.23,
+   "fps": 60,
+   "subidaBps": 825,
+   "bajadaBps": 1010,
+   "golpePropioTrasContactoMaxMs": 9
+  },
+  "100": {
+   "meanDtMs": -0.4,
+   "meanAbsDtMs": 17.9,
+   "tiers": {
+    "PERFECT": 15,
+    "GOOD": 5,
+    "WEAK": 0,
+    "WHIFF": 0,
+    "NONE": 0
+   },
+   "pedidoIgualSalido": "16/16",
+   "bloqueos": "4/4",
+   "correcciones": 0,
+   "frenado": {
+    "flights": 20,
+    "mean": 0.273,
+    "max": 0.75
+   },
+   "pingMedido": [
+    122,
+    120
+   ],
+   "saltoRenderMaxM": 0.017,
+   "pasoBolaMaxPorFrameM": 0.23,
+   "fps": 60,
+   "subidaBps": 816,
+   "bajadaBps": 979,
+   "golpePropioTrasContactoMaxMs": 9,
+   "dtMs": [
+    12,
+    -14,
+    -10.7,
+    -15.2,
+    28.1,
+    -0.8,
+    -13.4,
+    10.7,
+    11.4,
+    -21.5,
+    -35.1,
+    10.6,
+    13.3,
+    -21.5,
+    13.3,
+    28.7,
+    -37,
+    14,
+    33,
+    -13.4
+   ]
+  },
+  "150": {
+   "meanDtMs": 1.4,
+   "meanAbsDtMs": 19.3,
+   "tiers": {
+    "PERFECT": 12,
+    "GOOD": 8,
+    "WEAK": 0,
+    "WHIFF": 0,
+    "NONE": 0
+   },
+   "pedidoIgualSalido": "16/16",
+   "bloqueos": "4/4",
+   "correcciones": 0,
+   "frenado": {
+    "flights": 21,
+    "mean": 0.321,
+    "max": 0.75
+   },
+   "pingMedido": [
+    160,
+    163
+   ],
+   "saltoRenderMaxM": 0.0068,
+   "pasoBolaMaxPorFrameM": 0.201,
+   "fps": 60,
+   "subidaBps": 763,
+   "bajadaBps": 831,
+   "golpePropioTrasContactoMaxMs": 9
+  }
+ },
+ "ladoCeroParaSide1Check": {
+  "meanDt0": -0.4,
+  "nota": "Δt(0) del lado 0 que usa side1-check.js (SIDE0_DT0)"
+ },
+ "erroresDeConsola": [],
+ "capturas": "docs/screenshots/v0.4/regresion/net-hud-ping.png, net-outgoing-ball.png, net-rival-hit.png (las de docs/screenshots/v0.3/ restauradas con git)"
+}

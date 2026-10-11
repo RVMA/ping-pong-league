@@ -1,0 +1,476 @@
+{
+ "prueba": "client/e2e/side1-check.js — sala Rápido en npm run dev; A (lado 0) ?create=quick&autoplay=hard&name=Bot&offset=0 en una ventana aparte (browser.newContext); B (lado 1) ?room=<código>&offset=0&ping=0 y &ping=100 (una sala nueva por ping) en la página de Playwright MCP, 1280×720, con ratón y teclado REALES de Playwright y ±30 ms de error de timing con semilla 20261003 (la de net-check.js); 20 golpes por ping en el partido rotando W/Q/E/sin tecla/Espacio; solo puntos visibles en la ventana",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado)",
+ "criterios": {
+  "deltaPing": {
+   "dt0": 3.0,
+   "dt100": 2.2,
+   "diferenciaMs": -0.8,
+   "limiteMs": 10,
+   "cumple": true
+  },
+  "deltaLado": {
+   "dt0Lado1": 3.0,
+   "dt0Lado0": -0.4,
+   "fuenteLado0": "docs/evidence/v0.4/e2e-net-check.json (Step 5, mismo build)",
+   "diferenciaMs": 3.4,
+   "limiteMs": 10,
+   "cumple": true
+  },
+  "pedidoIgualSalido": {
+   "ping0": "16/16 + bloqueos 4/4",
+   "ping100": "16/16 + bloqueos 4/4",
+   "fallosOSinGolpe": 0,
+   "cumple": true
+  },
+  "correcciones": {
+   "ping0": {
+    "A": 0,
+    "B": 0
+   },
+   "ping100": {
+    "A": 0,
+    "B": 0
+   },
+   "cumple": true
+  },
+  "fps": {
+   "ping0": {
+    "B": {
+     "raf": 60,
+     "juegoMin": 60
+    },
+    "A": {
+     "raf": 60,
+     "juegoMin": 60
+    }
+   },
+   "ping100": {
+    "B": {
+     "raf": 60,
+     "juegoMin": 60
+    },
+    "A": {
+     "raf": 60,
+     "juegoMin": 60
+    }
+   },
+   "limite": 55,
+   "cumple": true
+  }
+ },
+ "porPing": {
+  "0": {
+   "sala": "FFVT",
+   "partidos": 1,
+   "meanDtMs": 3.0,
+   "meanAbsDtMs": 17.2,
+   "tiers": {
+    "PERFECT": 15,
+    "GOOD": 5,
+    "WEAK": 0,
+    "WHIFF": 0,
+    "NONE": 0
+   },
+   "pingMedido": [
+    14,
+    16
+   ],
+   "lado": {
+    "red": 1,
+    "vista": 1,
+    "camaraZ": -3.45
+   },
+   "frenado": {
+    "vuelos": 20,
+    "medio": 0.064,
+    "max": 0.205
+   },
+   "saltoRenderMaxM": 0.0238,
+   "pasoBolaMaxPorFrameM": 0.224,
+   "subidaBps": 835,
+   "bajadaBps": 993,
+   "golpePropioTrasContactoMs": [
+    9,
+    8,
+    0,
+    9,
+    0,
+    0,
+    1,
+    8,
+    0,
+    5,
+    8,
+    0,
+    9,
+    8,
+    1,
+    0,
+    5,
+    7,
+    1,
+    2
+   ],
+   "segundos": 35,
+   "golpes": [
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -4,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": -10.4
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": 2,
+     "salido": "SLICE",
+     "tier": "PERFECT",
+     "dtMs": -2.4
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -19,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": -13.6
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": -8,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": -8.4
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": -16,
+     "salido": "BLOCK",
+     "tier": "PERFECT",
+     "dtMs": -23.1
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": 15,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": 16.2
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": 27,
+     "salido": "SLICE",
+     "tier": "GOOD",
+     "dtMs": 32.4
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": 3,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": 9.1
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": -9,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": -9.1
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": 11,
+     "salido": "BLOCK",
+     "tier": "PERFECT",
+     "dtMs": 19.7
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 1,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": -0.5
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": -20,
+     "salido": "SLICE",
+     "tier": "GOOD",
+     "dtMs": -27.9
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -25,
+     "salido": "TOPSPIN",
+     "tier": "GOOD",
+     "dtMs": -35.6
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 6,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 16.9
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": 3,
+     "salido": "BLOCK",
+     "tier": "PERFECT",
+     "dtMs": 15.5
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -15,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": -10.4
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": 10,
+     "salido": "SLICE",
+     "tier": "PERFECT",
+     "dtMs": 11.4
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": 22,
+     "salido": "TOPSPIN",
+     "tier": "GOOD",
+     "dtMs": 34.7
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 8,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 7.2
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": 29,
+     "salido": "BLOCK",
+     "tier": "GOOD",
+     "dtMs": 39.2
+    }
+   ]
+  },
+  "100": {
+   "sala": "TZHG",
+   "partidos": 1,
+   "meanDtMs": 2.2,
+   "meanAbsDtMs": 18.0,
+   "tiers": {
+    "PERFECT": 15,
+    "GOOD": 5,
+    "WEAK": 0,
+    "WHIFF": 0,
+    "NONE": 0
+   },
+   "pingMedido": [
+    125,
+    18
+   ],
+   "lado": {
+    "red": 1,
+    "vista": 1,
+    "camaraZ": -3.45
+   },
+   "frenado": {
+    "vuelos": 20,
+    "medio": 0.189,
+    "max": 0.678
+   },
+   "saltoRenderMaxM": 0.0262,
+   "pasoBolaMaxPorFrameM": 0.224,
+   "subidaBps": 864,
+   "bajadaBps": 1019,
+   "golpePropioTrasContactoMs": [
+    4,
+    8,
+    0,
+    9,
+    1,
+    7,
+    7,
+    0,
+    4,
+    4,
+    0,
+    8,
+    4,
+    1,
+    0,
+    8,
+    5,
+    0,
+    8,
+    5
+   ],
+   "segundos": 31,
+   "golpes": [
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": 2,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": 4.7
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": -19,
+     "salido": "SLICE",
+     "tier": "PERFECT",
+     "dtMs": -21.7
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -8,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": -11.3
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": -16,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": -11.4
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": 15,
+     "salido": "BLOCK",
+     "tier": "PERFECT",
+     "dtMs": 24.3
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 27,
+     "salido": "NORMAL",
+     "tier": "GOOD",
+     "dtMs": 26.7
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 3,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 1.7
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -9,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": -15.6
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 11,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 12.5
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": 1,
+     "salido": "BLOCK",
+     "tier": "PERFECT",
+     "dtMs": 12.4
+    },
+    {
+     "pedido": "TOPSPIN",
+     "errorMs": -20,
+     "salido": "TOPSPIN",
+     "tier": "PERFECT",
+     "dtMs": -13.4
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": -25,
+     "salido": "SLICE",
+     "tier": "GOOD",
+     "dtMs": -33.2
+    },
+    {
+     "pedido": "SMASH",
+     "errorMs": 6,
+     "salido": "SMASH",
+     "tier": "PERFECT",
+     "dtMs": 12.7
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 3,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 15.9
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": -15,
+     "salido": "BLOCK",
+     "tier": "PERFECT",
+     "dtMs": -21.2
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 10,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 16.8
+    },
+    {
+     "pedido": "SLICE",
+     "errorMs": 22,
+     "salido": "SLICE",
+     "tier": "GOOD",
+     "dtMs": 28.8
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": -29,
+     "salido": "NORMAL",
+     "tier": "GOOD",
+     "dtMs": -29.3
+    },
+    {
+     "pedido": "NORMAL",
+     "errorMs": 8,
+     "salido": "NORMAL",
+     "tier": "PERFECT",
+     "dtMs": 17.2
+    },
+    {
+     "pedido": "BLOCK",
+     "errorMs": 29,
+     "salido": "BLOCK",
+     "tier": "GOOD",
+     "dtMs": 28.4
+    }
+   ]
+  }
+ },
+ "corridaAnteriorSinFiltroDePantalla": {
+  "resultado": "Δt(0) −0.4, Δt(100) +0.6 (cumplen), pero con ping 100 un BLOQUEO y un SMASH sin golpe (NONE): pedido = salido no cumplía",
+  "causa": "del arnés, no del juego: el bloqueo y el smash se planean en el punto más alto de la bola dentro de la zona (hasta 2.5 m de fondo); contra el piloto Difícil (bolas profundas) ese punto caía en z −2.35, que con la cámara del lado 1 se proyecta en y = 745 px, fuera de la ventana de 720 px: el click no llega al canvas (input.lastFire sin cambiar) y el punto acaba MISSED. Reproducido en una corrida de depuración de 40 golpes (1 NONE, con plan.y = 745); los bloqueos que salieron estaban en y = 603–715",
+  "arreglo": "planFn solo considera puntos que se proyectan dentro de la ventana (margen de 8 px), como haría una persona; ningún cambio en el juego"
+ },
+ "consola": {
+  "B": {
+   "errores": 0,
+   "avisos": 0
+  },
+  "A-0": {
+   "errores": 0,
+   "avisos": 0
+  },
+  "A-100": {
+   "errores": 0,
+   "avisos": 0
+  }
+ }
+}
