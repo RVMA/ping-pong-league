@@ -1,0 +1,152 @@
+{
+ "prueba": "client/e2e/read-check.js — Chromium, npm run dev. 1) Local http://localhost:5173/?read=1&bot=hard&offset=0: «Empezar» con click real; con cada pregunta abierta (debugState().read.open) se pulsa con el teclado REAL de Playwright la tecla correcta en 24 y una incorrecta (otro tipo de 1–4) en 6 (cada quinta), 60–160 ms después de abrirse (semilla 20261013). 2) Sala Rápido (A esta página, B ventana aparte, ?autoplay=medium): A pulsa «Prueba de lectura» en el warm-up.",
+ "fecha": "2026-10-11",
+ "commit": "908c54c (build probado)",
+ "local": {
+  "segundos": 50,
+  "criterio": {
+   "pctEsperado": 80,
+   "pctPanel": "80 %",
+   "cumple": true
+  },
+  "resultado": {
+   "asked": 30,
+   "answered": 30,
+   "correct": 24,
+   "pct": 80,
+   "sinRespuesta": 0
+  },
+  "respuestasPlaneadas": {
+   "correctas": 24,
+   "incorrectas": 6,
+   "preguntaYaCerradaAlPulsar": 0
+  },
+  "golpesDelRival": {
+   "NORMAL": 14,
+   "TOPSPIN": 11,
+   "SMASH": 4,
+   "SLICE": 1,
+   "BLOCK": 0
+  },
+  "confusion": {
+   "NORMAL": {
+    "NORMAL": 12,
+    "TOPSPIN": 2
+   },
+   "TOPSPIN": {
+    "TOPSPIN": 9,
+    "SLICE": 2
+   },
+   "SLICE": {
+    "SLICE": 1
+   },
+   "SMASH": {
+    "SMASH": 2,
+    "NORMAL": 2
+   }
+  },
+  "tablaDelPanel": [
+   [
+    "Golpe del rival",
+    "1 Normal",
+    "2 Topspin",
+    "3 Slice",
+    "4 Smash",
+    "5 Bloqueo",
+    "Sin resp."
+   ],
+   [
+    "Normal (14)",
+    "12",
+    "2",
+    "·",
+    "·",
+    "·",
+    "·"
+   ],
+   [
+    "Topspin (11)",
+    "·",
+    "9",
+    "2",
+    "·",
+    "·",
+    "·"
+   ],
+   [
+    "Slice (1)",
+    "·",
+    "·",
+    "1",
+    "·",
+    "·",
+    "·"
+   ],
+   [
+    "Smash (4)",
+    "2",
+    "·",
+    "·",
+    "2",
+    "·",
+    "·"
+   ]
+  ],
+  "textoDelPanel": "Acertaste 24 de los 30 golpes que nombraste. Sin respuesta: 0 de 30.",
+  "confusionesNombradas": [
+   "Normal: dijiste Topspin 2 de 14 veces.",
+   "Topspin: dijiste Slice 2 de 11 veces.",
+   "Smash: dijiste Normal 2 de 4 veces."
+  ],
+  "tablaIgualALoPlaneado": true,
+  "nota": "contra el bot no aparece «5 Bloqueo» (Task 12): las respuestas incorrectas nunca dependen de ello"
+ },
+ "sala": {
+  "codigo": "PPBB",
+  "avisoEnB": "Ana está haciendo la prueba de lectura: mezcla golpes",
+  "rt": {
+   "A": [
+    true,
+    false
+   ],
+   "B": [
+    true,
+    false
+   ]
+  },
+  "botonDeA": "Prueba de lectura → Dejar la prueba",
+  "listoDeAHabilitado": false,
+  "shiftMantenido800msEnA": {
+   "ready": [
+    false,
+    false
+   ]
+  },
+  "pilotoDeA": "Prueba de lectura (lado 0)",
+  "preguntasTras4s": 4,
+  "alDejarla": {
+   "rtEnB": [
+    false,
+    false
+   ],
+   "avisoVisibleEnB": false,
+   "pilotoDeA": "Normal (el de ?autoplay=medium)"
+  },
+  "cumple": true
+ },
+ "consola": {
+  "A": {
+   "errores": 0,
+   "avisos": 0
+  },
+  "B": {
+   "errores": 0,
+   "avisos": 0
+  }
+ },
+ "capturas": [
+  "docs/screenshots/v0.4/read-test.png",
+  "docs/screenshots/v0.4/read-result.png",
+  "docs/screenshots/v0.4/read-banner.png"
+ ]
+}
