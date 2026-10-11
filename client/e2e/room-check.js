@@ -16,6 +16,11 @@
 //     marcador → cuenta atrás → el partido sigue y acaba. Mide del `open` del socket nuevo de B a su `room` con
 //     ph 'countdown' (< 1 s).
 //  3. abandon: sala Rápido; B se cierra en el game 1 → a los 30 s A recibe `mend` con why 'abandon'.
+//  4. hidden: sala Rápido; el bucle de B se para 10 s en el game 1 (pestaña oculta simulada: rAF retenido, socket
+//     abierto) → A no ve pausa, el socket de B no se cierra y, al volver, B se pone al día por tramos (≤ 240 ticks,
+//     2 s, por frame; ningún frame > 50 ms) con el mismo marcador que A. El servidor cierra por su respaldo los puntos
+//     de B; el piloto de B sigue jugando en los ticks que la vista repone, y si golpea ahí el servidor descarta ese
+//     golpe por viejo (una corrección «rejected» en B; una persona no puede hacer click mientras la pestaña está oculta).
 // Base: el origen de la página al lanzarla (http://localhost:5173 con `npm run dev`; http://localhost:8787 con
 // `npm run cf:dev`). Capturas en docs/screenshots/v0.4/ solo contra el servidor de desarrollo.
 // Uso: con el servidor arrancado, navegar a la base y ejecutar con browser_run_code de Playwright MCP (filename).
@@ -25,7 +30,7 @@ async (page) => {
   const origin = isHttp ? new URL(here).origin : 'http://localhost:5173';
   const base = `${origin}/`;
   const nodeDev = origin === 'http://localhost:5173';
-  const parts = ((isHttp ? new URL(here).hash : '').match(/parts=([a-z,]+)/)?.[1] ?? 'main,reconnect,abandon').split(',');
+  const parts = ((isHttp ? new URL(here).hash : '').match(/parts=([a-z,]+)/)?.[1] ?? 'main,reconnect,abandon,hidden').split(',');
   const SHOT_DIR = 'docs/screenshots/v0.4';
   const shots = nodeDev;
   const VIEW = { width: 1280, height: 720 };
@@ -115,7 +120,7 @@ async (page) => {
       return {
         now: performance.now(),
         room: d.room,
-        net: d.net ? { status: d.net.status, side: d.net.side, corrections: d.net.corrections, pings: d.net.pings } : null,
+        net: d.net ? { status: d.net.status, side: d.net.side, corrections: d.net.corrections, kinds: d.net.correctionKinds, pings: d.net.pings } : null,
         fps: d.fps,
         score: d.score,
         game: g.sim.game,
@@ -492,6 +497,80 @@ async (page) => {
         r.correctionsA = s.net.corrections;
       }
       await clickVisible(page, 'leave').catch(() => {});
+    }
+
+    // ——— 4. Pestaña oculta en el partido (Review Focus 4) ———
+    // Playwright no puede ocultar de verdad una página (sigue «visible»): como en Task 11, se para el
+    // requestAnimationFrame de B 10 s (el bucle del juego no avanza; el socket sigue abierto y recibiendo).
+    if (parts.includes('hidden')) {
+      const r = (result.hidden = {});
+      const STALL_MS = 10000;
+      const code = await createRoom('quick', false);
+      r.code = code;
+      const pageB = await newB('B-hidden');
+      await joinB(pageB, code, 'Beto');
+      await readyBoth(pageB);
+      await waitFor(page, (s) => s.room.phase === 'match' && s.practice === false && s.game === 1, 8000, 'game 1');
+      await page.waitForTimeout(3000);
+      const [a0, b0] = [await st(page), await st(pageB)];
+      r.before = { scoreA: a0.score, scoreB: b0.score, correctionsB: b0.net.corrections };
+      await pageB.evaluate((ms) => {
+        const orig = window.requestAnimationFrame.bind(window);
+        const held = [];
+        const rec = (window.__stall = { held: 0, resumed: false, frames: [], simAt: window.__ppp.sim.now });
+        window.requestAnimationFrame = (cb) => {
+          held.push(cb);
+          rec.held = held.length;
+          return 0;
+        };
+        setTimeout(() => {
+          window.requestAnimationFrame = orig;
+          rec.resumed = true;
+          const g = window.__ppp;
+          let last = performance.now();
+          // Va antes que el frame del juego: «behind» es lo que la vista va atrasada al EMPEZAR cada frame.
+          const probe = () => {
+            const now = performance.now();
+            rec.frames.push({ dt: Math.round((now - last) * 10) / 10, behind: Math.round(now - g.clock.epoch - g.sim.now) });
+            last = now;
+            if (rec.frames.length < 180) orig(probe);
+          };
+          orig(probe);
+          for (const cb of held.splice(0)) orig(cb);
+        }, ms);
+      }, STALL_MS);
+      // Durante el parón: A sigue en el partido (sin pausa) y el socket de B sigue abierto.
+      const during = [];
+      const t0 = Date.now();
+      while (Date.now() - t0 < STALL_MS - 500) {
+        const [a, b] = await Promise.all([st(page), pageB.evaluate(() => ({ status: window.__ppp.debugState().net.status, held: window.__stall.held }))]);
+        during.push({ ms: Date.now() - t0, phaseA: a.room.phase, scoreA: a.score, statusB: b.status });
+        await page.waitForTimeout(1000);
+      }
+      // Tras el parón, 3.5 s para ponerse al día y jugar.
+      await page.waitForTimeout(Math.max(0, STALL_MS - (Date.now() - t0)) + 3500);
+      const [a1, b1] = [await st(page), await st(pageB)];
+      const stall = await pageB.evaluate(() => window.__stall);
+      const wbH = await wsLog(pageB);
+      const fr = stall.frames;
+      const firstOk = fr.findIndex((f) => f.behind < 50);
+      const drops = fr.slice(1, firstOk + 1).map((f, i) => fr[i].behind - f.behind);
+      r.during = { phasesA: [...new Set(during.map((d) => d.phaseA))], statusB: [...new Set(during.map((d) => d.statusB))], scoreA: during.map((d) => d.scoreA.join('-')) };
+      r.socketClosedDuringStall = wbH.some((e) => e.d === 'close');
+      r.catchUp = {
+        behindAtResumeMs: fr.length ? fr[0].behind : null,
+        framesToCatchUp: firstOk,
+        behindPerFrame: fr.slice(0, Math.max(firstOk + 2, 3)).map((f) => f.behind),
+        maxDropPerFrameMs: drops.length ? Math.max(...drops) : null,
+        maxFrameIntervalMs: Math.max(...fr.slice(1).map((f) => f.dt)),
+        heldCallbacks: stall.held,
+      };
+      r.after = { scoreA: a1.score, scoreB: b1.score, same: a1.score[0] === b1.score[0] && a1.score[1] === b1.score[1], phaseA: a1.room.phase, phaseB: b1.room.phase, statusB: b1.net.status, correctionsA: a1.net.corrections, correctionsB: b1.net.corrections, correctionKindsB: b1.net.kinds, fpsB: Math.round(b1.fps) };
+      // Lo que pasó en la vista de B en el tramo parado (tiempo de partida desde el parón): golpes, fallos y puntos.
+      r.eventsB = await pageB.evaluate((t0) => window.__ppp.log.filter((x) => x.t >= t0 - 200 && ['hit', 'whiff', 'point', 'let', 'swing'].includes(x.e.type)).map((x) => ({ t: Math.round(x.t - t0), type: x.e.type, p: x.e.player, reason: x.e.reason, winner: x.e.winner })), stall.simAt);
+      // Fuera los dos (B con su página cerrada: abandono a los 30 s si A siguiera; A deja la sala al terminar).
+      await pageB.close();
+      await page.goto(`${base}?offset=0`);
     }
   } catch (e) {
     result.error = String(e && e.stack ? e.stack : e);

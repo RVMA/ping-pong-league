@@ -196,5 +196,92 @@
  "registroDeWrangler": "sin errores ni excepciones (tampoco «Network connection lost»); eventos de sala completos y salidas limpias (leave 1, leave 0, closed)",
  "corridaAnterior": {
   "resultado": "todos los criterios funcionales iguales (reconexión 51.5 ms, abandono 30.015 s, 0 correcciones, marcadores iguales), pero el sondeo de pestaña dio 60/60 fps y B fue en pestaña: A, de fondo, dibujó a 26 fps en el partido. Por eso room-check.js pone ahora a B siempre en una ventana (el sondeo de pestaña se mide y se anota)."
+ },
+ "pestañaOculta": {
+  "parte": "room-check.js #parts=hidden (Review Focus 4): sala Rápido, en el game 1 el requestAnimationFrame de B se retiene 10 s (Playwright no puede ocultar de verdad una página) con el socket abierto",
+  "corridas": [
+   {
+    "sala": "QSJA",
+    "fasesDeA": [
+     "match"
+    ],
+    "estadoDeB": [
+     "playing"
+    ],
+    "socketCerrado": false,
+    "atrasoPorFrameMs": [
+     10013,
+     8022,
+     6039,
+     4056,
+     2072,
+     89,
+     22
+    ],
+    "framesParaPonerseAlDia": 6,
+    "maxRecuperadoPorFrameMs": 1991,
+    "maxIntervaloEntreFramesMs": 16.9,
+    "marcadorTrasVolver": {
+     "A": [
+      2,
+      0
+     ],
+     "B": [
+      2,
+      0
+     ]
+    },
+    "correcciones": {
+     "A": 0,
+     "B": 1
+    }
+   },
+   {
+    "sala": "BGWV",
+    "fasesDeA": [
+     "match"
+    ],
+    "estadoDeB": [
+     "playing"
+    ],
+    "socketCerrado": false,
+    "atrasoPorFrameMs": [
+     10005,
+     8020,
+     6037,
+     4053,
+     2070,
+     87,
+     20
+    ],
+    "framesParaPonerseAlDia": 6,
+    "maxRecuperadoPorFrameMs": 1985,
+    "maxIntervaloEntreFramesMs": 17,
+    "marcadorTrasVolver": {
+     "A": [
+      1,
+      1
+     ],
+     "B": [
+      1,
+      1
+     ]
+    },
+    "correcciones": {
+     "A": 0,
+     "B": 1,
+     "tipos": [
+      "rejected"
+     ]
+    },
+    "eventosDeBEnElTramoRepuesto": "golpe del piloto de B a +433 ms del parón (en la reposición); punto MISSED para A a +4125 ms; luego juego normal a +10000 ms",
+    "registroDelServidor": [
+     "respaldo: rally 1 vuelo 3 sin noticias del lado 1",
+     "descartado hit del lado 1: stale"
+    ]
+   }
+  ],
+  "conclusion": "sin desconexión ni pausa; el servidor cierra por su respaldo los puntos de B; B se pone al día en 6 frames por tramos de ≤ 240 ticks (≤ 2 s) sin ningún frame de más de 17 ms, con el mismo marcador que A. La única corrección es del piloto automático: sigue jugando en los ticks repuestos y su golpe llega ~9.6 s tarde, el servidor lo descarta por viejo y la vista adopta el punto del servidor («rejected»). Con ratón no puede pasar (no hay clicks mientras la pestaña está oculta).",
+  "consola": "0 errores, 0 avisos en A y B"
  }
 }
