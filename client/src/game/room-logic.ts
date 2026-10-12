@@ -183,12 +183,26 @@ export function pauseText(name: string, seconds: number): string {
   return `Esperando a ${name}… ${clockText(seconds)}`;
 }
 
-/** Aviso del timeout del Listo (§14.2): al que no está listo y al que espera. */
-export function readyWarnText(iAmLate: boolean, lateName: string, seconds: number): string {
-  return iAmLate ? `Da a Listo en ${clockText(seconds)} o saldrás de la sala` : `${lateName} tiene ${clockText(seconds)} para dar a Listo`;
+/**
+ * Aviso del timeout del Listo (§14.2): al que no está listo y al que espera. Con la prueba de lectura en marcha
+ * (`reading`) el Listo está bloqueado: al que no está listo se le pide dejarla primero.
+ */
+export function readyWarnText(iAmLate: boolean, lateName: string, seconds: number, reading = false): string {
+  if (!iAmLate) return `${lateName} tiene ${clockText(seconds)} para dar a Listo`;
+  return `${reading ? 'Deja la prueba y da' : 'Da'} a Listo en ${clockText(seconds)} o saldrás de la sala`;
 }
 
 // ——— Prueba de lectura (§13.1) ———
+
+/**
+ * La sala deja empezar la prueba: en el warm-up, con el rival conectado, sin tu Listo (mientras dura no hay Listo) y
+ * sin el suyo: con un solo Listo corre el plazo de 3 min (§14.2 ✅), que la prueba no para, y te sacaría de la sala.
+ */
+export function readTestOpen(view: RoomView): boolean {
+  if (view.phase !== 'warmup') return false;
+  const rival = view.players[otherSide(view.side)];
+  return !!rival && rival.c === 1 && rival.r !== 1 && view.players[view.side]?.r !== 1;
+}
 
 /** Aviso al rival de quien hace la prueba: le pide que mezcle golpes. */
 export function readNoticeText(name: string): string {

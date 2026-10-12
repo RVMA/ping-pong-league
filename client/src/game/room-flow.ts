@@ -11,6 +11,8 @@
  *  - Estadísticas del partido encima del warm-up hasta «Seguir», después de ver el último punto.
  *  - Prueba de lectura en el warm-up (§13.1): el botón la empieza (`rt 1`; mientras dura no hay Listo) o la deja; al
  *    acabar o al salir del warm-up, `rt 0`. Al rival le sale «Ana está haciendo la prueba de lectura: mezcla golpes».
+ *    No se ofrece si alguno ya está Listo (con el del rival correría el plazo de 3 min); si el rival da a Listo durante
+ *    la prueba, el aviso del plazo pide dejarla primero.
  * La interfaz solo se toca cuando cambia algo: render() corre con cada mensaje de sala o cambio de conexión; update() corre
  * en cada frame, sin crear objetos, y solo escribe cuando cambia un segundo de un reloj, una cifra o un paso del anillo.
  */
@@ -22,7 +24,7 @@ import type { Hud } from '../ui/hud.ts';
 import { Lobby } from '../ui/lobby.ts';
 import { type EndInfo, type ReadyChip, RoomUi } from '../ui/room-ui.ts';
 import type { ReadFlow, ReadRoomChange } from './read-flow.ts';
-import { betweenText, clockText, countdownStep, gamesLine, modeText, nameOf, otherSide, pauseText, readFlagToSend, readNoticeText, ReadyHold, readyWarnText, secondsLeft } from './room-logic.ts';
+import { betweenText, clockText, countdownStep, gamesLine, modeText, nameOf, otherSide, pauseText, readFlagToSend, readNoticeText, readTestOpen, ReadyHold, readyWarnText, secondsLeft } from './room-logic.ts';
 import { loadName, saveName, type Settings } from './settings.ts';
 import { mineFirst } from './view-side.ts';
 
@@ -379,13 +381,12 @@ export class RoomFlow {
 
   // ——— Prueba de lectura (§13.1) ———
 
-  /** Se puede empezar: en el warm-up jugando (con el rival), sin tu Listo y sin pantallas encima. */
+  /** Se puede empezar: en el warm-up jugando, sin pantallas encima y sin ningún Listo (readTestOpen). */
   private readTestAllowed(): boolean {
     const v = this.view;
     const s = this.session;
-    if (this.stage !== 'room' || !v || !s || this.blocked() || this.endUp || this.host.read.resultUp || v.phase !== 'warmup') return false;
-    const rival = v.players[otherSide(v.side)];
-    return !!rival && rival.c === 1 && s.ready && v.players[v.side]?.r !== 1;
+    if (this.stage !== 'room' || !v || !s || this.blocked() || this.endUp || this.host.read.resultUp) return false;
+    return s.ready && readTestOpen(v);
   }
 
   private toggleReadTest(): void {
@@ -578,7 +579,8 @@ export class RoomFlow {
           const lateSide: Side = v.players[0]?.r === 1 ? 1 : 0;
           const lateName = nameOf(v, lateSide);
           ui.setCenter('', '', 'info');
-          this.ticker(v.deadlineAt, (sec) => ui.setWarn(readyWarnText(lateSide === me, lateName, sec)));
+          // Si el rival dio a Listo con tu prueba ya en marcha: el aviso te pide dejarla (mientras dura no hay Listo).
+          this.ticker(v.deadlineAt, (sec) => ui.setWarn(readyWarnText(lateSide === me, lateName, sec, read.inRoom)));
         } else if (away !== null) {
           ui.setWarn('');
           this.ticker(v.deadlineAt, (sec) => ui.setCenter(pauseText(awayName, sec), '', 'info'));

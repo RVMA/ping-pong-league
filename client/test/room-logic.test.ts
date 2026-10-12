@@ -1,6 +1,6 @@
 import { makeConfig, type RoomMsg } from '@ppp/shared';
 import { describe, expect, it } from 'vitest';
-import { betweenText, clockText, codeFieldText, countdownStep, keepAliveDue, modeText, nextRetryAt, paddleQuiet, pauseText, ReadyHold, readyWarnText, retryDelayMs, secondsLeft, toRoomView } from '../src/game/room-logic.ts';
+import { betweenText, clockText, codeFieldText, countdownStep, keepAliveDue, modeText, nextRetryAt, paddleQuiet, pauseText, ReadyHold, readTestOpen, readyWarnText, retryDelayMs, type RoomView, secondsLeft, toRoomView } from '../src/game/room-logic.ts';
 
 const cfg = makeConfig();
 
@@ -112,5 +112,36 @@ describe('campo del código en el lobby', () => {
     expect(codeFieldText('abcdef', 4)).toBe('ABCD');
     expect(codeFieldText('ab', 4)).toBe('AB');
     expect(codeFieldText('', 4)).toBe('');
+  });
+});
+
+describe('prueba de lectura y plazo del Listo (§13.1, §14.2 ✅)', () => {
+  const view = (me: { r: 0 | 1 } | null, rival: { r: 0 | 1; c?: 0 | 1 } | null, phase: RoomView['phase'] = 'warmup'): RoomView => ({
+    code: 'ABCD',
+    side: 1,
+    mode: 'standard',
+    phase,
+    players: [rival ? { nm: 'Ana', c: rival.c ?? 1, r: rival.r, rt: 0 } : null, me ? { nm: 'Beto', c: 1, r: me.r, rt: 0 } : null],
+    gamesWon: [0, 0],
+    deadlineAt: -1,
+    deadlineKind: '',
+    lastEnd: null,
+  });
+
+  it('se ofrece en el warm-up con el rival conectado, sin tu Listo y sin el suyo (con un solo Listo corre el plazo)', () => {
+    expect(readTestOpen(view({ r: 0 }, { r: 0 }))).toBe(true);
+    expect(readTestOpen(view({ r: 0 }, { r: 1 }))).toBe(false);
+    expect(readTestOpen(view({ r: 1 }, { r: 0 }))).toBe(false);
+    expect(readTestOpen(view({ r: 0 }, { r: 0, c: 0 }))).toBe(false);
+    expect(readTestOpen(view({ r: 0 }, null))).toBe(false);
+    expect(readTestOpen(view({ r: 0 }, { r: 0 }, 'countdown'))).toBe(false);
+    expect(readTestOpen(view({ r: 0 }, { r: 0 }, 'waiting'))).toBe(false);
+  });
+
+  it('el aviso del plazo, con la prueba en marcha, pide dejarla primero (mientras dura no hay Listo)', () => {
+    expect(readyWarnText(true, 'Beto', 29, true)).toBe('Deja la prueba y da a Listo en 0:29 o saldrás de la sala');
+    expect(readyWarnText(true, 'Beto', 29, false)).toBe('Da a Listo en 0:29 o saldrás de la sala');
+    // Al que espera, igual con o sin prueba.
+    expect(readyWarnText(false, 'Beto', 29, true)).toBe('Beto tiene 0:29 para dar a Listo');
   });
 });
