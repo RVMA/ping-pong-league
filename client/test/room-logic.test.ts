@@ -1,6 +1,6 @@
 import { makeConfig, type RoomMsg } from '@ppp/shared';
 import { describe, expect, it } from 'vitest';
-import { betweenText, clockText, countdownStep, modeText, nextRetryAt, pauseText, ReadyHold, readyWarnText, retryDelayMs, secondsLeft, toRoomView } from '../src/game/room-logic.ts';
+import { betweenText, clockText, countdownStep, keepAliveDue, modeText, nextRetryAt, paddleQuiet, pauseText, ReadyHold, readyWarnText, retryDelayMs, secondsLeft, toRoomView } from '../src/game/room-logic.ts';
 
 const cfg = makeConfig();
 
@@ -87,5 +87,20 @@ describe('textos', () => {
     expect(pauseText('Beto', 27)).toBe('Esperando a Beto… 0:27');
     expect(readyWarnText(true, 'Beto', 29)).toBe('Da a Listo en 0:29 o saldrás de la sala');
     expect(readyWarnText(false, 'Beto', 29)).toBe('Beto tiene 0:29 para dar a Listo');
+  });
+});
+
+describe('mensajes que cuestan (plan gratuito de Cloudflare)', () => {
+  it('la raqueta se calla solo en la sala de espera (nadie la ve); en las demás fases sale', () => {
+    expect(paddleQuiet('waiting')).toBe(true);
+    for (const ph of ['warmup', 'countdown', 'match', 'between', 'paused'] as const) expect(paddleQuiet(ph)).toBe(false);
+  });
+
+  it('keepalive: solo si nada salió por el socket en el último intervalo (partido callado o pestaña oculta)', () => {
+    expect(keepAliveDue(30_000, 29_000, 20_000)).toBe(false);
+    expect(keepAliveDue(30_000, 10_000, 20_000)).toBe(true);
+    expect(keepAliveDue(30_000, 9_000, 20_000)).toBe(true);
+    // Sin nada enviado aún (−Infinity), toca.
+    expect(keepAliveDue(1_000, Number.NEGATIVE_INFINITY, 20_000)).toBe(true);
   });
 });

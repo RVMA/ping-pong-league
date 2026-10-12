@@ -49,6 +49,24 @@ export function nextRetryAt(cutAt: number, attempt: number, now: number, windowM
   return at - cutAt < windowMs ? at : null;
 }
 
+// ——— Mensajes que cuestan (plan gratuito de Cloudflare: 1 petición por cada 20 mensajes entrantes) ———
+
+/**
+ * La raqueta no se envía en la sala de espera (ClientMatch.setQuiet): nadie la ve, y tras irse el rival la vista sigue
+ * en marcha (el último `start`). A 30 Hz serían ~5 400 peticiones por hora de pestaña abierta; el ping sigue (~90).
+ */
+export function paddleQuiet(phase: RoomPhase): boolean {
+  return phase === 'waiting';
+}
+
+/**
+ * Toca un ping de keepalive si nada salió por el socket en `everyMs`: antes del primer `start`, con la raqueta callada
+ * o con la pestaña oculta (sin frames no sale nada), para que un proxy no cierre el socket por inactivo.
+ */
+export function keepAliveDue(now: number, lastSentAt: number, everyMs: number): boolean {
+  return now - lastSentAt >= everyMs;
+}
+
 // ——— Listo con Shift mantenido ———
 
 /**

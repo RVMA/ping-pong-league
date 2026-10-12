@@ -29,7 +29,7 @@ import {
   type SimEvent,
   type Vec3,
 } from '@ppp/shared';
-import { nextRetryAt, type RoomView, toRoomView } from '../game/room-logic.ts';
+import { keepAliveDue, nextRetryAt, paddleQuiet, type RoomView, toRoomView } from '../game/room-logic.ts';
 import type { GameSession, SessionView } from '../game/session.ts';
 import type { InputClock } from '../input/mouse.ts';
 
@@ -54,7 +54,11 @@ export interface OnlineParams {
 const NO_SERVER = 'No se pudo conectar con el servidor de juego. ¿Está arrancado (npm run dev)?';
 /** Un reintento sin `welcome` en este tiempo se da por fallido (con la red caída el socket puede tardar en avisar). */
 const ATTEMPT_MS = 5000;
-/** Sin partida en marcha (esperando rival), un ping de vez en cuando mantiene vivo el socket. */
+/**
+ * Si nada sale por el socket en este tiempo (antes del primer `start`, en la sala de espera con la raqueta callada o con
+ * la pestaña oculta), un ping lo mantiene vivo: un proxy puede cerrar un socket inactivo. Se mira 4 veces por intervalo:
+ * así el silencio no pasa de 1.25 intervalos aunque el temporizador llegue un poco antes o después.
+ */
 const KEEPALIVE_MS = 20000;
 const TOKEN_KEY = 'ppp.room.';
 const TOKEN_RE = /^[A-Za-z0-9-]{8,64}$/;
@@ -156,6 +160,10 @@ export class OnlineSession implements GameSession {
   private keepI = 0;
   /** La vista no saca (ClientMatch.held): se aplica también a las vistas nuevas (cada `welcome` crea una). */
   private held = false;
+  /** La raqueta callada (ClientMatch.setQuiet): la sala espera rival. Como `held`, también en las vistas nuevas. */
+  private quiet = false;
+  /** performance.now() del último mensaje enviado (keepalive). */
+  private lastSentAt = Number.NEGATIVE_INFINITY;
 
   constructor(cfg: GameConfig, params: OnlineParams, clock: InputClock) {
     this.cfg = cfg;
@@ -215,6 +223,7 @@ export class OnlineSession implements GameSession {
     this.room = null;
     this.lastEnd = null;
     this.lastGame = null;
+    this.quiet = false;
     this.code = route.kind === 'join' ? route.code : null;
     const saved = route.kind === 'join' ? loadRoomToken(route.code) : null;
     this.token = saved?.tk ?? null;
@@ -273,6 +282,7 @@ export class OnlineSession implements GameSession {
     if (this.cutAt < 0) {
       this.match = new ClientMatch(this.cfg, 0, () => {});
       this.match.hold(this.held);
+      this.match.setQuiet(this.quiet);
       this.setStatus('connecting');
     } else {
       this.attemptTimer = window.setTimeout(() => this.lose(ws), ATTEMPT_MS);
@@ -360,6 +370,7 @@ export class OnlineSession implements GameSession {
         this.side = msg.side;
         this.match = new ClientMatch(this.cfg, msg.side, (m) => this.send(m));
         this.match.hold(this.held);
+        this.match.setQuiet(this.quiet);
         this.cutAt = -1;
         this.attempt = 0;
         if (this.route?.kind !== 'bot') {
@@ -371,11 +382,14 @@ export class OnlineSession implements GameSession {
           saveRoomToken(msg.room, msg.tk, msg.side);
           setRoomInUrl(msg.room);
           window.clearInterval(this.keepTimer);
-          this.keepTimer = window.setInterval(() => this.keepAlive(), KEEPALIVE_MS);
+          this.keepTimer = window.setInterval(() => this.keepAlive(), KEEPALIVE_MS / 4);
         }
         this.setStatus('waiting');
         return;
       case 'room':
+        // Esperando rival (también tras irse el que había) la raqueta no sale: nadie la ve y cada mensaje cuesta.
+        this.quiet = paddleQuiet(msg.ph);
+        this.match.setQuiet(this.quiet);
         this.room = toRoomView(msg, this.side, perf, this.lastEnd);
         this.onRoom(this.room);
         return;
@@ -414,9 +428,9 @@ export class OnlineSession implements GameSession {
     }
   }
 
-  /** Ping suelto mientras la partida no manda los suyos (esperando rival). */
+  /** Ping suelto si nada ha salido por el socket en KEEPALIVE_MS (con `a` −1 la sala no toca el ping conocido). */
   private keepAlive(): void {
-    if (this.match.started) return;
+    if (!keepAliveDue(performance.now(), this.lastSentAt, KEEPALIVE_MS)) return;
     this.send({ k: 'ping', i: 1e8 + this.keepI++, t: 0, a: -1 });
   }
 
@@ -428,6 +442,7 @@ export class OnlineSession implements GameSession {
     const text = encode(msg);
     this.bytesOut += frameBytes(text.length, true);
     ws.send(text);
+    this.lastSentAt = performance.now();
   }
 
   tick(intent: InputIntent): SimEvent[] {
