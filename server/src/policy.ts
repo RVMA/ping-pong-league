@@ -20,6 +20,37 @@ export const ERR_TEXT: Record<ErrCode, string> = {
 /** Al crear una sala sin encontrar un código libre (los dos servidores). */
 export const NO_FREE_CODE_TEXT = 'No hay códigos de sala libres: inténtalo otra vez';
 
+/** A los jugadores de una sala rota (`pollRoom` → false), con el `err` `room` con que se cierra (los dos servidores). */
+export const ROOM_BROKEN_TEXT = 'La sala falló: crea otra sala';
+
+/** Lo que los servidores usan de la sala para atender sus plazos (RoomCore). */
+export interface RoomDeadlines {
+  poll(now: number): void;
+  nextDeadline(): number;
+}
+
+/**
+ * Atiende los plazos vencidos de la sala (`poll`, solo si alguno venció) y dice si sigue sana. Está rota si `poll` o
+ * `nextDeadline` lanzan, o si tras atenderlos el plazo más cercano sigue vencido: cada plazo atendido se quita o se
+ * mueve al futuro, así que solo pasa con un fallo (o si `RoomCore` se rinde tras su tope de pasos). Una sala rota se
+ * cierra (los dos servidores, con ROOM_BROKEN_TEXT): volver a programar el temporizador al mismo plazo vencido sería un
+ * bucle continuo (a 0 ms en el Durable Object, en cada vuelta del bucle de 1 ms en Node), y esperar no la arregla,
+ * porque cada mensaje que llega vuelve a atender ese plazo. `log` recibe una línea con el motivo.
+ */
+export function pollRoom(room: RoomDeadlines, now: number, log: (line: string) => void): boolean {
+  try {
+    if (now < room.nextDeadline()) return true;
+    room.poll(now);
+    const next = room.nextDeadline();
+    if (next > now) return true;
+    log(`plazo vencido que no avanza (${next} ≤ ${now})`);
+    return false;
+  } catch (e) {
+    log(`error: ${(e as Error).stack ?? e}`);
+    return false;
+  }
+}
+
 /** Textos que solo da el Worker de producción (Decisiones 14 y 20: sin latencia simulada ni bot remoto). */
 export const WORKER_TEXT = {
   bot: 'Contra el bot se juega en local',

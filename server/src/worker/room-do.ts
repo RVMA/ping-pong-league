@@ -5,7 +5,8 @@
  * Sin hibernación (`accept()`): la sala vive en memoria mientras haya alguien, y nada se guarda en disco. Un solo
  * `setTimeout`, al plazo más cercano (`nextDeadline()` de la sala o el `hello` de una conexión que aún no se ha
  * presentado), reprogramado tras cada evento; ninguno si no hay plazo. Reloj: `Date.now()`, que en un Worker es el
- * instante en que empezó el evento (la llegada del mensaje).
+ * instante en que empezó el evento (la llegada del mensaje). Si la sala se rompe (`pollRoom`: un fallo en `poll` o un
+ * plazo que no avanza), se cierra con un `err` a los dos en vez de reprogramar a 0 ms sin fin.
  *
  * Contrato conexión ↔ lado de `RoomCore.join` (el mismo que el servidor Node y la red en memoria de los tests):
  *  - durante `join`, lo que la sala manda a un lado sin conexión va a la conexión que está entrando;
@@ -20,11 +21,12 @@
  */
 import { DurableObject } from 'cloudflare:workers';
 import { type C2S, decodeC2S, encode, type ErrCode, type JoinResult, type MatchMode, makeConfig, RateLimiter, RoomCore, type RoomRetain, type S2C, type Side, validHello } from '@ppp/shared';
-import { cryptoRandom, ERR_TEXT, WORKER_TEXT } from '../policy.ts';
+import { cryptoRandom, ERR_TEXT, pollRoom, ROOM_BROKEN_TEXT, WORKER_TEXT } from '../policy.ts';
 import { messageBytes, POLICY_CLOSE, rejectSocket, sendErr, TOO_BIG_CLOSE } from './sockets.ts';
 
 const cfg = makeConfig();
 const INF = Number.POSITIVE_INFINITY;
+const SIDES: readonly Side[] = [0, 1];
 /** Plazo para el primer mensaje (`hello`) de una conexión: si no llega, se cierra (y si creaba la sala, se descarta). */
 export const HELLO_TIMEOUT_MS = 10_000;
 /** La sala puede vivir horas: su registro se queda con lo reciente y con lo que piden las estadísticas del partido. */
@@ -211,7 +213,13 @@ export class RoomDO extends DurableObject<Env> {
       this.log(`[${this.code}] ${core.closed ? 'sala cerrada' : 'sala descartada: quien la creaba no entró'}`);
       this.core = null;
     }
-    let at = this.core ? this.core.nextDeadline() : INF;
+    let at = INF;
+    try {
+      if (this.core) at = this.core.nextDeadline();
+    } catch {
+      // Plazo roto: el temporizador salta ya y onTimer (pollRoom) cierra la sala.
+      at = 0;
+    }
     for (const c of this.pending) at = Math.min(at, c.helloBy);
     if (at === this.timerAt) return;
     if (this.timer !== null) clearTimeout(this.timer);
@@ -226,8 +234,24 @@ export class RoomDO extends DurableObject<Env> {
     const now = Date.now();
     for (const c of [...this.pending]) if (c.helloBy <= now) this.end(c, 'proto', WORKER_TEXT.helloLate, now);
     const core = this.core;
-    if (core && now >= core.nextDeadline()) this.safely(() => core.poll(now));
+    if (core && !pollRoom(core, now, (line) => this.log(`[${this.code}] ${line}`))) this.abort();
     this.settle();
+  }
+
+  /**
+   * Sala rota (pollRoom): `err` a quien siga conectado y cierre, y la sala se olvida (el código queda libre; quien vuelva
+   * con él lee «Sala inexistente»). Cerrar y no esperar: el plazo roto se volvería a atender con cada mensaje.
+   */
+  private abort(): void {
+    for (const s of SIDES) {
+      const c = this.socks[s];
+      this.socks[s] = null;
+      if (!c) continue;
+      c.done = true;
+      sendErr(c.ws, 'room', ROOM_BROKEN_TEXT);
+    }
+    this.core = null;
+    this.log(`[${this.code}] sala rota: cerrada`);
   }
 
   private creatorPending(): boolean {

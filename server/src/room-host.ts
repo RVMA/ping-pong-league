@@ -13,6 +13,7 @@
  */
 import { type GameConfig, type HelloMsg, type JoinResult, type MatchMode, RoomCore, type S2C, type Side } from '@ppp/shared';
 import type { Peer } from './peer.ts';
+import { pollRoom, ROOM_BROKEN_TEXT } from './policy.ts';
 
 export interface RoomHostOptions {
   cfg: GameConfig;
@@ -36,6 +37,8 @@ export class RoomHost {
   /** La conexión que está entrando (solo durante `join`). */
   private joining: Peer | null = null;
   private readonly log: (line: string) => void;
+  /** La sala se rompió (pollRoom): sus conexiones ya se cerraron con su `err` y el servidor la borra. */
+  private broken = false;
 
   constructor(o: RoomHostOptions) {
     this.code = o.code;
@@ -52,9 +55,9 @@ export class RoomHost {
     });
   }
 
-  /** Sin jugadores ni huecos reservados: el servidor la borra. */
+  /** Sin jugadores ni huecos reservados, o rota: el servidor la borra. */
   get closed(): boolean {
-    return this.core.closed;
+    return this.broken || this.core.closed;
   }
 
   /** Entra (o vuelve) una conexión con su `hello` ya validado. Si falla, la sala no le ha mandado nada. */
@@ -85,10 +88,10 @@ export class RoomHost {
     return res;
   }
 
-  /** Bombea las conexiones (salida, entrada y cierres) y atiende los plazos vencidos de la sala. */
+  /** Bombea las conexiones (salida, entrada y cierres) y atiende los plazos vencidos de la sala; rota, la cierra. */
   pump(now: number): void {
     for (const s of SIDES) this.peers[s]?.pump(now);
-    if (now >= this.core.nextDeadline()) this.safely(() => this.core.poll(now));
+    if (!this.broken && !pollRoom(this.core, now, (line) => this.log(`[${this.code}] ${line}`))) this.abort();
   }
 
   /** Cierre del servidor: se cierran las conexiones sin avisar a la sala. */
@@ -99,6 +102,19 @@ export class RoomHost {
       p?.detach();
       p?.close();
     }
+  }
+
+  /** Sala rota: `err` a quien siga conectado y cierre, sin pasar por la sala; `closed` pasa a true y el servidor la borra. */
+  private abort(): void {
+    this.broken = true;
+    for (const s of SIDES) {
+      const p = this.peers[s];
+      this.peers[s] = null;
+      if (!p) continue;
+      p.detach();
+      p.reject('room', ROOM_BROKEN_TEXT);
+    }
+    this.log(`[${this.code}] sala rota: cerrada`);
   }
 
   private deliver(to: Side, msg: S2C): void {

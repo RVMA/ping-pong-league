@@ -4,7 +4,7 @@
  * partido Rápido completo entre dos bots y el cierre del servidor sin dejar nada vivo.
  */
 import { configHash, decodeS2C, encode, type GameConfig, type HelloMsg, makeConfig, PROTOCOL_VERSION, type RoomMsg, type S2C } from '@ppp/shared';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { BotClient, type BotClientOptions } from '../src/bot-client.ts';
 import { type GameServer, startServer } from '../src/server.ts';
@@ -303,6 +303,33 @@ describe('servidor con salas (sockets reales)', () => {
     expect(a.mode).toBe('quick');
     expect(a.lastEnd!.st[0].pts + a.lastEnd!.st[1].pts).toBeGreaterThanOrEqual(3);
   }, 60000);
+
+  it('(k) sala rota (poll lanza, o un plazo que no avanza): «La sala falló» a los dos, la sala se borra y sin bucle', async () => {
+    for (const broken of ['poll lanza', 'plazo atascado'] as const) {
+      const log: string[] = [];
+      server = await startServer({ port: 0, cfg, log: (l) => log.push(l) });
+      const [a, b, code] = await pair();
+      const host = server.rooms.get(code)!;
+      // Un plazo vencido para siempre; con «poll lanza», además, cada poll falla.
+      const poll = broken === 'poll lanza' ? vi.spyOn(host.core, 'poll').mockImplementation(() => { throw new Error('fallo de prueba'); }) : vi.spyOn(host.core, 'poll');
+      vi.spyOn(host.core, 'nextDeadline').mockReturnValue(0);
+      expect(await until(() => a.closedBy !== null && b.closedBy !== null, 3000)).toBe(true);
+      const err = { k: 'err', m: 'room', d: 'La sala falló: crea otra sala' };
+      expect(a.closedBy).toEqual(err);
+      expect(b.closedBy).toEqual(err);
+      expect(await until(() => !server!.rooms.has(code), 1000)).toBe(true);
+      await sleep(100);
+      // Una sola vez: ni un poll ni una línea de error por cada vuelta del bucle de 1 ms.
+      expect(poll).toHaveBeenCalledTimes(1);
+      expect(log.filter((l) => l.includes('fallo de prueba') || l.includes('no avanza'))).toHaveLength(1);
+      expect(log.filter((l) => l.includes(`[${code}] sala rota`))).toHaveLength(1);
+      // El código ya no existe: quien vuelva con él lee «Sala inexistente».
+      expect((await exchange(`?room=${code}`)).msgs).toEqual([{ k: 'err', m: 'room', d: 'Sala inexistente' }]);
+      for (const c of clients.splice(0)) c.stop();
+      await server.close();
+      server = null;
+    }
+  }, 20000);
 
   it('(i) close() no deja temporizadores ni sockets', async () => {
     const before = resources();
