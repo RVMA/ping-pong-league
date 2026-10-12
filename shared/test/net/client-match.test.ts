@@ -364,6 +364,35 @@ describe('ClientMatch: predicción, reloj de vuelo y correcciones', () => {
     expect(sent.filter((m) => m.k === 'p').length).toBe(cfg.net.paddleHz);
   });
 
+  it('callada (sala de espera tras irse el rival): ni un `p`, el ping sigue; al dejar de estarlo, la raqueta vuelve a 30 Hz', () => {
+    const sent: C2S[] = [];
+    const c = new ClientMatch(cfg, 0, (m) => sent.push(m));
+    c.receive({ k: 'start', fs: 1, n: 3, wu: 1, g: 0, sc: [0, 0], ns: 1 }, 0);
+    const still = neutralIntent(1.6);
+    for (let i = 0; i < 120; i++) c.step(still);
+    expect(sent.filter((m) => m.k === 'p').length).toBe(cfg.net.paddleHz);
+    // Un `p` que ya tocaba en un frame con deferSends (4 ticks: uno es de envío) tampoco sale si se calla antes del flushSends.
+    sent.length = 0;
+    for (let i = 0; i < 4; i++) c.step(still, true);
+    c.setQuiet(true);
+    c.flushSends();
+    expect(c.quiet).toBe(true);
+    // 3 s callada: ningún `p` (ni con un tick por envío ni por frames), pero sí el ping cada 2 s.
+    for (let i = 0; i < 180; i++) c.step(still);
+    for (let f = 0; f < 90; f++) {
+      c.step(still, true);
+      c.step(still, true);
+      c.flushSends();
+    }
+    expect(sent.filter((m) => m.k === 'p').length).toBe(0);
+    expect(sent.filter((m) => m.k === 'ping').length).toBeGreaterThanOrEqual(1);
+    // Con rival otra vez: 30 Hz.
+    c.setQuiet(false);
+    sent.length = 0;
+    for (let i = 0; i < 120; i++) c.step(still);
+    expect(sent.filter((m) => m.k === 'p').length).toBe(cfg.net.paddleHz);
+  });
+
   it('en práctica no hay fin de game aunque llegue un pt con ganador', () => {
     const c = new ClientMatch(cfg, 1, () => {});
     c.receive({ k: 'start', fs: 0, n: 3, wu: 1, g: 0, sc: [0, 0], ns: 0 }, 0);

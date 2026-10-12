@@ -139,6 +139,8 @@ export class ClientMatch {
   // Envío de la raqueta: cada `padEvery` ticks (paddleHz); `padDue`, toca y aún no ha salido (ticks con deferSends).
   private readonly padEvery: number;
   private padDue = false;
+  /** Callada (setQuiet): la raqueta no se envía. */
+  private isQuiet = false;
   // Raqueta rival (anillo reutilizado).
   private readonly pads: PadSlot[] = Array.from({ length: PAD_RING }, () => ({ n: -1, r: -1, x: 0, z: 0 }));
   private padHead = 0;
@@ -212,6 +214,20 @@ export class ClientMatch {
     this.isHeld = on;
   }
 
+  /**
+   * Callada: la raqueta no se envía (nadie la ve: la sala de espera, tras irse el rival). Cada `p` es una petición más del
+   * Durable Object (1 de cada 20 mensajes entrantes): a 30 Hz, ~5 400 por hora de pestaña abierta para nada. El ping
+   * sigue (cada 2 s, ~90 por hora). Lo decide quien la usa según la fase de la sala; un `start` no lo cambia.
+   */
+  get quiet(): boolean {
+    return this.isQuiet;
+  }
+
+  setQuiet(on: boolean): void {
+    this.isQuiet = on;
+    if (on) this.padDue = false;
+  }
+
   /** Mensaje del servidor que llegó en `arrivalMs` (tiempo de esta partida): se aplica en el primer tick que no es anterior. */
   receive(msg: S2C, arrivalMs: number): void {
     this.inbox.push({ msg, at: arrivalMs });
@@ -274,7 +290,7 @@ export class ClientMatch {
         break;
     }
     this.updateRivalPaddle();
-    if (this.started && s.tick % this.padEvery === 0) this.padDue = true;
+    if (this.started && !this.isQuiet && s.tick % this.padEvery === 0) this.padDue = true;
     if (!deferSends) this.flushSends();
     this.trackRender(t);
     return this.events;
