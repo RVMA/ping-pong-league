@@ -1,6 +1,6 @@
 import { makeConfig, type RoomMsg } from '@ppp/shared';
 import { describe, expect, it } from 'vitest';
-import { betweenText, clockText, countdownStep, keepAliveDue, modeText, nextRetryAt, paddleQuiet, pauseText, ReadyHold, readyWarnText, retryDelayMs, secondsLeft, toRoomView } from '../src/game/room-logic.ts';
+import { betweenText, clockText, codeFieldText, countdownStep, keepAliveDue, modeText, nextRetryAt, paddleQuiet, pauseText, ReadyHold, readyWarnText, retryDelayMs, secondsLeft, toRoomView } from '../src/game/room-logic.ts';
 
 const cfg = makeConfig();
 
@@ -102,5 +102,15 @@ describe('mensajes que cuestan (plan gratuito de Cloudflare)', () => {
     expect(keepAliveDue(30_000, 9_000, 20_000)).toBe(true);
     // Sin nada enviado aún (−Infinity), toca.
     expect(keepAliveDue(1_000, Number.NEGATIVE_INFINITY, 20_000)).toBe(true);
+  });
+});
+
+describe('campo del código en el lobby', () => {
+  it('pegado con espacios o en minúsculas: sin espacios, en mayúsculas y cortado a la longitud del código', () => {
+    expect(codeFieldText(' tkjv', 4)).toBe('TKJV');
+    expect(codeFieldText(' tk jv \n', 4)).toBe('TKJV');
+    expect(codeFieldText('abcdef', 4)).toBe('ABCD');
+    expect(codeFieldText('ab', 4)).toBe('AB');
+    expect(codeFieldText('', 4)).toBe('');
   });
 });

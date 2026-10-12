@@ -7,7 +7,7 @@
  * en el servidor antes de usarlo y todo se pinta como texto.
  */
 import { type BotDifficulty, cleanName, type GameConfig, type MatchMode, normalizeCode } from '@ppp/shared';
-import { modeText } from '../game/room-logic.ts';
+import { codeFieldText, modeText } from '../game/room-logic.ts';
 import { button, difficultyButtons, el, explainToggle, howToPlay, logo, setText } from './hud.ts';
 
 export interface LobbyHandlers {
@@ -33,6 +33,8 @@ export interface LobbyState {
 
 const MODES: readonly MatchMode[] = ['quick', 'standard', 'full'];
 const NAME_MISSING = 'Escribe tu nombre (hasta 16 letras).';
+/** Caracteres que admite el campo del código antes de limpiarlo (codeFieldText lo deja en codeLength). */
+const CODE_FIELD_MAX = 12;
 
 function textInput(cls: string, max: number, placeholder: string): HTMLInputElement {
   const i = el('input', cls);
@@ -98,10 +100,10 @@ export class Lobby {
     const createRow = el('div', 'diff');
     createRow.append(seg, button('Crear sala', true, () => this.create(), 'create'));
 
-    this.codeInput = textInput('field code-field', cfg.room.codeLength, 'ABCD');
+    // El campo admite más que el código: lo pegado con espacios alrededor (« tkjv») se limpia en vez de cortarse.
+    this.codeInput = textInput('field code-field', CODE_FIELD_MAX, 'ABCD');
     this.codeInput.addEventListener('input', () => {
-      // A mayúsculas mientras escribes; sin espacios (el código no tiene).
-      const v = this.codeInput.value.replace(/\s+/g, '').toUpperCase();
+      const v = codeFieldText(this.codeInput.value, cfg.room.codeLength);
       if (v !== this.codeInput.value) this.codeInput.value = v;
     });
     this.codeInput.addEventListener('keydown', (e) => {

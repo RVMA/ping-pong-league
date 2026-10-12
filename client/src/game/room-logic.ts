@@ -136,6 +136,16 @@ export function countdownStep(deadlineAt: number, now: number): number {
   return Math.min(9, secondsLeft(deadlineAt, now));
 }
 
+// ——— Lobby ———
+
+/**
+ * Lo que queda en el campo del código mientras escribes o pegas: sin espacios (el código no tiene), en mayúsculas y
+ * como mucho `codeLength` letras. El campo admite más caracteres que el código (pegar « tkjv» no debe quedarse en «TKJ»).
+ */
+export function codeFieldText(raw: string, codeLength: number): string {
+  return raw.replace(/\s+/g, '').toUpperCase().slice(0, codeLength);
+}
+
 // ——— Textos ———
 
 /** «Estándar · al mejor de 3 games». */
