@@ -1,7 +1,8 @@
 # Análisis retroactivo de V0.4 (partido PvP) y propuesta de cambios
 
 > Documento de diseño analizado: v5 (`ping_pong_pvp_gameplay_design_v5.md`, 2026-10-06).
-> Implementación: commits posteriores a `46414e9` en `master` (de `c393fe9` a `05fbd63`), siguiendo el plan
+> Implementación: commits posteriores a `46414e9` en `master` (de `c393fe9` a `05fbd63`, y la tanda de arreglos de la
+> revisión final, de `0f17070` a `9040d69`: §3.2 filas 12–15), siguiendo el plan
 > [`docs/superpowers/plans/2026-10-06-v0.4-partido-pvp.md`](superpowers/plans/2026-10-06-v0.4-partido-pvp.md) y el prompt
 > [`docs/prompts/fase_v0.4.md`](prompts/fase_v0.4.md). Sin etiqueta: la fase la cierra el autor.
 > **La publicación en Cloudflare está pendiente** (Task 14): la hace el autor (`npx wrangler login` y `npm run deploy`).
@@ -40,8 +41,10 @@
      (P60).
   4. Con picos de TCP la bola puede **saltar 22–34 cm** en un tick al llegar tarde el golpe del rival (sin picos,
      ≤ 5 cm). Es el mecanismo de V0.3; falta ver con qué frecuencia pasa en internet (P63).
-  5. El margen de coste es corto y hoy se gasta en balde: una pestaña visible en la sala de espera sigue mandando la
-     raqueta a 30 Hz (P66).
+  5. El margen de coste es corto, y la revisión final encontró que se gastaba en balde: una pestaña visible en la sala
+     de espera seguía mandando la raqueta a 30 Hz. **Arreglado** (P66, `0f17070`, `e3845df`): ahora solo manda el
+     ping (~90 peticiones/h). Lo que queda abierto es la **duración** de los Durable Objects con salas abiertas sin
+     jugar (P70, a medir tras publicar).
 
 ---
 
@@ -89,7 +92,7 @@
 
 | Qué | Resultado |
 |---|---|
-| `npm test` | **379** en `shared/` (259 de antes + 120), **17** en `server/` (6 + 11, sockets reales) y **32** en `client/` (nuevos) |
+| `npm test` | **380** en `shared/` (259 de antes + 121), **24** en `server/` (6 + 18: sockets reales y `policy.test.ts`) y **37** en `client/` (nuevos); con la tanda de arreglos de la revisión final (§3.2, filas 12–15) |
 | P54 (`shot-limits.test.ts`) | Profundidad cruda negativa → parte `minDepth`; el golpe va a la red con causa `EARLY`; velocidad ≤ 25 m/s; en 30 partidos de bots la velocidad máxima pasa de **151.98** a 23.5 m/s |
 | Bola de canto (`edge.test.ts`) | Arista lateral y de fondo, lateral por debajo, 1.5 r sin contacto, esquina, spin intacto, sin aristas con `table: false`; reglas (canto válido, lateral antes y después del bote, saque); determinismo bit a bit con un canto y un lateral; un lateral real por `Simulation` acaba en `SIDE` |
 | Protocolo v2 y rutas | Ida y vuelta de los mensajes nuevos, casos malformados, fuzz; códigos mal escritos (minúsculas, espacios, `0` por `O`, 3 o 5 letras, vacío); nombres hostiles (control, invisibles, bidi, 200 caracteres) |
@@ -97,8 +100,9 @@
 | Sala (`room.test.ts`, 28 tests) | Cada fila de la tabla de fases con su orden de mensajes; reconexión, abandono, timeout, pestaña duplicada, reentrada; plazos tardíos en orden; `room` solo cuando cambia algo; integración con el `ServerMatch` real; registro acotado (`retain`) |
 | Estadísticas, ritmo, prueba de lectura | `match-stats` (% PERFECT, racha, red, puntos); cubo de fichas (200, 100/s; 32 msg/s 10 min sin límite); `read-test` (primera tecla, sin respuesta, 30 golpes, el saque no cuenta) |
 | Red en memoria con salas y picos (`room-network.test.ts`) | 7 escenarios con el codec real (§2.3) |
-| Servidor Node (`rooms.test.ts`, 11 tests) | Crear y unirse; cada `err` con su texto; origen (403 antes de abrir); ritmo; reconexión y pestaña duplicada; `leave` con ping 200; 17 KB → 1009; picos; bot de V0.3; un Rápido acortado por sockets (el de 11 puntos pasó, en 143.7 s); `close()` sin restos |
-| Cliente (`client/test/`) | Reintentos, Listo con Shift, relojes, textos de sala; cámara y vista del lado 1; ponerse al día por tramos; piloto y lector en los dos lados; reanudación del piloto tras reconectar |
+| Servidor Node (`rooms.test.ts`, 12 tests) | Crear y unirse; cada `err` con su texto; origen (403 antes de abrir); ritmo; reconexión y pestaña duplicada; `leave` con ping 200; 17 KB → 1009; picos; bot de V0.3; un Rápido acortado por sockets (el de 11 puntos pasó, en 143.7 s); `close()` sin restos; sala rota (un `poll` que lanza o un plazo que no avanza → «La sala falló» a los dos, sala borrada, un solo `poll`) |
+| Sala rota en los dos servidores (`policy.test.ts`, 6 tests) | `pollRoom`, la decisión común de Node y del Durable Object: sin plazo vencido no llama a `poll`; rota si `poll` o `nextDeadline` lanzan, o si el plazo sigue vencido (o es NaN) tras atenderlo. Es la prueba del Durable Object: `worker-checks.ts` es de caja negra y no puede romper una sala |
+| Cliente (`client/test/`) | Reintentos, Listo con Shift, relojes, textos de sala; cámara y vista del lado 1; ponerse al día por tramos; piloto y lector en los dos lados; reanudación del piloto tras reconectar; raqueta callada en la sala de espera y keepalive; campo del código; prueba de lectura con algún Listo y su aviso |
 | Typecheck (`shared/` sin DOM ni Node, `client/`, `server/` y el Worker) y build | Limpios |
 
 ### 2.2 P54 y bola de canto (bots Normal contra Normal, semilla 7)
@@ -272,12 +276,14 @@ El plan gratuito da 100 000 peticiones de Durable Objects al día; cada WebSocke
 | Peticiones por hora de partido (2 × 31 × 3600 ÷ 20 + 2 conexiones) | **11 152–11 179** (máx 11 183 en un partido) | room-bots Node y `wrangler dev` |
 | Horas de partido al día | **8.9–9.0** | ≥ 8 h ✅ |
 | Margen | ~7 % por debajo de 12 000/h (criterio del script); 8 h exactas serían 12 500/h | — |
+| Una pestaña sola en la sala de espera (p. ej. tras irse el rival) | **~90/h**: solo el ping cada 2 s (1 800 mensajes ÷ 20); antes del arreglo P66, ~5 400/h por la raqueta a 30 Hz | cálculo; arreglo `0f17070`, `e3845df` |
 | Worker | 131.14 KiB (39.82 KiB gzip), ~1.3 % de 3 MB; el cliente (12 archivos, 944 KB) va aparte como Static Assets | dry-run |
 | Una corrida de `worker-checks` | ~30 peticiones | Task 9 |
 
 Es lo que estimaba el diseño (§17.7: ~31 mensajes/s, ~11 000/h, ~9 h). Dos matices: el **warm-up gasta lo mismo que el
 partido** (los dos mandan la raqueta a 30 Hz), y si se pasa el límite las operaciones fallan hasta medianoche UTC. No se
-midió la **duración** de los Durable Objects (ver §4).
+midió la **duración** (GB-s) de los Durable Objects, el otro límite del plan gratuito: una sala abierta cuenta aunque
+nadie juegue (P70, §2.8).
 
 ### 2.8 Producción: pendiente
 
@@ -292,6 +298,7 @@ queda pendiente. Cuando despliegue (`npx wrangler login`, `npm run deploy`; paso
 | Reconexión y abandono en Cloudflare | `room-check.js` con `#parts=main,reconnect,abandon` (en `wrangler dev`: 4.1 ms y 30.005 s) | pendiente |
 | Registro del Worker durante las pruebas | `npx wrangler tail`: sin excepciones; «Network connection lost» se anota aparte (§4) | pendiente |
 | Peticiones y duración de los Durable Objects del día | Panel de Cloudflare | pendiente |
+| Duración (GB-s) de una sala abierta sin jugar (P70) | Una pestaña sola en la sala de espera durante 1 h, sin otras salas; el panel de Cloudflare antes y después (GB-s y peticiones). Se espera ≈ 450 GB-s (0.125 GB × 3 600 s) y ~90 peticiones | pendiente |
 
 ---
 
@@ -305,7 +312,7 @@ Incluye las decisiones que la sesión tomó en nombre del autor durante la imple
 |---|---|---|---|---|
 | 1 | Pestaña duplicada (§14.4) | «La conexión nueva sustituye a la vieja»; «sin pausa» | `bye` a la vieja; el punto en juego acaba como si no la devolviera y después **cuenta atrás «Reanudando» de 3 s**, sin fase `paused`, sin reserva de 30 s y sin que el rival vea al jugador desconectado | La pestaña nueva no tiene el estado del vuelo y el modelo no puede reanudar a mitad de vuelo (P56) |
 | 2 | Primer saque del warm-up (§14.2) | «Saca quien perdió la bola»; tras un partido, el que lo perdió | Con una pareja nueva, el **lado 0**; el perdedor del último partido solo si es la misma pareja (revancha); tras un abandono, el lado 0 | «El que lo perdió» solo tiene sentido entre los mismos dos |
-| 3 | Plazo de Listo y prueba de lectura (§14.2 ✅, §13.1) | — | El plazo de 3 min **sigue corriendo** mientras el que no está listo hace la prueba; mientras la haces, tu Listo está bloqueado | Aceptado para V0.4: la prueba dura ~1 min contra el bot (P61) |
+| 3 | Plazo de Listo y prueba de lectura (§14.2 ✅, §13.1) | — | El plazo de 3 min **sigue corriendo** mientras el que no está listo hace la prueba; mientras la haces, tu Listo está bloqueado. Mitigación en el cliente (revisión final, `9040d69`): la prueba **no se ofrece si alguno ya está Listo** (con el Listo del rival corre el plazo), y si el rival da a Listo con la prueba en marcha, el aviso de las 2:30 dice «Deja la prueba y da a Listo en 0:SS o saldrás de la sala» | Aceptado para V0.4: la prueba dura ~1 min contra el bot; el plazo del servidor no cambia (P61) |
 | 4 | Warm-up con alguien ausente (§14.4) | «El hueco también se guarda 30 s» | El peloteo se para (el que se queda ve «Esperando a X… 0:27»); puede dar a Listo y el plazo de Listo sigue; el Listo del ausente se pierde (no en una pestaña duplicada) | El ausente no puede devolver; sin parar, el otro sacaría solo |
 | 5 | Validación del saque (§17.3, P51) | Click «no en el futuro»: como mucho el tiempo desde que se envió el vuelo + 60 ms | **No se aplica al golpe de saque**; el click sigue acotado a (0, fin del lanzamiento] | El lanzamiento lo empieza el cliente: la única referencia del servidor es su llegada, y un pico de TCP hacía fallar saques legítimos (§3.4) |
 | 6 | Lateral de la mesa (§6.4) | Bola muerta, punto para el rival | Motivo de punto `SIDE` y causa propia de «¿por qué fallé?» (`TABLE_SIDE`: «Lateral. La bola tocó el lateral de la mesa, no la superficie.»); también en el saque (en lugar de falta de saque) | 100 % de causas con nombre |
@@ -318,7 +325,7 @@ Incluye las decisiones que la sesión tomó en nombre del autor durante la imple
 | 13 | Mundo espejado (§2.1, P59) | Cámara del lado 1 en su extremo | Además giran el suelo, las vallas y las luces; la cara de la raqueta del lado 1 se corrigió (estaba al revés) | Sin ello, el lado 1 no tenía valla al fondo y la luz venía de detrás de la red |
 | 14 | Prueba de lectura (§13.1) | Tu raqueta devuelve sola; «a veces una bola alta» | `?read=1` abre un panel con las teclas y «Empezar» (`autostart=1` lo salta); «Dejar la prueba»; las devoluciones débiles del lector son **siempre tardías** (bola alta, flag `lateWeak` del bot, que ninguna dificultad usa) | Ver las teclas antes de la primera bola; desbloquear el audio, que es una pista de lectura; que la bola débil dé un smash y no vaya a la red |
 | 15 | Piloto automático | — | Declara desfase 0 (sus clicks llevan su instante exacto) | Medir sin el desfase calibrado |
-| 16 | Reintentos del cliente | 0.5, 1, 2, 4, 4… s durante 30 s | Además: un intento sin `welcome` en 5 s se abandona; mientras espera rival, un `ping` cada 20 s mantiene vivo el socket | Una red caída puede no cerrar el socket; los proxies cortan sockets inactivos |
+| 16 | Reintentos del cliente | 0.5, 1, 2, 4, 4… s durante 30 s | Además: un intento sin `welcome` en 5 s se abandona; si nada sale por el socket en 20 s (antes del primer `start`, con la raqueta callada en la sala de espera o con la pestaña oculta), un `ping` lo mantiene vivo (se mira cada 5 s; antes de la revisión final, solo antes del primer `start`) | Una red caída puede no cerrar el socket; los proxies cortan sockets inactivos |
 | 17 | Durable Object | — | Plazo de **10 s para el `hello`** (no en Node); `r: 'bot'` → «Contra el bot se juega en local»; registro acotado (últimos 64 eventos, 16 partidos y 100 entradas de diagnóstico por game: `rj` se satura en 100) y presupuesto de líneas de registro por sala | Un socket que no se presenta no puede retener un código; memoria y registros acotados en una sala de horas |
 | 18 | Ping en el HUD (§15.1) | — | Oculto hasta el primer `start` (también en `?online=1` de V0.3) | No enseñar «… ms» detrás de «Conectando…» |
 | 19 | Fin de game y de partido | — | El aviso de entre games y el panel de estadísticas salen cuando tu pantalla termina de enseñar el último punto (o a los 2.5 s / 4 s); por abandono, al instante | El último punto no se tapa |
@@ -338,6 +345,10 @@ Incluye las decisiones que la sesión tomó en nombre del autor durante la imple
 | 9 | Bucle de render por frame tras un corte entre games | Revisión de Task 10 | El respaldo de 2.5 s se dispara una vez | `6a57d31` |
 | 10 | Lado 1: el anillo del cursor en la mitad equivocada, la raqueta propia al revés, la calibración vista desde el otro extremo | Prueba en el navegador | Cursor en coordenadas del mundo; cara girada; la calibración siempre desde el lado 0 | `8730ac1` |
 | 11 | El piloto no devolvía tras una reconexión (estado del reloj viejo) | Test del piloto | El piloto empieza de cero con cada vista nueva | `908c54c` |
+| 12 | **Raqueta a 30 Hz en la sala de espera** tras irse el rival (~5 400 peticiones/h por una pestaña abierta) y, con la pestaña callada u oculta, ningún keepalive | Escribiendo este análisis; revisión final | `ClientMatch.setQuiet` (sin `p`, el ping sigue) con cada `room` en `waiting`; keepalive por el último envío (P66, §3.1 fila 16). En Chromium (`npm run dev`, dos ventanas): en el warm-up 90 `p` en 3 s; tras salir el rival, **0 `p` y 5 pings en 10 s**; con un rival nuevo, otra vez 30 Hz. Y 10 Rápido de bots por salas (0/0): 10/10, 0 discrepancias, golpes/punto +6.6 %, CPU p99 0.87 / 0.98 ms, 11 177 peticiones/h | `0f17070`, `e3845df` |
+| 13 | **Temporizador en bucle** si `RoomCore.poll` lanzaba o un plazo no avanzaba: el Durable Object se reprogramaba a 0 ms sin fin y Node llamaba a `poll` (y registraba la pila) cada 1 ms | Revisión de Task 9; revisión final | `pollRoom` (`policy.ts`, común a los dos): la sala rota se cierra con `err` «La sala falló: crea otra sala» a los dos y se olvida | `b644775` |
+| 14 | El campo del código cortaba lo pegado: « tkjv» → «TKJ» | Revisión de Task 10 | Admite 12 caracteres y se limpia (sin espacios, mayúsculas, 4 letras) | `28359ad` |
+| 15 | La prueba de lectura se ofrecía con el rival Listo (corre el plazo) y el aviso pedía un Listo bloqueado | Revisión final | §3.1 fila 3 | `9040d69` |
 
 ### 3.3 Valores 🟡 elegidos (`shared/src/config.ts`)
 
@@ -357,7 +368,7 @@ Incluye las decisiones que la sesión tomó en nombre del autor durante la imple
 | `shotTypes.solverMaxSpeed` | 25 m/s de simulación | P54 (prompt); el golpe más rápido de los bots sale a 23.5 |
 | `net.latency.spike` | `maxProb` 0.2, retraso 100–300 ms | Pérdidas de TCP; las pruebas usan 0.02 |
 | `presentation.readTest` | 30 golpes; devolución automática 50 % PERFECT, 30 % GOOD, 20 % débil tardía | §13.1; sin fallos al aire, para que el lector no pierda la mitad de los puntos (pierde ≤ 35 % por error propio contra el Difícil) |
-| Fuera de la config (cliente o Worker, no cambian el juego) | Ponerse al día: > 2 s de atraso, 240 ticks por frame; intento de conexión: 5 s; keepalive: 20 s; `hello` en el Worker: 10 s; crear sala: 8 códigos al azar (Worker) o 32 (Node) | En la config cambiarían el hash |
+| Fuera de la config (cliente o Worker, no cambian el juego) | Ponerse al día: > 2 s de atraso, 240 ticks por frame; intento de conexión: 5 s; keepalive: tras 20 s sin enviar nada (se mira cada 5 s); `hello` en el Worker: 10 s; crear sala: 8 códigos al azar (Worker) o 32 (Node) | En la config cambiarían el hash |
 
 ### 3.4 Tests anteriores cuya expectativa cambió
 
@@ -413,11 +424,13 @@ tests de latencia, que pasaron de `ping.test.ts` a `latency.test.ts`.
   le queda un `setTimeout` pendiente. Se aceptó porque la sala se cierra a los 30 s y un objeto inactivo se expulsa más
   tarde; si no fuera así, quien vuelve vería «Sala inexistente». Comprobarlo en producción: quitar la red a los dos a la
   vez unos 20 s (los clientes reintentan solos) y ver que vuelven a la sala.
-- **El margen de coste es del 7 %**, y se gasta también fuera del partido: el warm-up cuesta lo mismo, y una pestaña
-  **visible** en la sala de espera después de irse el rival sigue mandando la raqueta a 30 Hz (~5 400 peticiones/h por
-  nada; `client-match.ts:277` no mira si hay rival). → P66. Tampoco se midió la **duración** (GB-s) de los Durable
-  Objects, que el plan gratuito también limita: sin hibernación, lo previsible es que una sala cuente mientras tenga
-  sockets abiertos. Mirarlo en el panel tras publicar.
+- **El margen de coste es del 7 %**, y se gasta también fuera del partido: el warm-up cuesta lo mismo. Una pestaña
+  **visible** en la sala de espera después de irse el rival seguía mandando la raqueta a 30 Hz (~5 400 peticiones/h por
+  nada): **arreglado** en la revisión final (P66, `0f17070`, `e3845df`; ahora ~90/h, solo el ping). Lo que queda: la
+  **duración** (GB-s) de los Durable Objects, que el plan gratuito también limita (13 000 GB-s al día). Sin hibernación
+  (Decisión 15), una sala con un socket abierto cuenta 0.125 GB × 3 600 s = **450 GB-s por hora**, juegue alguien o no:
+  8 h de partido son ~3 600 GB-s, pero una sala olvidada abierta (una pestaña sola en la sala de espera, día y noche)
+  podría agotar la cuota del día. → P70 (medirlo tras publicar, §2.8).
 - **El mayor salto de la bola con picos de TCP: 22–34 cm en un tick** (peor 31 cm en 300 partidas en memoria), frente a
   ≤ 5 cm sin picos. Es el mecanismo de V0.3: si el golpe del rival llega después del contacto previsto, la pantalla ya
   lo pasó; el vuelo nuevo empieza en el contacto y la diferencia se funde en 80 ms. Pasa en unas pocas devoluciones por
@@ -426,7 +439,10 @@ tests de latencia, que pasaron de `ping.test.ts` a `latency.test.ts`.
 - **El lateral puede mandar la bola por debajo de la mesa:** las caras verticales no se modelan (el lateral es la arista
   vista desde abajo), así que la respuesta de un `side` puede ir hacia dentro, y durante el aviso del punto la bola
   puede atravesar la mesa y dar más botes o «¡Canto!». Es raro (0 laterales y 16 cantos en 30 partidos). → P65.
-- **El plazo de Listo corre durante la prueba de lectura** (§3.1 fila 3). → P61.
+- **El plazo de Listo corre durante la prueba de lectura** (§3.1 fila 3). La revisión final lo mitigó en el cliente:
+  la prueba ya no se ofrece si alguno está Listo, y si el rival da a Listo durante la prueba, el aviso pide dejarla.
+  Queda el caso de un lector lento al que el rival le da a Listo a mitad de prueba: tiene 3 min y el aviso a las 2:30.
+  → P61 (que el servidor pare el plazo) sigue como propuesta.
 - **Contra el bot, la prueba de lectura nunca enseña un bloqueo**: el bot solo bloquea bolas rápidas o con mucho spin
   (≥ 8.5 m/s o ≥ 250 rad/s) y el lector devuelve normales. El 80 % contra el bot no mide el «5 Bloqueo». → P64.
 - **Alcance del cursor:** en una ventana de 720 px de alto, el borde inferior corresponde a ~2.3 m de fondo, pero la
@@ -441,12 +457,15 @@ tests de latencia, que pasaron de `ping.test.ts` a `latency.test.ts`.
 - **El criterio de §21** («un partido completo PvP entre dos personas por internet sin incidencias») y la **prueba de
   lectura ≥ 80 % entre dos personas**: solo los cierra el playtest (§7).
 - En vivo no se vieron el **aviso del plazo de Listo** (2:30; solo inyectado) ni el keepalive de 20 s contra un borde de
-  Cloudflare inactivo.
+  Cloudflare inactivo (en local, la pestaña sola en la sala de espera manda solo pings: §3.2 fila 12).
 - Un jugador **ausente cuando el partido acaba por puntos** no recibe las estadísticas (vuelve al warm-up sin ellas).
   → P69.
-- Si la sala lanzara una excepción en `poll`, el Durable Object reprogramaría su temporizador a 0 ms una y otra vez
-  (`room-do.ts`, `onTimer`): no pasa con la sala actual, pero contradice «nada de bucles continuos». Pendiente de la
-  revisión final (hacer que espere o cerrar la sala).
+- ~~Si la sala lanzara una excepción en `poll`, el Durable Object reprogramaría su temporizador a 0 ms una y otra vez~~
+  **Resuelto** en la revisión final (`b644775`): si `poll` lanza o un plazo no avanza tras atenderlo (también si
+  `RoomCore` se rinde tras su tope de 32 pasos), el Durable Object y el servidor Node **cierran la sala** con `err`
+  «La sala falló: crea otra sala» a los dos y una línea de registro, en vez de reprogramar a 0 ms (o cada 1 ms en Node)
+  sin fin. Cerrar y no esperar: un plazo roto se volvería a atender con cada mensaje. Probado en Node con sockets y,
+  para el Durable Object, con la decisión común (`pollRoom`, `policy.test.ts`).
 
 ---
 
@@ -502,15 +521,16 @@ tests de latencia, que pasaron de `ping.test.ts` a `latency.test.ts`.
 | # | Sección | Cambio propuesto | Motivo | Impacto | Prioridad | Estado |
 |---|---|---|---|---|---|---|
 | P60 | §14.4 🟡 | **Plazo de saque en el servidor (en el partido):** si quien saca no lanza a tiempo (desde el punto anterior: el aviso del punto, 1.6 s, + el saque automático, 1 s, + su ping + un respaldo de ~3 s), el servidor le da el punto al rival (`TOSS_MISSED`), lo mismo que habría hecho su cliente; y el rival ve «Beto no responde» mientras espera | Con la pestaña oculta en tu saque, el rival espera sin límite ni aviso (§4); con esto, quien no mira pierde sus saques igual que no devuelve las bolas | Bajo | Alta (antes de jugar por internet) | 🟡 libre |
-| P61 | §14.2 ✅ (plazo) / §13.1 | Mientras el que no está listo hace la prueba de lectura, el plazo de Listo se detiene (o el botón «Prueba de lectura» no se ofrece si el rival ya está Listo) | Hoy el plazo corre durante la prueba (~1 min contra el bot, más entre dos); un lector lento puede salir de la sala | Bajo | Baja | Requiere aprobación (toca el plazo ✅) |
+| P61 | §14.2 ✅ (plazo) / §13.1 | Mientras el que no está listo hace la prueba de lectura, el plazo de Listo se detiene (en el servidor) | El plazo corre durante la prueba (~1 min contra el bot, más entre dos). El cliente ya no ofrece la prueba con algún Listo y el aviso pide dejarla (`9040d69`); queda el lector lento al que el rival le da a Listo a mitad de prueba | Bajo | Baja | Requiere aprobación (toca el plazo ✅) |
 | P62 | §14.4 🟡 / §16 | **Ponerse al día en silencio:** mientras la vista va más de 2 s atrasada, sin sonidos ni avisos de los eventos repuestos, y el piloto automático no golpea | Tras 10 s oculta, los sonidos y avisos de esos 10 s suenan en ~6 frames; el piloto golpeó en el tramo repuesto y produjo 1 corrección | Bajo | Baja | 🟡 libre |
 | P63 | §17.2 ✅ (detalle 🟡) | **Salto tras un pico de TCP:** cuando el golpe del rival llega después del contacto previsto, fundir la diferencia en un tiempo proporcional a la distancia (no en 80 ms fijos); alternativa: seguir frenando un poco tras el contacto previsto | Con picos del 2 %, saltos de 22–34 cm en un tick (sin picos, ≤ 5 cm). Decidir tras medir el salto en producción y verlo en el playtest | Bajo | Media (tras medir) | 🟡 libre (la fusión); requiere aprobación si se sigue frenando (toca el «valle» ✅, P49) |
 | P64 | §13.1 ✅ (detalle 🟡) | En la prueba de lectura contra el bot, el rival **bloquea** una parte de las bolas (p. ej. 15 %) aunque no sean rápidas | Contra el bot el bloqueo no sale nunca (0 de 124 golpes en 4 min), así que el 80 % local no mide el «5» | Bajo | Baja | 🟡 libre |
 | P65 | §6.4 / §7.4 🟡 | **Caras verticales de la mesa:** modelar el lateral como un plano, o dejar de mover y dibujar la bola tras un contacto lateral (ya es bola muerta) | La respuesta de un lateral puede mandar la bola por debajo de la mesa y producir más botes o «¡Canto!» durante el aviso | Bajo | Baja | 🟡 libre |
-| P66 | §17.7 🟡 | **No mandar la raqueta cuando nadie la ve:** sin `p` en la sala de espera ni detrás de un panel (estadísticas, error); queda el ping cada 2 s (o el keepalive) | El margen de coste es del 7 %; una pestaña visible en la sala de espera tras irse el rival gasta ~5 400 peticiones/h | Bajo | Media (antes de compartir el enlace con más gente) | 🟡 libre |
+| P66 | §17.7 🟡 | **No mandar la raqueta cuando nadie la ve:** sin `p` en la sala de espera; queda el ping cada 2 s (o el keepalive) | El margen de coste es del 7 %; una pestaña visible en la sala de espera tras irse el rival gastaba ~5 400 peticiones/h. Detrás del panel de estadísticas la raqueta sigue saliendo: el rival está en el warm-up y la ve; tras un error el socket ya está cerrado | Bajo | — | ✅ **Resuelto** en la revisión final (`0f17070`, `e3845df`): ~90 peticiones/h en la sala de espera |
 | P67 | §3.3 🟡 (Listo) | **Durante la cuenta atrás, Shift no quita el Listo**; solo el botón «Quitar Listo» | En V0.5 Shift será también el saque especial: mantenerlo en el 3-2-1 para preparar el primer saque cancelaría el partido | Bajo | Media (V0.5) | 🟡 libre |
 | P68 | §2.1 / §3.2 🟡 | **Alcance del cursor:** encuadrar la cámara para que se vea hasta 2.7 m de fondo con 16:9, o que el objetivo siga bajando cuando el ratón llega al borde de la ventana (captura del puntero) | Con 720 px de alto el borde inferior está a ~2.3 m y la raqueta llega a 2.7 m: las bolas altas y profundas solo se cogen antes de su punto más alto | Medio (cámara y sensación) | Baja (mirarlo en el playtest) | 🟡 libre |
 | P69 | §14.3 🟡 | Si un jugador estaba ausente cuando el partido acabó por puntos, al volver (dentro de los 30 s) recibe las estadísticas del partido | Hoy vuelve al warm-up sin saber el resultado | Bajo | Baja | 🟡 libre |
+| P70 | §17.7 🟡 / §14.2 ✅ | **Duración de los Durable Objects (GB-s) con salas abiertas sin jugar.** Primero medir (Task 14, §2.8: una pestaña sola en la sala de espera 1 h y el panel). Si se confirma, un **límite de inactividad para una sala que espera sola** (🟡, p. ej. `room.waitingIdleMs` = 10 min → `bye` «Sala cerrada: nadie entró»). Un límite para el warm-up toca la Decisión 3 / §14.2 ✅ («si ninguno está listo, se puede pelotear sin límite») y necesita al autor | El plan gratuito da 13 000 GB-s al día. Sin hibernación (Decisión 15), una sala con un socket abierto cuenta ≈ 0.125 GB × 3 600 s = **450 GB-s por hora**, juegue alguien o no: 8 h de partido ≈ 3 600 GB-s, pero una sala olvidada abierta día y noche (~10 800 GB-s) agota la cuota del día con muy poco juego más. Mientras tanto, el README pide cerrar la pestaña de la sala al dejar de jugar | Bajo | Media (tras medir) | 🟡 libre (sala de espera); requiere aprobación (warm-up) |
 
 ---
 
@@ -565,9 +585,10 @@ ping, el frenado, el Δt medio y las correcciones (deberían ser 0).
    que recarga vuelve en el mismo lado y con el mismo marcador, y tras «Reanudando» 3-2-1 se sigue con el siguiente
    saque (el punto en juego acaba como si el que recargó no devolviera la bola). Después, que uno cierre la pestaña: a los 30 s el otro gana por
    abandono.
-10. **La prueba de lectura entre dos (≥ 80 %).** En el warm-up de la sala, uno pulsa «Prueba de lectura» (el otro **no
-    debe dar a Listo** mientras tanto: el plazo de 3 min correría). El otro ve «X está haciendo la prueba de lectura:
-    mezcla golpes» y mezcla normal, W topspin, Q slice, E smash (con bola alta) y Espacio bloqueo. Quien mide no golpea:
+10. **La prueba de lectura entre dos (≥ 80 %).** En el warm-up de la sala, sin ningún Listo (con uno, el botón no se
+    ofrece), uno pulsa «Prueba de lectura» (el otro **no debe dar a Listo** mientras tanto: el plazo de 3 min
+    correría). El otro ve «X está haciendo la prueba de lectura: mezcla golpes» y mezcla normal, W topspin, Q slice,
+    E smash (con bola alta) y Espacio bloqueo. Quien mide no golpea:
     su raqueta devuelve sola y él nombra cada golpe con **1** normal · **2** topspin · **3** slice · **4** smash ·
     **5** bloqueo mientras viene la bola; 30 golpes. **Mira:** el % final (criterio ≥ 80 %), la tabla de confusiones y
     sobre todo el bloqueo, que contra el bot (`http://localhost:5173/?read=1&bot=hard`) no sale nunca. Cambiad los

@@ -76,8 +76,11 @@ En la sala:
 Mide si nombras el golpe del rival (§13.1 del diseño): tu raqueta devuelve sola y tú pulsas **1** normal · **2**
 topspin · **3** slice · **4** smash · **5** bloqueo mientras viene su bola. 30 golpes (los saques no cuentan); al final,
 el % de aciertos sobre los respondidos y la tabla de confusiones. Contra el bot: `http://localhost:5173/?read=1&bot=hard`.
-Entre dos: botón «Prueba de lectura» en el warm-up de una sala; el rival ve «Ana está haciendo la prueba de lectura:
-mezcla golpes». Contra el bot no sale el bloqueo (el bot solo bloquea bolas rápidas o con mucho spin).
+Entre dos: botón «Prueba de lectura» en el warm-up de una sala, mientras ninguno de los dos esté Listo (con un solo Listo
+corre el plazo de 3 min y mientras haces la prueba no puedes dar a Listo); el rival ve «Ana está haciendo la prueba de
+lectura: mezcla golpes». Si aun así el rival da a Listo durante la prueba, el aviso de las 2:30 dice «Deja la prueba y
+da a Listo en 0:30 o saldrás de la sala». Contra el bot no sale el bloqueo (el bot solo bloquea bolas rápidas o con
+mucho spin).
 
 ### Jugar online contra el bot remoto (V0.3)
 
@@ -107,14 +110,17 @@ npx wrangler tail    # registro en vivo del Worker mientras pruebas
 - **Un despliegue nuevo corta las salas abiertas** (viven en memoria): quien estaba dentro ve «Sala inexistente» y
   hay que crear otra.
 - Coste en el plan gratuito: 100 000 peticiones de Durable Objects al día; los mensajes que mandan los jugadores
-  cuentan 1 de cada 20. Un partido gasta unas 11 200 por hora: ~9 h de juego al día (el warm-up gasta lo mismo). Si se
-  pasa, las salas fallan hasta medianoche UTC.
+  cuentan 1 de cada 20. Un partido gasta unas 11 200 por hora: ~9 h de juego al día (el warm-up gasta lo mismo). Una
+  sala de espera con una pestaña sola casi no gasta peticiones (solo el ping: ~90 por hora). Si se pasa, las salas
+  fallan hasta medianoche UTC.
+- **Cierra la pestaña de la sala cuando no juegues:** mientras tenga un socket abierto, la sala cuenta duración de
+  Durable Objects (GB-s), el otro límite del plan gratuito, aunque nadie juegue (P70 del análisis de V0.4).
 
 Otros comandos:
 
 | Comando | Qué hace |
 |---|---|
-| `npm test` | Tests unitarios (Vitest) de `shared/` (379), del servidor (`server/`, 17, con sockets reales) y del cliente (`client/`, 32) |
+| `npm test` | Tests unitarios (Vitest) de `shared/` (380), del servidor (`server/`, 24, con sockets reales) y del cliente (`client/`, 37) |
 | `npm run typecheck` | Comprobación de tipos de `shared/` (sin DOM), `client/`, `server/` y el Worker |
 | `npm run server` | Solo el servidor de juego (`node server/src/main.ts`), sin cliente |
 | `npm run cf:dev` | **V0.4**: compila el cliente y arranca el Worker con `wrangler dev` en `http://localhost:8787/` (lo mismo que el publicado, en local) |
